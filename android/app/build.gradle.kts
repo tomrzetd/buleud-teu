@@ -13,6 +13,8 @@ android {
         targetSdk = 35
         versionCode = 40
         versionName = "4.0"
+        // HP Android kelas menengah ke atas = ARM; buang x86 agar APK jauh lebih kecil (hemat kuota guru)
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
     buildTypes {
         release {
