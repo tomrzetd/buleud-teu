@@ -1,0 +1,24 @@
+name: Uji engine & Apps Script
+on:
+  push:
+    paths: ['web/js/**', 'apps-script/**', 'tools/**', 'spec/**', '.github/workflows/tests.yml']
+  workflow_dispatch: {}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install numpy scipy opencv-python-headless pillow
+      - run: npm i --no-save playwright@1 && npx playwright install --with-deps chromium
+      - name: Render template & buat foto uji
+        run: node tools/render_templates.js 200 && python3 tools/test/gen_cases.py
+      - name: Engine mode marker (16 kondisi foto)
+        run: node tools/test/run_engine.js
+      - name: Statistik vs numpy/scipy
+        run: python3 tools/test/test_stats.py
+      - name: Apps Script (tiruan layanan Google)
+        run: node tools/test/test_appscript.js

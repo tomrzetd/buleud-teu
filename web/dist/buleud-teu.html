@@ -1,0 +1,1852 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>Buleud Teu — Scan LJK</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+:root{--bg:#0b1220;--card:#131c2e;--card2:#1b2740;--line:#26344f;--tx:#e8eefb;--tx2:#9fb0cc;--pri:#4f7cff;--pri2:#7ea0ff;--ok:#22c55e;--bad:#ef4444;--warn:#f59e0b;--r:14px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{height:100vh;height:100dvh;overflow:hidden}
+button,input,select{font:inherit;color:inherit}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;overflow:hidden}
+.screen.on{display:flex}
+.top{display:flex;align-items:center;gap:10px;padding:12px 14px;padding-top:max(12px,env(safe-area-inset-top));background:linear-gradient(#0b1220,#0b1220ee);border-bottom:1px solid var(--line)}
+.top h1{font-size:17px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.top .sub{font-size:11px;color:var(--tx2);font-weight:400;display:block}
+.body{flex:1;overflow-y:auto;padding:14px;padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.card h3{margin:0 0 10px;font-size:14px;color:var(--tx2);text-transform:uppercase;letter-spacing:.06em}
+.btn{border:0;border-radius:12px;padding:11px 14px;background:var(--card2);color:var(--tx);font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn:active{transform:scale(.97)}.btn.pri{background:var(--pri);color:#fff}.btn.ok{background:var(--ok);color:#06210f}.btn.bad{background:#3a1520;color:#fca5a5}
+.btn.ghost{background:transparent;border:1px solid var(--line)}.btn.sm{padding:7px 10px;font-size:13px;border-radius:10px}.btn.wide{width:100%}
+.btn:disabled{opacity:.45}
+.icon{width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:#ffffff10;display:grid;place-items:center;font-size:18px;cursor:pointer}
+input.in,select.in{width:100%;background:#0a1222;border:1px solid var(--line);border-radius:11px;padding:11px 12px;outline:none}
+input.in:focus,select.in:focus{border-color:var(--pri)}
+label.l{display:block;font-size:12px;color:var(--tx2);margin:10px 0 5px}
+.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
+.muted{color:var(--tx2);font-size:13px}.small{font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:#ffffff08;font-size:13px;margin:3px;cursor:pointer}
+.chip.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+.b-ok{background:#14532d;color:#86efac}.b-warn{background:#422006;color:#fcd34d}.b-bad{background:#450a0a;color:#fca5a5}.b-info{background:#1e2a4a;color:#a5b8ff}
+.note{border-radius:11px;padding:9px 11px;font-size:13px;margin:8px 0}
+.n-warn{background:#42200680;border:1px solid #92400e;color:#fde68a}.n-bad{background:#450a0a80;border:1px solid #991b1b;color:#fecaca}.n-ok{background:#14532d80;border:1px solid #166534;color:#bbf7d0}.n-info{background:#1e2a4a;border:1px solid #2f4170;color:#c7d4ff}
+.exam{display:flex;flex-direction:column;gap:8px}
+.exam .t{font-weight:700}.exam .m{font-size:12px;color:var(--tx2)}
+.bar{height:6px;background:#ffffff12;border-radius:9px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--ok)}
+.fab{position:fixed;left:0;right:0;bottom:0;padding:12px 14px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,#0b1220 35%);display:flex;gap:8px}
+/* kamera */
+#scr-scan{background:#000}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.scan-top{position:absolute;top:0;left:0;right:0;z-index:5;background:linear-gradient(#000c,transparent)}
+.scan-bot{position:absolute;bottom:0;left:0;right:0;z-index:5;display:flex;align-items:center;justify-content:space-around;padding:18px 18px calc(22px + env(safe-area-inset-bottom));background:linear-gradient(transparent,#000d)}
+.shutter{width:78px;height:78px;border-radius:50%;border:5px solid #fff8;background:var(--pri);box-shadow:0 0 0 4px #0006}
+.shutter.ready{background:var(--ok);box-shadow:0 0 25px var(--ok)}
+.hint{position:absolute;left:50%;top:84px;transform:translateX(-50%);z-index:5;background:#000a;border:1px solid #fff2;border-radius:999px;padding:7px 14px;font-size:13px;white-space:nowrap}
+.toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:#fff;background:#0008;border:1px solid #fff3;border-radius:999px;padding:7px 11px}
+/* hasil */
+.score{display:flex;align-items:flex-end;justify-content:space-between}
+.score .big{font-size:56px;font-weight:900;line-height:1;letter-spacing:-.03em}
+.ring{width:84px;height:84px}
+.ljk{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.blk{background:#0a1222;border:1px solid var(--line);border-radius:12px;padding:6px 6px}
+.q{display:flex;align-items:center;gap:3px;padding:2px 2px;border-radius:8px}
+.q.flag{background:#42200666;outline:1px solid #b45309}
+.q .no{width:22px;text-align:right;font-size:11px;font-weight:700;color:var(--tx2);margin-right:3px}
+.bub{width:24px;height:24px;border-radius:50%;border:1.5px solid #5b6b88;display:grid;place-items:center;font-size:10px;color:#7f8fab;cursor:pointer;flex:none}
+.bub.key{border-color:var(--ok);box-shadow:0 0 0 1.5px var(--ok) inset}
+.bub.sel{background:#e5e7eb;color:#111;border-color:#e5e7eb}
+.bub.sel.right{background:var(--ok);border-color:var(--ok);color:#052e12}
+.bub.sel.wrong{background:var(--bad);border-color:var(--bad);color:#fff}
+.bub.cand{background:var(--warn);border-color:var(--warn);color:#111}
+.q.off{opacity:.25;pointer-events:none}
+canvas.ev{width:100%;height:auto;border-radius:10px;background:#000;display:block}
+.strip{width:100%;height:auto;background:#fff;border-radius:6px;display:block;margin-bottom:4px}
+.layers{display:flex;flex-wrap:wrap;gap:2px;margin:8px 0}
+.qgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px}
+.qgrid div{background:#0a1222;border:1px solid var(--line);border-radius:10px;padding:7px}.qgrid b{display:block;font-size:16px}
+table.t{width:100%;border-collapse:collapse;font-size:12px}table.t th,table.t td{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left;vertical-align:top}
+table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var(--card)}
+.tr-ok{background:#14532d40}.tr-rev{background:#42200640}.tr-bad{background:#450a0a50}
+.pin{display:flex;gap:10px;justify-content:center;margin:12px 0}.pin i{width:16px;height:16px;border-radius:50%;border:2px solid var(--tx2)}.pin i.f{background:var(--pri);border-color:var(--pri)}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;max-width:300px;margin:0 auto}.pad button{height:58px;font-size:22px}
+#toast{position:fixed;left:50%;top:calc(16px + env(safe-area-inset-top));transform:translate(-50%,-150%);transition:.3s;z-index:99;background:#0f172a;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:13px;max-width:92vw;box-shadow:0 10px 30px #0008}
+#toast.on{transform:translate(-50%,0)}
+#busy{position:fixed;inset:0;background:#000b;z-index:90;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+#busy.on{display:flex}.spin{width:44px;height:44px;border:4px solid #fff2;border-top-color:var(--pri);border-radius:50%;animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(1turn)}}
+.log{font:11px/1.45 ui-monospace,Menlo,monospace;background:#000;border:1px solid var(--line);border-radius:10px;padding:8px;max-height:180px;overflow:auto;white-space:pre-wrap;color:#a7f3d0}
+#printArea{display:none}
+@media print{
+  @page{size:215mm 330mm;margin:0}
+  body{background:#fff;height:auto;overflow:visible}
+  .screen,#toast,#busy{display:none!important}
+  #printArea{display:block}#printArea svg{width:215mm;height:330mm;display:block;page-break-after:always}
+}
+</style>
+</head>
+<body>
+<!-- 0. SETUP -->
+<section class="screen" id="scr-setup">
+  <div class="top"><h1>Buleud Teu <span class="sub">"Buleud teu? Mun buleud, ku urang dipariksa!"</span></h1></div>
+  <div class="body">
+    <div class="card">
+      <h3>Hubungkan ke spreadsheet sekolah</h3>
+      <p class="muted">Tempel URL Web App Apps Script sekolah (berakhiran <b>/exec</b>). Minta ke operator sekolah bila belum ada.</p>
+      <input id="inApi" class="in" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+      <div id="setupDiag" class="muted small" style="margin-top:8px"></div>
+      <button class="btn pri wide" style="margin-top:12px" onclick="App.saveApi()">Sambungkan</button>
+    </div>
+    <div class="card muted small">Data sekolah, guru, siswa, ujian dan hasil tersimpan di Google Sheet milik sekolah Anda sendiri.</div>
+  </div>
+</section>
+
+<!-- 1. LOGIN -->
+<section class="screen" id="scr-login">
+  <div class="top"><img id="loginLogo" alt="" style="width:36px;height:36px;border-radius:8px;object-fit:contain;display:none;background:#fff"><h1 id="loginSchool">Sekolah<span class="sub">Masuk guru</span></h1><div class="icon" title="Ganti server" onclick="App.go('setup')">⚙</div></div>
+  <div class="body">
+    <div class="card">
+      <label class="l">Nama guru</label>
+      <select id="selGuru" class="in"></select>
+      <label class="l" style="text-align:center">PIN 4 digit</label>
+      <div class="pin" id="pinDots"><i></i><i></i><i></i><i></i></div>
+      <div class="pad" id="pinPad"></div>
+      <div id="loginMsg" class="muted small" style="text-align:center;margin-top:10px"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 2. BERANDA -->
+<section class="screen" id="scr-home">
+  <div class="top"><img id="homeLogo" alt="" style="width:36px;height:36px;border-radius:8px;object-fit:contain;display:none;background:#fff"><h1 id="homeTitle">Ujian saya<span class="sub" id="homeSub"></span></h1>
+    <div class="icon" onclick="App.loadExams(true)" title="Muat ulang">↻</div><div class="icon" onclick="App.logout()" title="Keluar">⎋</div></div>
+  <div class="body">
+    <div id="queueNote"></div>
+    <div id="examList"></div>
+    <div class="card"><h3>Mode lain</h3>
+      <button class="btn ghost wide" onclick="App.startScan(null,'markerless')">Scan LJK lama 20 soal (tanpa marker)</button>
+      <p class="muted small">Untuk LJK lama 4 kolom × 5 baris. Jawaban tidak disimpan ke ujian; gunakan untuk memeriksa cepat.</p></div>
+  </div>
+  <div class="fab"><button class="btn pri wide" onclick="App.editExam(null)">＋ Ujian baru</button></div>
+</section>
+
+<!-- 3. EDIT UJIAN -->
+<section class="screen" id="scr-exam">
+  <div class="top"><div class="icon" onclick="App.go('home')">←</div><h1 id="examTitle">Ujian baru</h1></div>
+  <div class="body">
+    <div class="card">
+      <label class="l">Nama ujian</label><input id="exNama" class="in" placeholder="mis. PSAS Ganjil 2026/2027">
+      <div class="row"><div><label class="l">Mapel</label><input id="exMapel" class="in" list="dlMapel" placeholder="IPA"><datalist id="dlMapel"></datalist></div>
+        <div style="flex:.6"><label class="l">KKTP</label><input id="exKktp" class="in" type="number" min="0" max="100" value="75"></div></div>
+      <label class="l">Kelas peserta</label><div id="exKelas"></div>
+      <label class="l">Opsi jawaban</label>
+      <div><span class="chip" data-opsi="ABCD" onclick="App.setOpsi('ABCD')">ABCD (SD–SMP)</span><span class="chip" data-opsi="ABCDE" onclick="App.setOpsi('ABCDE')">ABCDE (SMA)</span></div>
+    </div>
+    <div class="card">
+      <h3>Kunci jawaban <span id="keyCount" class="badge b-info">0 soal</span></h3>
+      <p class="muted small">Jumlah soal = panjang kunci (maks. 50). Ketik huruf, ketuk bulatan, atau scan satu LJK yang diisi guru sebagai kunci.</p>
+      <input id="exKunci" class="in" style="font-family:ui-monospace,monospace;letter-spacing:.25em;text-transform:uppercase" oninput="App.keyTyped()" placeholder="ABCD...">
+      <div class="row" style="margin-top:8px"><button class="btn sm ghost" onclick="App.startScan(null,'key')">📷 Scan LJK kunci</button><button class="btn sm ghost" onclick="App.keyClear()">Hapus kunci</button></div>
+      <div id="keyGrid" class="ljk" style="margin-top:10px"></div>
+    </div>
+    <div id="examMsg"></div>
+  </div>
+  <div class="fab"><button class="btn ghost" id="btnArchive" onclick="App.archiveExam()">Arsipkan</button><button class="btn pri wide" onclick="App.saveExam()">Simpan ujian</button></div>
+</section>
+
+<!-- 4. SCAN -->
+<section class="screen" id="scr-scan">
+  <video id="video" playsinline muted autoplay></video>
+  <canvas id="overlay"></canvas>
+  <div class="scan-top"><div class="top" style="background:none;border:0"><div class="icon" onclick="App.stopScan()">←</div><h1 id="scanTitle">Scan<span class="sub" id="scanSub"></span></h1></div></div>
+  <div class="hint" id="scanHint">Arahkan ke seluruh LJK — 4 kotak hitam di sudut harus terlihat</div>
+  <div class="scan-bot">
+    <label class="icon" title="Dari galeri">🖼<input type="file" accept="image/*" style="display:none" onchange="App.fromFile(this)"></label>
+    <button class="shutter" id="shutter" onclick="App.capture()"></button>
+    <label class="toggle"><input type="checkbox" id="chkAuto" checked onchange="App.setAuto(this.checked)">Auto</label>
+  </div>
+</section>
+
+<!-- 5. HASIL -->
+<section class="screen" id="scr-result">
+  <div class="top"><div class="icon" onclick="App.backToScan()">←</div><h1 id="resTitle">Hasil<span class="sub" id="resSub"></span></h1><div class="icon" onclick="App.toggleTuning()">⚙</div></div>
+  <div class="body">
+    <div class="card">
+      <div class="score"><div><div class="muted small">SKOR</div><div class="big" id="resScore">0</div><div class="muted" id="resBenar"></div></div>
+        <svg class="ring" viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" stroke="#ffffff18" stroke-width="10" fill="none"/><circle id="resRing" cx="50" cy="50" r="42" stroke="#22c55e" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="264" transform="rotate(-90 50 50)"/></svg></div>
+      <div id="resBadges" style="margin-top:8px"></div><div id="resNotes"></div>
+    </div>
+    <div class="card" id="idCard">
+      <h3>Identitas siswa</h3>
+      <div id="idStrips"></div>
+      <div id="ocrStatus" class="muted small"></div>
+      <div id="ocrAlts"></div>
+      <div class="row" style="margin-top:8px"><select id="selKelas" class="in" onchange="App.fillStudents()"></select><select id="selSiswa" class="in" style="flex:1.6"></select></div>
+      <div id="saveNote"></div>
+      <button id="btnSave" class="btn ok wide" style="margin-top:10px" onclick="App.save()">Simpan & scan berikutnya</button>
+    </div>
+    <div class="card"><h3>LJK digital <span class="muted small" style="text-transform:none;letter-spacing:0">— ketuk bulatan untuk koreksi</span></h3><div id="ljkGrid" class="ljk"></div></div>
+    <div class="card"><h3>Bukti deteksi</h3>
+      <div class="layers" id="layerChips"></div>
+      <canvas id="evCanvas" class="ev"></canvas>
+      <div class="qgrid" id="qualGrid" style="margin-top:10px"></div>
+    </div>
+    <div class="card" id="tuning" style="display:none"><h3>Tuning & diagnosa</h3>
+      <label class="l">Ambang isi (<span id="vSens">50</span>%)</label><input type="range" id="slSens" min="25" max="75" value="50" style="width:100%" oninput="App.param('sens',this.value)" onchange="App.reprocess()">
+      <label class="l">Kontras garis (<span id="vCon">10</span>)</label><input type="range" id="slCon" min="4" max="25" value="10" style="width:100%" oninput="App.param('con',this.value)" onchange="App.reprocess()">
+      <label class="l"><input type="checkbox" id="chkOcr" checked onchange="App.setOcr(this.checked)"> Baca identitas otomatis (OCR Google)</label>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. ANALISIS -->
+<section class="screen" id="scr-analysis">
+  <div class="top"><div class="icon" onclick="App.go('home')">←</div><h1 id="anTitle">Analisis butir</h1></div>
+  <div class="body">
+    <div class="card"><h3>Lingkup</h3><div id="anScope"></div>
+      <button class="btn pri wide" style="margin-top:10px" onclick="App.runAnalysis()">Hitung analisis</button></div>
+    <div id="anOut"></div>
+  </div>
+</section>
+
+<!-- 7. CETAK -->
+<section class="screen" id="scr-print">
+  <div class="top"><div class="icon" onclick="App.go('home')">←</div><h1 id="prTitle">Cetak LJK</h1></div>
+  <div class="body">
+    <div class="card"><p class="muted small">Kertas <b>F4 / Folio (215 × 330 mm)</b>, skala <b>100% / ukuran sebenarnya</b> (jangan "fit to page"). Keempat kotak hitam di sudut wajib tercetak utuh.</p>
+      <div class="row"><div><label class="l">Varian</label><select id="prVar" class="in" onchange="App.renderPrint()"><option>ABCD</option><option>ABCDE</option></select></div>
+      <div><label class="l">Jumlah lembar</label><input id="prCopies" class="in" type="number" min="1" max="60" value="1" onchange="App.renderPrint()"></div></div>
+      <button class="btn pri wide" style="margin-top:12px" onclick="window.print()">🖨 Cetak / simpan PDF</button></div>
+    <div class="card" style="padding:6px;background:#fff"><div id="prPreview"></div></div>
+  </div>
+</section>
+
+<div id="printArea"></div>
+<div id="busy"><div class="spin"></div><div class="small" id="busyTx">Memproses LJK…</div></div>
+<div id="toast"></div>
+
+<script>
+/*
+ * Buleud Teu — spesifikasi geometri LJK F4 (sumber tunggal).
+ * Semua ukuran dalam milimeter, titik (0,0) = pojok kiri atas kertas F4 215 x 330 mm.
+ * Dipakai oleh: renderer template (ljk-template.js), engine (ljk-engine.js),
+ * dan port Android (android/.../engine/LjkSpec.kt — harus identik, diuji tools/test).
+ */
+(function (root) {
+    const SPEC = {
+        id: 'F4-50-v1',
+        page: { w: 215, h: 330 },
+        markers: {
+            corner: { size: 8, centers: [[10, 10], [205, 10], [205, 320], [10, 320]] }, // TL, TR, BR, BL
+            mid: { size: 6, centers: [[8.5, 165], [206.5, 165]] },                      // kiri, kanan
+            orient: { size: 4, center: [19, 8] }                                          // penanda arah (dekat TL)
+        },
+        pg: {
+            questions: 50, blocks: 5, rows: 10,
+            x0: 16, blockW: 36.6, numRight: 8.0, optOffset: 11, optPitch: 5.6,
+            y0: 116, rowPitch: 8, r: 2.2,
+            frame: [15, 104, 200, 194]          // x1, y1, x2, y2
+        },
+        ident: {
+            nama:  { label: 'Nama Peserta',  x: 52,  y: 52, n: 26, cw: 5.6, h: 7 },
+            nomor: { label: 'Nomor Peserta', x: 52,  y: 63, n: 10, cw: 5.6, h: 7 },
+            kelas: { label: 'Kelas',         x: 150, y: 63, n: 6,  cw: 5.6, h: 7 },
+            lines: [
+                { label: 'Mata Pelajaran', x: 52, y: 81, x2: 125 },
+                { label: 'Tanggal', x: 150, y: 81, x2: 199 },
+                { label: 'Tanda Tangan', x: 52, y: 93, x2: 125 }
+            ]
+        },
+        regions: {
+            view: [12, 14, 203, 196],             // potongan debug: kop s/d bawah tabel PG
+            ident: [14, 44, 201, 97]
+        }
+    };
+
+    const LETTERS = 'ABCDE';
+    // posisi pusat bulatan soal q (0-based) opsi o (0=A) dalam mm
+    function bubbleMM(q, o, spec = SPEC) {
+        const p = spec.pg, b = Math.floor(q / p.rows), r = q % p.rows;
+        return { x: p.x0 + b * p.blockW + p.optOffset + o * p.optPitch, y: p.y0 + r * p.rowPitch };
+    }
+    // kotak isian per huruf (comb) sebuah field identitas
+    function combRect(field, spec = SPEC) {
+        const f = spec.ident[field];
+        return { x: f.x, y: f.y, w: f.n * f.cw, h: f.h };
+    }
+
+    const api = { SPEC, LETTERS, bubbleMM, combRect };
+    if (typeof module !== 'undefined' && module.exports) module.exports = api;
+    else root.LJKSpec = api;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+/*
+ * Buleud Teu — renderer template LJK F4 (SVG, satuan mm).
+ * renderLJK({ variant:'ABCD'|'ABCDE', school:{nama, logo(dataURL)}, exam:{judul, mapel, tahun, tingkat} })
+ * -> string <svg> 215x330 mm siap cetak (print dari browser / PDF via Chromium).
+ */
+(function (root) {
+    const S = (typeof module !== 'undefined' && module.exports) ? require('./ljk-spec.js') : root.LJKSpec;
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    function renderLJK(opt = {}) {
+        const spec = S.SPEC, P = spec.pg, M = spec.markers;
+        const variant = opt.variant === 'ABCDE' ? 'ABCDE' : 'ABCD';
+        const nOpt = variant.length;
+        const school = opt.school || {}, exam = opt.exam || {};
+        const INK = '#111', GRAY = '#555', LIGHT = '#9aa7b8', DROP = '#b9c8dc', PINK = '#f0a6b6'; // PINK = warna dropout kotak isian (aman untuk pulpen biru/hitam & pensil)
+        const out = [];
+        const T = (x, y, s, size = 3, o = {}) => out.push(`<text x="${x}" y="${y}" font-size="${size}" font-family="DejaVu Sans, Arial, Helvetica, sans-serif"${o.anchor ? ` text-anchor="${o.anchor}"` : ''}${o.bold ? ' font-weight="bold"' : ''} fill="${o.fill || INK}">${esc(s)}</text>`);
+        const R = (x, y, w, h, o = {}) => out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}"${o.rx ? ` rx="${o.rx}"` : ''} fill="${o.fill || 'none'}"${o.stroke ? ` stroke="${o.stroke}" stroke-width="${o.sw || 0.3}"` : ''}/>`);
+        const Lh = (x1, y, x2, o = {}) => out.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${o.stroke || INK}" stroke-width="${o.sw || 0.25}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`);
+
+        // ---- marker (hitam penuh)
+        const sq = (c, s) => R(c[0] - s / 2, c[1] - s / 2, s, s, { fill: '#000' });
+        M.corner.centers.forEach(c => sq(c, M.corner.size));
+        M.mid.centers.forEach(c => sq(c, M.mid.size));
+        sq(M.orient.center, M.orient.size);
+
+        // ---- kop
+        if (opt.school && school.logo) out.push(`<image href="${esc(school.logo)}" x="16" y="16" width="22" height="22" preserveAspectRatio="xMidYMid meet"/>`);
+        else { R(16, 16, 22, 22, { stroke: LIGHT, sw: 0.3, rx: 1.5 }); T(27, 28.2, 'LOGO', 2.6, { anchor: 'middle', fill: LIGHT }); }
+        T(107.5, 21.5, 'LEMBAR JAWABAN', 5, { anchor: 'middle', bold: true });
+        T(107.5, 28, school.nama || 'NAMA SEKOLAH ............................................', 3.6, { anchor: 'middle', bold: true });
+        T(107.5, 33.5, exam.judul || 'PENILAIAN ........................................', 3.1, { anchor: 'middle' });
+        T(107.5, 38.4, `TAHUN PELAJARAN ${exam.tahun || '..........'}${exam.mapel ? '  •  ' + exam.mapel : ''}`, 2.8, { anchor: 'middle', fill: GRAY });
+        // kode varian (kanan atas, dibaca guru)
+        R(176, 16, 23, 22, { stroke: GRAY, sw: 0.3, rx: 1.5 });
+        T(187.5, 22, 'LJK F4 • 50 SOAL', 2.1, { anchor: 'middle', fill: GRAY });
+        T(187.5, 30.5, variant, 5.2, { anchor: 'middle', bold: true });
+        T(187.5, 35.5, spec.id, 1.9, { anchor: 'middle', fill: GRAY });
+        Lh(14, 41, 201, { sw: 0.5 }); Lh(14, 42.2, 201, { sw: 0.2 });
+
+        // ---- identitas (kotak per huruf merah muda = warna dropout, dihapus engine sebelum OCR)
+        T(16, 47.6, 'Tulis dengan HURUF KAPITAL, satu huruf per kotak, pakai pulpen/pensil gelap.', 2.3, { fill: GRAY });
+        const comb = (field) => {
+            const f = spec.ident[field];
+            for (let i = 0; i < f.n; i++) R(f.x + i * f.cw, f.y, f.cw, f.h, { stroke: PINK, sw: 0.35 });
+        };
+        T(16, 57, 'Nama Peserta', 3); comb('nama');
+        T(16, 68, 'Nomor Peserta', 3); comb('nomor');
+        T(136, 68, 'Kelas', 3); comb('kelas');
+        spec.ident.lines.forEach(l => {
+            T(l.x === 52 ? 16 : l.x - 16, l.y, l.label, 3);
+            Lh(l.x, l.y + 0.6, l.x2, { stroke: GRAY, sw: 0.2, dash: '0.6 0.6' });
+        });
+
+        // ---- pilihan ganda
+        T(15, 101.5, 'I. PILIHAN GANDA', 3.4, { bold: true });
+        T(200, 101.5, 'Hitamkan PENUH satu bulatan. Jangan menyilang.', 2.3, { anchor: 'end', fill: GRAY });
+        const [fx1, fy1, fx2, fy2] = P.frame;
+        R(fx1, fy1, fx2 - fx1, fy2 - fy1, { stroke: INK, sw: 0.35, rx: 1 });
+        for (let b = 1; b < P.blocks; b++) {
+            const x = P.x0 + b * P.blockW + 1.0;
+            out.push(`<line x1="${x}" y1="${fy1 + 3}" x2="${x}" y2="${fy2 - 3}" stroke="${DROP}" stroke-width="0.2"/>`);
+        }
+        for (let q = 0; q < P.questions; q++) {
+            const p0 = S.bubbleMM(q, 0);
+            T(P.x0 + Math.floor(q / P.rows) * P.blockW + P.numRight, p0.y + 1.05, `${q + 1}.`, 2.6, { anchor: 'end', bold: true });
+            for (let o = 0; o < nOpt; o++) {
+                const p = S.bubbleMM(q, o);
+                out.push(`<circle cx="${p.x}" cy="${p.y}" r="${P.r}" fill="none" stroke="${GRAY}" stroke-width="0.3"/>`);
+                T(p.x, p.y + 0.85, S.LETTERS[o], 2.3, { anchor: 'middle', fill: LIGHT });
+            }
+        }
+
+        // ---- esai / catatan
+        T(15, 203, 'II. ESAI / CATATAN', 3.4, { bold: true });
+        for (let y = 211; y <= 296; y += 8.5) Lh(15, y, 200, { stroke: DROP, sw: 0.2 });
+        R(15, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(17, 304, 'Nilai', 2.4, { fill: GRAY });
+        R(80, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(82, 304, 'Paraf Guru', 2.4, { fill: GRAY });
+        T(200, 309.5, 'Buleud Teu • "Mun buleud, ku urang dipariksa!"', 2, { anchor: 'end', fill: LIGHT });
+
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${spec.page.w}mm" height="${spec.page.h}mm" viewBox="0 0 ${spec.page.w} ${spec.page.h}">` +
+            `<rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>`;
+    }
+
+    const api = { renderLJK };
+    if (typeof module !== 'undefined' && module.exports) module.exports = api;
+    else root.LJKTemplate = api;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+/*
+ * Buleud Teu — LJK ENGINE (JavaScript murni, tanpa OpenCV)
+ *
+ *  processMarker(img, opt)     : LJK F4 dengan marker sudut (mode utama, 50 soal, ABCD/ABCDE)
+ *  processMarkerless(img, opt) : LJK lama tanpa marker (inferensi kisi, V33)
+ *  detectMarkersFast(img)      : deteksi marker cepat untuk auto-capture kamera
+ *  rectifyMM / identityStrips  : potongan lurus (debug view, OCR identitas)
+ *
+ * img = { width, height, data: RGBA Uint8ClampedArray } (ImageData)
+ * Port Kotlin: android/app/src/main/java/id/buleudteu/ljk/engine/ — logika harus identik.
+ */
+(function (root) {
+    const SpecMod = (typeof module !== 'undefined' && module.exports) ? require('./ljk-spec.js') : root.LJKSpec;
+    const median = (a) => { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+    // =================================================================
+    // 1. Citra dasar
+    // =================================================================
+    function toGray(img, maxSide) {
+        const sw = img.width, sh = img.height, d = img.data;
+        const s = Math.min(1, maxSide / Math.max(sw, sh));
+        const W = Math.max(1, Math.round(sw * s)), H = Math.max(1, Math.round(sh * s));
+        const g = new Uint8ClampedArray(W * H);
+        if (s === 1) {
+            for (let i = 0, p = 0; i < W * H; i++, p += 4) g[i] = (d[p] * 77 + d[p + 1] * 150 + d[p + 2] * 29) >> 8;
+        } else {
+            const inv = 1 / s;
+            for (let y = 0; y < H; y++) {
+                const y0 = Math.floor(y * inv), y1 = Math.min(sh, Math.max(y0 + 1, Math.floor((y + 1) * inv)));
+                for (let x = 0; x < W; x++) {
+                    const x0 = Math.floor(x * inv), x1 = Math.min(sw, Math.max(x0 + 1, Math.floor((x + 1) * inv)));
+                    let sum = 0, n = 0;
+                    for (let yy = y0; yy < y1; yy++) {
+                        let p = (yy * sw + x0) * 4;
+                        for (let xx = x0; xx < x1; xx++, p += 4) { sum += (d[p] * 77 + d[p + 1] * 150 + d[p + 2] * 29) >> 8; n++; }
+                    }
+                    g[y * W + x] = sum / n;
+                }
+            }
+        }
+        return { g, W, H, scale: s };
+    }
+
+    function integral(g, W, H) {
+        const I = new Float64Array((W + 1) * (H + 1));
+        for (let y = 0; y < H; y++) {
+            let row = 0;
+            for (let x = 0; x < W; x++) { row += g[y * W + x]; I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1] + row; }
+        }
+        return I;
+    }
+
+    // piksel "tinta" bila lebih gelap dari rata-rata lokal (jendela 2*rad+1) dikurangi C
+    function adaptiveThreshold(g, W, H, rad, C, I) {
+        I = I || integral(g, W, H);
+        const bin = new Uint8Array(W * H);
+        for (let y = 0; y < H; y++) {
+            const y0 = Math.max(0, y - rad), y1 = Math.min(H, y + rad + 1);
+            for (let x = 0; x < W; x++) {
+                const x0 = Math.max(0, x - rad), x1 = Math.min(W, x + rad + 1);
+                const sum = I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0];
+                bin[y * W + x] = g[y * W + x] < sum / ((x1 - x0) * (y1 - y0)) - C ? 1 : 0;
+            }
+        }
+        return bin;
+    }
+
+    // komponen terhubung 8-arah + momen (untuk uji "kotak padat")
+    function components(bin, W, H) {
+        const lab = new Int32Array(W * H), stack = new Int32Array(W * H), comps = [];
+        let next = 0;
+        for (let i = 0; i < W * H; i++) {
+            if (!bin[i] || lab[i]) continue;
+            next++;
+            let sp = 0; stack[sp++] = i; lab[i] = next;
+            let minx = W, maxx = 0, miny = H, maxy = 0, n = 0, sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+            while (sp) {
+                const p = stack[--sp], px = p % W, py = (p - px) / W;
+                n++; sx += px; sy += py; sxx += px * px; syy += py * py; sxy += px * py;
+                if (px < minx) minx = px; if (px > maxx) maxx = px;
+                if (py < miny) miny = py; if (py > maxy) maxy = py;
+                for (let dy = -1; dy <= 1; dy++) {
+                    const ny = py + dy; if (ny < 0 || ny >= H) continue;
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = px + dx; if (nx < 0 || nx >= W) continue;
+                        const q = ny * W + nx;
+                        if (bin[q] && !lab[q]) { lab[q] = next; stack[sp++] = q; }
+                    }
+                }
+            }
+            comps.push({ id: next, minx, maxx, miny, maxy, n, sx, sy, sxx, syy, sxy });
+        }
+        return { lab, comps };
+    }
+
+    // =================================================================
+    // 2. Lingkaran (cincin kosong atau bulatan penuh)
+    // =================================================================
+    function circleCandidates(lab, comps, W, H, rMin, rMax) {
+        const out = [], RAYS = 24;
+        for (const c of comps) {
+            const w = c.maxx - c.minx + 1, h = c.maxy - c.miny + 1;
+            const R = (w + h) / 4, ar = w / h;
+            if (R < rMin || R > rMax || ar < 0.72 || ar > 1.38) continue;
+            if (c.n < Math.PI * 2 * R * 0.45) continue;
+            const cx = (c.minx + c.maxx) / 2, cy = (c.miny + c.maxy) / 2;
+            let outside = 0; const R2 = (1.18 * R) ** 2;
+            for (let y = c.miny; y <= c.maxy; y++) for (let x = c.minx; x <= c.maxx; x++)
+                if (lab[y * W + x] === c.id && (x - cx) ** 2 + (y - cy) ** 2 > R2) outside++;
+            if (outside / c.n > 0.06) continue;
+            let hit = 0;
+            for (let k = 0; k < RAYS; k++) {
+                const a = (k / RAYS) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+                for (let t = 0.6; t <= 1.12; t += 0.08) {
+                    const x = Math.round(cx + ca * R * t), y = Math.round(cy + sa * R * t);
+                    if (x >= 0 && y >= 0 && x < W && y < H && lab[y * W + x] === c.id) { hit++; break; }
+                }
+            }
+            if (hit / RAYS < 0.8) continue;
+            out.push({ x: cx, y: cy, r: R });
+        }
+        return out;
+    }
+    function removeNested(cands) {
+        return cands.filter(a => !cands.some(b => b !== a && b.r > a.r * 1.4 && Math.hypot(a.x - b.x, a.y - b.y) < b.r * 0.7));
+    }
+
+    // =================================================================
+    // 3. Homografi (least squares, >= 4 pasangan)  {u,v} -> {x,y}
+    // =================================================================
+    function solve(A, b) {
+        const n = b.length;
+        for (let i = 0; i < n; i++) {
+            let p = i;
+            for (let r = i + 1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+            [A[i], A[p]] = [A[p], A[i]]; [b[i], b[p]] = [b[p], b[i]];
+            if (Math.abs(A[i][i]) < 1e-12) return null;
+            for (let r = i + 1; r < n; r++) {
+                const f = A[r][i] / A[i][i];
+                for (let c = i; c < n; c++) A[r][c] -= f * A[i][c];
+                b[r] -= f * b[i];
+            }
+        }
+        const x = new Array(n).fill(0);
+        for (let i = n - 1; i >= 0; i--) { let s = b[i]; for (let c = i + 1; c < n; c++) s -= A[i][c] * x[c]; x[i] = s / A[i][i]; }
+        return x;
+    }
+    function fitHomography(pairs) {
+        if (pairs.length < 4) return null;
+        const mx = pairs.reduce((a, p) => a + p.u, 0) / pairs.length, my = pairs.reduce((a, p) => a + p.v, 0) / pairs.length;
+        const sc = pairs.reduce((a, p) => a + Math.hypot(p.u - mx, p.v - my), 0) / pairs.length || 1;
+        const ATA = Array.from({ length: 8 }, () => new Array(8).fill(0)), ATb = new Array(8).fill(0);
+        const add = (row, val) => { for (let i = 0; i < 8; i++) { ATb[i] += row[i] * val; for (let j = 0; j < 8; j++) ATA[i][j] += row[i] * row[j]; } };
+        for (const p of pairs) {
+            const u = (p.u - mx) / sc, v = (p.v - my) / sc;
+            add([u, v, 1, 0, 0, 0, -u * p.x, -v * p.x], p.x);
+            add([0, 0, 0, u, v, 1, -u * p.y, -v * p.y], p.y);
+        }
+        const h = solve(ATA, ATb);
+        if (!h || h.some(v => !isFinite(v))) return null;
+        const f = (u0, v0) => {
+            const u = (u0 - mx) / sc, v = (v0 - my) / sc, den = h[6] * u + h[7] * v + 1;
+            return { x: (h[0] * u + h[1] * v + h[2]) / den, y: (h[3] * u + h[4] * v + h[5]) / den };
+        };
+        return f;
+    }
+    // homografi + kebalikannya dari pasangan mm <-> piksel
+    function fitPair(pairs) {
+        const fwd = fitHomography(pairs);
+        const inv = fitHomography(pairs.map(p => ({ u: p.x, v: p.y, x: p.u, y: p.v })));
+        return fwd && inv ? { fwd, inv } : null;
+    }
+
+    // =================================================================
+    // 4. Kehitaman relatif terhadap kertas di sekelilingnya
+    // =================================================================
+    function darkness(g, W, H, cx, cy, r) {
+        const rin = r * 0.55, r1 = r * 1.22, r2 = r * 1.5;
+        let sIn = 0, nIn = 0; const ring = [];
+        const x0 = Math.max(0, Math.floor(cx - r2)), x1 = Math.min(W - 1, Math.ceil(cx + r2));
+        const y0 = Math.max(0, Math.floor(cy - r2)), y1 = Math.min(H - 1, Math.ceil(cy + r2));
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+            const d = Math.hypot(x - cx, y - cy), v = g[y * W + x];
+            if (d <= rin) { sIn += v; nIn++; } else if (d >= r1 && d <= r2) ring.push(v);
+        }
+        if (!nIn || !ring.length) return 0;
+        ring.sort((a, b) => a - b);
+        const paper = ring[Math.floor(ring.length * 0.8)] || 1;
+        return clamp(1 - (sIn / nIn) / Math.max(1, paper), 0, 1);
+    }
+    // kehitaman rata-rata sebuah persegi (untuk marker arah)
+    function squareDark(g, W, H, cx, cy, half) {
+        let sIn = 0, nIn = 0; const ring = [];
+        const R2 = half * 2.6;
+        for (let y = Math.max(0, Math.floor(cy - R2)); y <= Math.min(H - 1, Math.ceil(cy + R2)); y++)
+            for (let x = Math.max(0, Math.floor(cx - R2)); x <= Math.min(W - 1, Math.ceil(cx + R2)); x++) {
+                const dx = Math.abs(x - cx), dy = Math.abs(y - cy), v = g[y * W + x];
+                if (dx <= half * 0.6 && dy <= half * 0.6) { sIn += v; nIn++; }
+                else if (Math.max(dx, dy) >= half * 1.6) ring.push(v);
+            }
+        if (!nIn || !ring.length) return 0;
+        ring.sort((a, b) => a - b);
+        return clamp(1 - (sIn / nIn) / Math.max(1, ring[Math.floor(ring.length * 0.8)]), 0, 1);
+    }
+
+    // =================================================================
+    // 5. Keputusan per soal (dipakai kedua mode)
+    // =================================================================
+    function decide(qDs, letters, sens) {
+        const all = []; qDs.forEach(ds => ds.forEach(d => all.push(d)));
+        const empty = median(all);
+        const filledQ = qDs.map(ds => Math.max(...ds)).filter(v => v > empty + 0.18);
+        const full = filledQ.length ? median(filledQ) : empty + 0.45;
+        const span = Math.max(0.2, full - empty), thr = empty + span * sens;
+        const res = { answers: [], status: [], suggest: [], notes: [], conf: [], empty, full, thr, filled: 0 };
+        qDs.forEach((ds) => {
+            const order = ds.map((d, i) => ({ d, i })).sort((a, b) => b.d - a.d);
+            const top = order[0], sec = order[1], above = order.filter(o => o.d >= thr);
+            let a = null, st, sg = null, note, conf;
+            if (above.length === 1) {
+                a = letters[top.i]; st = 'ok'; note = `${(top.d * 100).toFixed(0)}%`;
+                conf = clamp(Math.min((top.d - thr) / (span * 0.5), (top.d - sec.d) / (span * 0.6)), 0, 1);
+            } else if (above.length === 0) {
+                if (top.d - sec.d > span * 0.25 && top.d > empty + span * 0.3) { st = 'weak'; sg = letters[top.i]; note = `tipis ${sg}?`; }
+                else { st = 'blank'; note = 'kosong'; }
+                conf = st === 'blank' ? clamp((thr - top.d) / (span * 0.5), 0, 1) : 0.3;
+            } else if (top.d - sec.d > span * 0.35) {
+                a = letters[top.i]; st = 'weak'; sg = a; note = `bekas hapus ${letters[sec.i]}?`; conf = 0.45;
+            } else {
+                st = 'double'; sg = above.map(o => letters[o.i]).sort().join('/'); note = `GANDA ${sg}`; conf = 0;
+            }
+            res.answers.push(a); res.status.push(st); res.suggest.push(sg); res.notes.push(note); res.conf.push(+conf.toFixed(2));
+            if (a) res.filled++;
+        });
+        return res;
+    }
+
+    // ketajaman: rata-rata |Laplacian| di sekitar titik-titik bulatan (dinormalisasi kontras)
+    function sharpness(g, W, H, pts, r) {
+        let s = 0, n = 0;
+        const R = Math.max(2, Math.round(r * 1.4));
+        for (const p of pts) {
+            const cx = Math.round(p.x), cy = Math.round(p.y);
+            for (let y = cy - R; y <= cy + R; y++) for (let x = cx - R; x <= cx + R; x++) {
+                if (x < 1 || y < 1 || x >= W - 1 || y >= H - 1) continue;
+                const i = y * W + x;
+                s += Math.abs(4 * g[i] - g[i - 1] - g[i + 1] - g[i - W] - g[i + W]); n++;
+            }
+        }
+        return n ? s / n : 0;
+    }
+
+    // =================================================================
+    // 6. MODE MARKER (LJK F4)
+    // =================================================================
+    function solidSquares(comps, W, H) {
+        const out = [];
+        const sMin = Math.max(5, Math.max(W, H) / 170), sMax = Math.max(W, H) / 7;
+        for (const c of comps) {
+            if (c.n < sMin * sMin * 0.6) continue;
+            const mx = c.sx / c.n, my = c.sy / c.n;
+            const a = c.sxx / c.n - mx * mx, b = c.syy / c.n - my * my, cxy = c.sxy / c.n - mx * my;
+            const tr = a + b, det = a * b - cxy * cxy, disc = Math.sqrt(Math.max(0, tr * tr / 4 - det));
+            const l1 = tr / 2 + disc, l2 = tr / 2 - disc;
+            if (l2 <= 0 || l1 / l2 > 2.2) continue;
+            const side = Math.sqrt(12 * Math.sqrt(l1 * l2));
+            const fill = c.n / (side * side);
+            if (fill < 0.82 || fill > 1.25) continue;               // padat (bukan cincin/teks)
+            const bw = c.maxx - c.minx + 1, bh = c.maxy - c.miny + 1;
+            if (c.n / (bw * bh) < 0.45) continue;
+            if (side < sMin || side > sMax) continue;
+            // persegi vs lingkaran: persegi mengisi kotak pembatas yang diputar lebih penuh
+            out.push({ x: mx, y: my, side, n: c.n, sq: c.n / (bw * bh) });
+        }
+        return out;
+    }
+
+    const CORNER_ORDER = ['TL', 'TR', 'BR', 'BL'];
+    function markerHypotheses(cands, spec, g, W, H) {
+        const M = spec.markers;
+        const pool = cands.slice().sort((a, b) => b.n - a.n).slice(0, 14);
+        const hyps = [];
+        const tpl = M.corner.centers;
+        for (let i = 0; i < pool.length; i++) for (let j = i + 1; j < pool.length; j++)
+            for (let k = j + 1; k < pool.length; k++) for (let l = k + 1; l < pool.length; l++) {
+                const q = [pool[i], pool[j], pool[k], pool[l]];
+                const sides = q.map(c => c.side), smax = Math.max(...sides), smin = Math.min(...sides);
+                if (smax / smin > 1.9) continue;
+                const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4, cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;
+                q.sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx)); // searah jarum jam (y ke bawah)
+                // cembung + luas wajar
+                let area = 0, convex = true;
+                for (let t = 0; t < 4; t++) {
+                    const a = q[t], b = q[(t + 1) % 4], c = q[(t + 2) % 4];
+                    area += a.x * b.y - b.x * a.y;
+                    if ((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x) <= 0) convex = false;
+                }
+                area = Math.abs(area) / 2;
+                if (!convex || area < W * H * 0.06) continue;
+                // ukuran marker sebanding dengan halaman: 8 mm dari 195 mm
+                const pxPerMm = Math.sqrt(area / ((tpl[1][0] - tpl[0][0]) * (tpl[3][1] - tpl[0][1])));
+                const expSide = M.corner.size * pxPerMm;
+                if (median(sides) < expSide * 0.45 || median(sides) > expSide * 1.9) continue;
+                for (let rot = 0; rot < 4; rot++) {
+                    const pairs = tpl.map((t, ti) => ({ u: t[0], v: t[1], x: q[(ti + rot) % 4].x, y: q[(ti + rot) % 4].y }));
+                    const Hm = fitHomography(pairs);
+                    if (!Hm) continue;
+                    // verifikasi: marker tengah + penanda arah
+                    let mids = 0; const midPts = [];
+                    for (const mc of M.mid.centers) {
+                        const p = Hm(mc[0], mc[1]);
+                        const hit = cands.find(c => Math.hypot(c.x - p.x, c.y - p.y) < 3 * pxPerMm && c.side < expSide * 1.1 && c.side > expSide * 0.4);
+                        if (hit) { mids++; midPts.push({ u: mc[0], v: mc[1], x: hit.x, y: hit.y }); }
+                    }
+                    const po = Hm(M.orient.center[0], M.orient.center[1]);
+                    const od = squareDark(g, W, H, po.x, po.y, M.orient.size / 2 * pxPerMm);
+                    // posisi "cermin" penanda arah harus putih
+                    const pm = Hm(spec.page.w - M.orient.center[0], M.orient.center[1]);
+                    const odm = squareDark(g, W, H, pm.x, pm.y, M.orient.size / 2 * pxPerMm);
+                    const score = mids * 2 + (od > 0.4 && odm < 0.25 ? 3 : 0) + od - odm;
+                    hyps.push({ score, pairs, midPts, pxPerMm, mids, od, odm, quad: q, rot });
+                }
+            }
+        hyps.sort((a, b) => b.score - a.score);
+        return hyps;
+    }
+
+    // cari pergeseran lokal (mm) sebuah blok soal yang paling banyak mencocokkan bulatan terdeteksi
+    // (menangani kertas melengkung / perspektif sisa). mmPts = titik bulatan dalam mm (homografi global).
+    function blockShift(mmPts, spec, b, nOpt, active, range = 3.5, step = 0.5, tol = 0.9) {
+        const P = spec.pg, bx = P.x0 + b * P.blockW + P.optOffset;
+        const rowsActive = Math.max(0, Math.min(P.rows, active - b * P.rows));
+        if (!rowsActive) return { dx: 0, dy: 0, hits: 0, tot: 0 };
+        const near = mmPts.filter(p => p.x > bx - range - 3 && p.x < bx + (nOpt - 1) * P.optPitch + range + 3 && p.y > P.y0 - range - 3 && p.y < P.y0 + (rowsActive - 1) * P.rowPitch + range + 3);
+        let best = { dx: 0, dy: 0, hits: -1 };
+        for (let dy = -range; dy <= range + 1e-9; dy += step) for (let dx = -range; dx <= range + 1e-9; dx += step) {
+            let hits = 0;
+            for (const p of near) {
+                const o = Math.round((p.x - dx - bx) / P.optPitch), r = Math.round((p.y - dy - P.y0) / P.rowPitch);
+                if (o < 0 || o >= nOpt || r < 0 || r >= rowsActive) continue;
+                if (Math.abs(p.x - dx - (bx + o * P.optPitch)) < tol && Math.abs(p.y - dy - (P.y0 + r * P.rowPitch)) < tol) hits++;
+            }
+            if (hits > best.hits || (hits === best.hits && Math.hypot(dx, dy) < Math.hypot(best.dx, best.dy))) best = { dx, dy, hits };
+        }
+        best.tot = rowsActive * nOpt;
+        return best;
+    }
+
+    function processMarker(img, opt = {}) {
+        const spec = opt.spec || SpecMod.SPEC, P = spec.pg;
+        const nOpt = opt.options === 5 ? 5 : 4;
+        const active = clamp(opt.active || P.questions, 1, P.questions);
+        const LET = SpecMod.LETTERS.slice(0, nOpt);
+        const sens = clamp((opt.sensitivity ?? 50) / 100, 0.2, 0.8);
+        const t0 = now();
+        const ret = { mode: 'marker', success: false, error: null, answers: [], status: [], suggest: [], notes: [], conf: [], dark: [], logs: [], warnings: [], filledAnswers: 0, totalCircles: 0, quality: null, debug: null, geo: null };
+        const log = (m) => ret.logs.push(m);
+        const fail = (msg) => { ret.error = msg; log('GAGAL: ' + msg); return ret; };
+
+        const { g, W, H, scale } = toGray(img, opt.maxSide || 1600);
+        const I = integral(g, W, H);
+        ret.debug = { g, W, H, scale, markers: [], cands: [], bin: null };
+
+        // --- marker: ambang dengan jendela besar agar kotak hitam terisi penuh
+        const binM = adaptiveThreshold(g, W, H, Math.max(15, Math.round(Math.max(W, H) / 12)), 22, I);
+        const cm = components(binM, W, H);
+        const squares = solidSquares(cm.comps, W, H);
+        ret.debug.squares = squares;
+        log(`Gambar ${W}x${H}, kotak padat ${squares.length}`);
+        if (squares.length < 4) return fail('Marker sudut tidak ditemukan. Pastikan keempat kotak hitam di sudut LJK masuk bingkai.');
+        const hyps = markerHypotheses(squares, spec, g, W, H);
+        if (!hyps.length) return fail('Susunan 4 marker sudut tidak cocok dengan LJK F4. Foto seluruh halaman.');
+
+        // --- lingkaran untuk verifikasi & penyetelan (skala dari hipotesis terbaik)
+        const pxPerMm0 = hyps[0].pxPerMm;
+        const rPx = P.r * pxPerMm0;
+        const binC = adaptiveThreshold(g, W, H, Math.max(5, Math.round(rPx * 3)), opt.contrast ?? 10, I);
+        ret.debug.bin = binC;
+        const cc = components(binC, W, H);
+        const circles = removeNested(circleCandidates(cc.lab, cc.comps, W, H, rPx * 0.6, rPx * 1.6));
+        ret.totalCircles = circles.length;
+        ret.debug.cands = circles;
+
+        // pilih hipotesis: skor marker + kecocokan bulatan
+        const bubbleMatch = (inv) => {
+            const mm = circles.map(c => inv(c.x, c.y));
+            let hit = 0, tot = 0;
+            for (let b = 0; b < P.blocks; b++) { const s = blockShift(mm, spec, b, Math.min(nOpt, 4), active, 3.5, 0.5, 0.9); hit += s.hits; tot += s.tot; }
+            return tot ? hit / tot : 0;
+        };
+        let best = null;
+        for (const h of hyps.slice(0, 4)) {
+            const fp = fitPair(h.pairs.concat(h.midPts));
+            if (!fp) continue;
+            const bm = bubbleMatch(fp.inv);
+            const total = h.score + bm * 4;
+            if (!best || total > best.total) best = Object.assign({}, h, { fp, bm, total });
+        }
+        if (!best || best.bm < 0.25) return fail('Marker ditemukan tapi bulatan jawaban tidak cocok. Foto ulang lebih dekat/terang.');
+        if (best.od < 0.4) ret.warnings.push('Penanda arah (kotak kecil kiri atas) tidak jelas; arah LJK ditebak dari pola bulatan.');
+        const Hg = best.fp;
+        const pxPerMm = best.pxPerMm;
+        ret.debug.markers = best.pairs.concat(best.midPts).map(p => ({ x: p.x, y: p.y, u: p.u, v: p.v }));
+        log(`Marker OK (tengah ${best.mids}/2, arah ${(best.od * 100).toFixed(0)}%), skala ${pxPerMm.toFixed(2)} px/mm, bulatan cocok ${(best.bm * 100).toFixed(0)}%`);
+
+        // --- penyetelan per blok dari bulatan yang terdeteksi (tahan kertas melengkung)
+        const blockFits = [], matchedByBubble = new Map();
+        const mmC = circles.map(c => ({ c, m: Hg.inv(c.x, c.y) }));
+        let resid = [];
+        const mmPts = mmC.map(e => e.m);
+        for (let b = 0; b < P.blocks; b++) {
+            const sh = blockShift(mmPts, spec, b, nOpt, active);
+            const collect = (mapInv, dx, dy, tol) => {
+                const pairs = [];
+                const rowsActive = Math.max(0, Math.min(P.rows, active - b * P.rows));
+                for (let r = 0; r < rowsActive; r++) {
+                    const q = b * P.rows + r;
+                    for (let o = 0; o < nOpt; o++) {
+                        const bm = SpecMod.bubbleMM(q, o, spec);
+                        let bestC = null, bd = tol;
+                        for (const e of mmC) { const m = mapInv ? mapInv(e.c) : e.m; const d = Math.hypot(m.x - dx - bm.x, m.y - dy - bm.y); if (d < bd) { bd = d; bestC = e.c; } }
+                        if (bestC) pairs.push({ u: bm.x, v: bm.y, x: bestC.x, y: bestC.y, key: q + ',' + o });
+                    }
+                }
+                return pairs;
+            };
+            let pairs = collect(null, sh.dx, sh.dy, 1.0);
+            // putaran kedua: cocokkan ulang dengan homografi blok sementara
+            if (pairs.length >= 8) {
+                const tmp = fitPair(pairs);
+                if (tmp) { const p2 = collect(c => tmp.inv(c.x, c.y), 0, 0, 1.0); if (p2.length >= pairs.length) pairs = p2; }
+            }
+            pairs.forEach(p => { const c = mmC.find(e => e.c.x === p.x && e.c.y === p.y); if (c) matchedByBubble.set(p.key, c.c); });
+            let fit = null;
+            const rowsSeen = new Set(pairs.map(p => p.v)).size;
+            if (pairs.length >= 10 && rowsSeen >= 3) {
+                // gabung dengan titik global di sekitar blok agar stabil
+                const f = fitHomography(pairs);
+                if (f) {
+                    const err = pairs.map(p => { const q = f(p.u, p.v); return Math.hypot(q.x - p.x, q.y - p.y); });
+                    const me = median(err);
+                    const good = pairs.filter((p, i) => err[i] < Math.max(1.5, me * 3));
+                    fit = fitHomography(good) || f;
+                    good.forEach(p => { const q = fit(p.u, p.v); resid.push(Math.hypot(q.x - p.x, q.y - p.y) / pxPerMm); });
+                }
+            }
+            blockFits.push(fit || Hg.fwd);
+        }
+        const residMm = resid.length ? median(resid) : null;
+
+        // --- sampling semua bulatan aktif
+        const grid = [], qDs = [], samplePts = [];
+        for (let q = 0; q < active; q++) {
+            const b = Math.floor(q / P.rows), F = blockFits[b], row = [], ds = [];
+            for (let o = 0; o < nOpt; o++) {
+                const bm = SpecMod.bubbleMM(q, o, spec);
+                let p = F(bm.x, bm.y);
+                const pr = F(bm.x + P.r, bm.y), rLocal = Math.hypot(pr.x - p.x, pr.y - p.y);
+                const det = matchedByBubble.get(q + ',' + o);
+                const use = det && Math.hypot(det.x - p.x, det.y - p.y) < rLocal * 0.5;
+                if (use) p = { x: det.x, y: det.y };
+                const d = darkness(g, W, H, p.x, p.y, rLocal);
+                row.push({ x: p.x, y: p.y, r: rLocal, d, detected: !!use });
+                ds.push(d); samplePts.push(p);
+            }
+            grid.push(row); qDs.push(ds);
+        }
+        ret.dark = qDs;
+        // varian: apakah kolom E tercetak padahal ujian ABCD?
+        if (nOpt === 4) {
+            let eHit = 0; for (let q = 0; q < active; q++) if (mmC.some(e => Math.hypot(e.m.x - SpecMod.bubbleMM(q, 4, spec).x, e.m.y - SpecMod.bubbleMM(q, 4, spec).y) < 1.1)) eHit++;
+            if (eHit > active * 0.5) ret.warnings.push('LJK ini tampaknya varian ABCDE, sedangkan ujian diatur ABCD. Opsi E diabaikan.');
+        }
+
+        const dec = decide(qDs, LET, sens);
+        Object.assign(ret, { answers: dec.answers, status: dec.status, suggest: dec.suggest, notes: dec.notes, conf: dec.conf, filledAnswers: dec.filled, thr: dec.thr, empty: dec.empty, full: dec.full });
+
+        // --- kualitas foto
+        const sharp = sharpness(g, W, H, samplePts.filter((_, i) => i % 3 === 0), P.r * pxPerMm) / Math.max(10, 255 * (dec.full - dec.empty + 0.2));
+        const paperLv = []; for (let b = 0; b < P.blocks; b++) { const p = blockFits[b](P.x0 + b * P.blockW + 5, P.y0 - 6); const x = Math.round(p.x), y = Math.round(p.y); if (x >= 0 && y >= 0 && x < W && y < H) paperLv.push(g[y * W + x]); }
+        const light = paperLv.length ? Math.min(...paperLv) / Math.max(1, Math.max(...paperLv)) : 1;
+        const c0 = Hg.fwd(0, 0), c1 = Hg.fwd(spec.page.w, 0);
+        const tilt = Math.abs(Math.atan2(c1.y - c0.y, c1.x - c0.x) * 180 / Math.PI);
+        let qScore = 100;
+        if (pxPerMm < 3) qScore -= (3 - pxPerMm) * 25;
+        if (residMm != null) qScore -= clamp((residMm - 0.15) * 80, 0, 30);
+        if (light < 0.75) qScore -= (0.75 - light) * 80;
+        if (sharp < 0.25) qScore -= (0.25 - sharp) * 120;
+        if (!best.mids) qScore -= 10;
+        qScore = Math.round(clamp(qScore, 0, 100));
+        ret.quality = { score: qScore, grade: qScore >= 80 ? 'A' : qScore >= 60 ? 'B' : 'C', pxPerMm: +pxPerMm.toFixed(2), residMm: residMm == null ? null : +residMm.toFixed(2), light: +light.toFixed(2), sharp: +sharp.toFixed(2), tilt: +tilt.toFixed(1) };
+        ret.geo = { kind: 'mm', spec, H: Hg, blocks: blockFits, scale, pxPerMm, nOpt, active };
+        ret.debug.grid = grid;
+        ret.success = true;
+        log(`Ambang ${(dec.thr * 100).toFixed(0)}% (kosong ${(dec.empty * 100).toFixed(0)}%, terisi ${(dec.full * 100).toFixed(0)}%), residu ${residMm == null ? '-' : residMm.toFixed(2) + ' mm'}, kualitas ${qScore}`);
+        log(`Selesai ${Math.round(now() - t0)} ms`);
+        return ret;
+    }
+
+    // deteksi marker cepat (preview kamera, ~640 px): kembalikan 4 sudut dalam koordinat gambar asli
+    function detectMarkersFast(img, opt = {}) {
+        const spec = opt.spec || SpecMod.SPEC;
+        const { g, W, H, scale } = toGray(img, opt.maxSide || 640);
+        const bin = adaptiveThreshold(g, W, H, Math.max(9, Math.round(Math.max(W, H) / 12)), 22);
+        const sq = solidSquares(components(bin, W, H).comps, W, H);
+        if (sq.length < 4) return null;
+        const h = markerHypotheses(sq, spec, g, W, H)[0];
+        if (!h || h.score < 3) return null;
+        return { corners: h.pairs.map(p => ({ x: p.x / scale, y: p.y / scale })), score: h.score, pxPerMm: h.pxPerMm / scale };
+    }
+
+    // =================================================================
+    // 7. MODE TANPA MARKER (LJK lama 20 soal, inferensi kisi V33)
+    // =================================================================
+    function radiusModes(cands, maxModes) {
+        const modes = []; let pool = cands.slice();
+        while (pool.length && modes.length < maxModes) {
+            let best = 0, bestR = 0;
+            for (const c of pool) { let cnt = 0; for (const d of pool) if (d.r >= c.r / 1.22 && d.r <= c.r * 1.22) cnt++; if (cnt > best) { best = cnt; bestR = c.r; } }
+            if (best < 12) break;
+            const R = median(pool.filter(d => d.r >= bestR / 1.22 && d.r <= bestR * 1.22).map(d => d.r));
+            modes.push(R);
+            pool = pool.filter(d => d.r < R / 1.35 || d.r > R * 1.35);
+        }
+        return modes;
+    }
+    function cluster1D(items, key, gap) {
+        const s = items.slice().sort((a, b) => a[key] - b[key]), cl = [];
+        for (const it of s) {
+            const last = cl[cl.length - 1];
+            if (last && it[key] - last.max <= gap) { last.items.push(it); last.max = it[key]; }
+            else cl.push({ items: [it], max: it[key] });
+        }
+        cl.forEach(c => { c.c = c.items.reduce((a, b) => a + b[key], 0) / c.items.length; c.size = c.items.length; });
+        return cl;
+    }
+    function rebuildColumns(xs, blocks, options) {
+        if (xs.length < blocks * 2) return null;
+        const gaps = []; for (let i = 1; i < xs.length; i++) gaps.push({ g: xs[i] - xs[i - 1], i });
+        const small = median(gaps.map(g => g.g).sort((a, b) => a - b).slice(0, Math.max(1, gaps.length - (blocks - 1))));
+        const cuts = gaps.filter(g => g.g > small * 1.6).sort((a, b) => b.g - a.g).slice(0, blocks - 1).map(g => g.i).sort((a, b) => a - b);
+        if (cuts.length !== blocks - 1) return null;
+        const groups = []; let s0 = 0; for (const c of cuts) { groups.push(xs.slice(s0, c)); s0 = c; } groups.push(xs.slice(s0));
+        if (groups.some(gr => gr.length > options || gr.length === 0)) return null;
+        const fullG = groups.filter(gr => gr.length === options);
+        const tmpl = fullG.length ? Array.from({ length: options }, (_, k) => median(fullG.map(gr => gr[k] - gr[0]))) : Array.from({ length: options }, (_, k) => k * small);
+        const starts = groups.map(gr => gr.length === options ? gr[0] : null), pitches = [];
+        for (let i = 0; i < blocks; i++) for (let j = i + 1; j < blocks; j++) if (starts[i] != null && starts[j] != null) pitches.push((starts[j] - starts[i]) / (j - i));
+        const pitch = pitches.length ? median(pitches) : null, out = [];
+        groups.forEach((gr, gi) => {
+            if (gr.length === options) { out.push(...gr); return; }
+            let expStart = null;
+            if (pitch != null) { const ref = starts.map((st, i) => st != null ? { st, i } : null).filter(Boolean).sort((a, b) => Math.abs(a.i - gi) - Math.abs(b.i - gi))[0]; expStart = ref.st + (gi - ref.i) * pitch; }
+            let best = null;
+            for (let sh = 0; sh + gr.length <= options; sh++) {
+                const off = median(gr.map((x, k) => x - tmpl[sh + k]));
+                let err = gr.reduce((a, x, k) => a + Math.abs(x - (off + tmpl[sh + k])), 0);
+                if (expStart != null) err += Math.abs(off - expStart) * 2;
+                if (!best || err < best.err) best = { err, off };
+            }
+            out.push(...tmpl.map(t => best.off + t));
+        });
+        return out;
+    }
+
+    function processMarkerless(img, opt = {}) {
+        const L = Object.assign({ questions: 20, blocks: 4, options: 4 }, opt.layout || {});
+        const ROWS = Math.ceil(L.questions / L.blocks), NCOL = L.blocks * L.options;
+        const LET = SpecMod.LETTERS.slice(0, L.options);
+        const sens = clamp((opt.sensitivity ?? 50) / 100, 0.2, 0.8);
+        const t0 = now();
+        const ret = { mode: 'markerless', success: false, error: null, answers: [], status: [], suggest: [], notes: [], conf: [], dark: [], logs: [], warnings: [], totalCircles: 0, filledAnswers: 0, quality: null, debug: null, geo: null };
+        const log = (m) => ret.logs.push(m);
+        const fail = (msg) => { ret.error = msg; log('GAGAL: ' + msg); return ret; };
+        const { g, W, H, scale } = toGray(img, opt.maxSide || 1600);
+        ret.debug = { g, W, H, scale, cands: [], grid: null, R0: 0 };
+        const bin = adaptiveThreshold(g, W, H, Math.max(7, Math.round(Math.max(W, H) / 70)), opt.contrast ?? 10);
+        ret.debug.bin = bin;
+        const { lab, comps } = components(bin, W, H);
+        let cands = removeNested(circleCandidates(lab, comps, W, H, Math.max(3, Math.min(W, H) / 160), Math.max(W, H) / 22));
+        log(`Gambar ${W}x${H}, komponen ${comps.length}, kandidat bulat ${cands.length}`);
+        if (cands.length < NCOL) return fail(`Lingkaran jawaban tidak ditemukan (${cands.length}). Dekatkan kamera / perbaiki cahaya.`);
+        let best = null, lastErr = null;
+        for (const R of radiusModes(cands, 4)) {
+            const t = tryLattice(cands.filter(c => c.r >= R / 1.3 && c.r <= R * 1.3).map(c => ({ x: c.x, y: c.y, r: c.r })), R);
+            if (t.ok) { if (!best || t.quality > best.quality) best = t; } else if (!lastErr) lastErr = t.err;
+        }
+        if (!best) return fail(lastErr || `Kisi ${ROWS} baris x ${NCOL} kolom tidak ditemukan.`);
+        const { grid, R0, th } = best;
+        Object.assign(ret.debug, { cands: best.cands, grid, R0 });
+        ret.totalCircles = best.cands.length;
+        ret.geo = { kind: 'lattice', map: best.map, colU: best.colU, rowV: best.rowV, scale, R0, layout: L };
+        const qDs = [];
+        for (let q = 0; q < L.questions; q++) { const b = Math.floor(q / ROWS), r = q % ROWS, ds = []; for (let o = 0; o < L.options; o++) ds.push(grid[r][b * L.options + o].d); qDs.push(ds); }
+        ret.dark = qDs;
+        const dec = decide(qDs, LET, sens);
+        Object.assign(ret, { answers: dec.answers, status: dec.status, suggest: dec.suggest, notes: dec.notes, conf: dec.conf, filledAnswers: dec.filled, thr: dec.thr, empty: dec.empty, full: dec.full });
+        ret.quality = { score: Math.round(best.quality * 100), grade: best.quality > 0.9 ? 'A' : best.quality > 0.75 ? 'B' : 'C', residMm: null, tilt: +(th * 180 / Math.PI).toFixed(1) };
+        log(`Radius ${R0.toFixed(1)}px, kemiringan ${(th * 180 / Math.PI).toFixed(1)}°, lingkaran cocok ${(best.quality * 100).toFixed(0)}%${best.rebuilt ? ', kolom direkonstruksi' : ''}`);
+        log(`Selesai ${Math.round(now() - t0)} ms`);
+        ret.success = true;
+        return ret;
+
+        function tryLattice(cands, R0) {
+            const bad = (err) => ({ ok: false, err });
+            if (cands.length < NCOL) return bad(`Lingkaran ukuran ${R0.toFixed(0)}px hanya ${cands.length}.`);
+            const angs = [];
+            for (const a of cands) {
+                let bst = null, bd = 1e9;
+                for (const b of cands) { if (b.x <= a.x) continue; const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy); if (d < bd && d < R0 * 4 && Math.abs(dy) < dx * 0.6) { bd = d; bst = b; } }
+                if (bst) angs.push(Math.atan2(bst.y - a.y, bst.x - a.x));
+            }
+            const th = median(angs), ct = Math.cos(th), st = Math.sin(th);
+            cands.forEach(c => { c.u = c.x * ct + c.y * st; c.v = -c.x * st + c.y * ct; });
+            const rowsCl = cluster1D(cands, 'v', R0 * 0.9).filter(c => c.size >= Math.max(3, NCOL * 0.25));
+            if (rowsCl.length < ROWS) return bad(`Baris soal terdeteksi ${rowsCl.length}/${ROWS}. Pastikan seluruh tabel masuk bingkai.`);
+            let bestW = 0, bestS = -1;
+            for (let i = 0; i + ROWS <= rowsCl.length; i++) {
+                const win = rowsCl.slice(i, i + ROWS), sp = [];
+                for (let k = 1; k < win.length; k++) sp.push(win[k].c - win[k - 1].c);
+                const ms = median(sp), regular = sp.every(s => s > ms * 0.6 && s < ms * 1.5);
+                const score = win.reduce((a, c) => a + c.size, 0) * (regular ? 1 : 0.5);
+                if (score > bestS) { bestS = score; bestW = i; }
+            }
+            const rowSel = rowsCl.slice(bestW, bestW + ROWS), rowV = rowSel.map(c => c.c);
+            const inRows = []; rowSel.forEach((rc, ri) => rc.items.forEach(it => { it.ri = ri; inRows.push(it); }));
+            let colCl = cluster1D(inRows, 'u', R0 * 0.8).filter(c => c.size >= Math.min(2, ROWS));
+            if (colCl.length > NCOL) { const keep = colCl.slice().sort((a, b) => b.size - a.size).slice(0, NCOL); colCl = colCl.filter(c => keep.includes(c)); }
+            let colU = colCl.map(c => c.c), rebuilt = false;
+            if (colU.length !== NCOL) { const fixed = rebuildColumns(colU, L.blocks, L.options); if (!fixed) return bad(`Kolom opsi terdeteksi ${colU.length}/${NCOL}. Foto ulang lebih lurus/dekat.`); colU = fixed; rebuilt = true; }
+            const pairs = [];
+            for (const it of inRows) {
+                let ci = -1, bd = R0 * 0.8;
+                colU.forEach((u, k) => { const d = Math.abs(it.u - u); if (d < bd) { bd = d; ci = k; } });
+                if (ci >= 0) { it.ci = ci; pairs.push({ u: colU[ci], v: rowV[it.ri], x: it.x, y: it.y, it }); }
+            }
+            let Hm = fitHomography(pairs.length >= 6 ? pairs : []);
+            if (Hm) { const good = pairs.filter(p => { const q = Hm(p.u, p.v); return Math.hypot(q.x - p.x, q.y - p.y) < R0 * 0.6; }); if (good.length >= 6) Hm = fitHomography(good) || Hm; }
+            const map = Hm || ((u, v) => ({ x: u * ct - v * st, y: u * st + v * ct }));
+            const cell = new Map(); pairs.forEach(p => cell.set(p.it.ri + ',' + p.it.ci, p.it));
+            const grid = []; let nDet = 0;
+            for (let r = 0; r < ROWS; r++) {
+                grid.push([]);
+                for (let c = 0; c < NCOL; c++) {
+                    let p = map(colU[c], rowV[r]);
+                    const det = cell.get(r + ',' + c), use = det && Math.hypot(det.x - p.x, det.y - p.y) < R0 * 0.6;
+                    if (use) { p = { x: det.x, y: det.y }; nDet++; }
+                    grid[r].push({ x: p.x, y: p.y, r: R0, d: darkness(g, W, H, p.x, p.y, R0), detected: !!use });
+                }
+            }
+            return { ok: true, grid, R0, th, cands, rebuilt, map, colU, rowV, quality: nDet / (ROWS * NCOL) };
+        }
+    }
+
+    // =================================================================
+    // 8. Pelurusan & potongan
+    // =================================================================
+    // mapper: fungsi (u,v) -> titik di citra kerja; scale = skala kerja; gambar hasil gray atau RGB
+    function sampleRect(img, mapper, scale, u1, v1, u2, v2, outW, opt = {}) {
+        const k = outW / (u2 - u1), outH = Math.max(1, Math.round((v2 - v1) * k));
+        const rgb = !!opt.rgb, out = new Uint8ClampedArray(outW * outH * (rgb ? 4 : 1));
+        const sw = img.width, sh = img.height, d = img.data, inv = 1 / scale;
+        for (let oy = 0; oy < outH; oy++) {
+            const v = v1 + oy / k;
+            for (let ox = 0; ox < outW; ox++) {
+                const p = mapper(u1 + ox / k, v);
+                const x = p.x * inv, y = p.y * inv, x0 = Math.floor(x), y0 = Math.floor(y);
+                let R = 255, G = 255, B = 255;
+                if (x0 >= 0 && y0 >= 0 && x0 < sw - 1 && y0 < sh - 1) {
+                    const fx = x - x0, fy = y - y0, q00 = (y0 * sw + x0) * 4, q10 = q00 + 4, q01 = q00 + sw * 4, q11 = q01 + 4;
+                    const bl = (c) => (d[q00 + c] * (1 - fx) + d[q10 + c] * fx) * (1 - fy) + (d[q01 + c] * (1 - fx) + d[q11 + c] * fx) * fy;
+                    R = bl(0); G = bl(1); B = bl(2);
+                }
+                const o = oy * outW + ox;
+                if (rgb) { out[o * 4] = R; out[o * 4 + 1] = G; out[o * 4 + 2] = B; out[o * 4 + 3] = 255; }
+                else out[o] = (R * 77 + G * 150 + B * 29) / 256;
+            }
+        }
+        return { w: outW, h: outH, data: out, k, toOut: (u, v) => ({ x: (u - u1) * k, y: (v - v1) * k }) };
+    }
+
+    // potongan lurus dalam ruang mm (mode marker) memakai homografi per blok bila di area PG
+    function mmMapper(geo) {
+        const P = geo.spec.pg;
+        return (u, v) => {
+            if (v >= P.frame[1] && v <= P.frame[3]) {
+                const b = clamp(Math.floor((u - P.x0 + 2) / P.blockW), 0, P.blocks - 1);
+                return geo.blocks[b](u, v);
+            }
+            return geo.H.fwd(u, v);
+        };
+    }
+    function rectifyMM(img, geo, rect, outW, opt) {
+        const [u1, v1, u2, v2] = rect;
+        return sampleRect(img, mmMapper(geo), geo.scale, u1, v1, u2, v2, outW, opt);
+    }
+    // potongan debug untuk mode tanpa marker (satuan kanonik kisi)
+    function rectifyLattice(img, geo, outW) {
+        const { colU, rowV } = geo, U0 = colU[0], GW = colU[colU.length - 1] - colU[0], V0 = rowV[0];
+        const r = sampleRect(img, geo.map, geo.scale, U0 - 0.075 * GW, V0 - 0.325 * GW, U0 + 1.045 * GW, rowV[rowV.length - 1] + 0.045 * GW, outW);
+        return r;
+    }
+    function identLattice(img, geo, outW) {
+        const { colU, rowV } = geo, U0 = colU[0], GW = colU[colU.length - 1] - colU[0], V0 = rowV[0];
+        return sampleRect(img, geo.map, geo.scale, U0 - 0.078 * GW, V0 - 0.300 * GW, U0 + 0.470 * GW, V0 - 0.148 * GW, outW);
+    }
+
+    // tingkat terang kertas per kolom (persentil 85 dalam jendela ±win px) -> tahan bayangan
+    function localPaper(lum, w, h, win) {
+        const step = Math.max(4, win >> 1), paper = new Float32Array(w);
+        const anchors = [];
+        for (let x0 = 0; x0 < w; x0 += step) {
+            const vals = [];
+            for (let y = 0; y < h; y += 2) for (let x = Math.max(0, x0 - win); x < Math.min(w, x0 + win); x += 2) vals.push(lum[y * w + x]);
+            vals.sort((a, b) => a - b);
+            anchors.push({ x: x0, v: vals[Math.floor(vals.length * 0.85)] || 255 });
+        }
+        for (let x = 0; x < w; x++) {
+            const i = Math.min(anchors.length - 1, Math.floor(x / step)), a = anchors[i], b = anchors[Math.min(anchors.length - 1, i + 1)];
+            const t = b.x > a.x ? (x - a.x) / (b.x - a.x) : 0;
+            paper[x] = a.v + (b.v - a.v) * clamp(t, 0, 1);
+        }
+        return paper;
+    }
+
+    // potongan kolom identitas F4 untuk OCR: nama, nomor, kelas — kotak isian (merah muda) dihapus
+    function identityStrips(img, geo, pxPerMm = 12) {
+        const spec = geo.spec, out = {};
+        for (const key of ['nama', 'nomor', 'kelas']) {
+            const f = spec.ident[key];
+            const rect = [f.x - 1, f.y - 1.2, f.x + f.n * f.cw + 1, f.y + f.h + 1.2];
+            const s = rectifyMM(img, geo, rect, Math.round((rect[2] - rect[0]) * pxPerMm), { rgb: true });
+            // dropout: garis kotak merah muda / terang relatif kertas SETEMPAT -> putih; tahan bayangan
+            const n = s.w * s.h, lum = new Uint8ClampedArray(n);
+            for (let i = 0; i < n; i++) { const r = s.data[i * 4], g = s.data[i * 4 + 1], b = s.data[i * 4 + 2]; lum[i] = (r * 77 + g * 150 + b * 29) >> 8; }
+            const paper = localPaper(lum, s.w, s.h, Math.round(pxPerMm * 4));
+            for (let i = 0; i < n; i++) {
+                const x = i % s.w, pp = Math.max(1, paper[x]), r = s.data[i * 4] + 1, g = s.data[i * 4 + 1] + 1, b = s.data[i * 4 + 2] + 1;
+                const rel = lum[i] / pp;
+                // kotak isian dicetak merah muda: buang piksel kemerahan (pulpen biru/hitam & pensil tidak kemerahan)
+                const pinkish = r / g > 1.12 && r / b > 1.04 && rel > 0.55;
+                // pemetaan bertahap: >= 0.82 putih, <= 0.45 hitam (tulisan buram tetap terbaca)
+                const v = pinkish ? 255 : clamp(Math.round((rel - 0.45) / 0.37 * 255), 0, 255);
+                s.data[i * 4] = s.data[i * 4 + 1] = s.data[i * 4 + 2] = v;
+            }
+            // tinta sedikit = kosong
+            let ink = 0; for (let i = 0; i < n; i++) if (s.data[i * 4] < 160) ink++;
+            s.inkRatio = ink / n;
+            out[key] = s;
+        }
+        return out;
+    }
+
+    const api = { processMarker, processMarkerless, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
+    if (typeof module !== 'undefined' && module.exports) module.exports = api;
+    else root.LJKEngine = api;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+/*
+ * Buleud Teu — IDENTITAS: urai teks OCR + cocokkan ke daftar siswa (pencocokan mirip, bukan persis)
+ *  - LJK F4: OCR per kolom (nama/nomor/kelas) -> fromFields()
+ *  - LJK lama: satu potongan berlabel -> parse()
+ */
+(function (root) {
+const LJKIdent = (() => {
+    const LABELS = [
+        { key: 'nomor', re: /n[o0]m[o0]r|n[o0]\.?\s*peserta|n[o0]\.?\s*ujian/i },
+        { key: 'nama',  re: /\bnama\b/i },
+        { key: 'kelas', re: /\bke[l1i]as\b/i },
+        { key: 'mapel', re: /mata\s*pe[l1i]|pe[l1i]ajaran|mapel/i }
+    ];
+    const RIGHT_COL = /sekolah|hari|tanggal|waktu/i;
+
+    const clean = (s) => s.replace(/^[\s:;.,_\-–—|]+/, '').replace(/[_]{2,}.*$/, '').replace(/[\s:;.,_\-–—|]+$/, '').trim();
+
+    // Ambil sisa baris setelah label (mis. "Nama Peserta : IBNU" -> "IBNU")
+    function afterLabel(line) {
+        const m = line.match(/(peserta|ujian|kelas|ke[l1i]as|pelajaran|pe[l1i]ajaran|mapel)\s*[:;.]?(.*)$/i);
+        return m ? clean(m[2]) : '';
+    }
+
+    function parse(text) {
+        const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+            .map(l => l.split(RIGHT_COL)[0].trim()).filter(Boolean);
+        const out = { nomor: '', nama: '', kelas: '', mapel: '' };
+        const order = [], loose = [];
+        for (let i = 0; i < lines.length; i++) {
+            const l = lines[i];
+            const lab = LABELS.find(L => L.re.test(l) && !(L.key === 'nomor' && /\bnama\b/i.test(l)));
+            if (lab) {
+                const v = afterLabel(l);
+                if (v && !out[lab.key]) out[lab.key] = v; else order.push(lab.key);
+            } else {
+                const v = clean(l);
+                if (v && !/lembar|jawaban|penilaian|tahun/i.test(v)) loose.push(v);
+            }
+        }
+        // label tanpa nilai di barisnya -> isi dari baris lepas, berurutan
+        for (const k of order) if (!out[k] && loose.length) out[k] = loose.shift();
+        // tidak ada label sama sekali -> asumsikan urutan Nomor, Nama, Kelas, Mapel
+        if (!out.nomor && !out.nama && !out.kelas && !out.mapel && loose.length >= 3)
+            ['nomor', 'nama', 'kelas', 'mapel'].forEach(k => { if (loose.length) out[k] = loose.shift(); });
+        return out;
+    }
+
+    // ---------- kemiripan ----------
+    function lev(a, b) {
+        const m = a.length, n = b.length; if (!m) return n; if (!n) return m;
+        let prev = Array.from({ length: n + 1 }, (_, j) => j), cur = new Array(n + 1);
+        for (let i = 1; i <= m; i++) {
+            cur[0] = i;
+            for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+            [prev, cur] = [cur, prev];
+        }
+        return prev[n];
+    }
+    const normName = (s) => String(s || '').toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const normCls = (s) => String(s || '').toUpperCase().replace(/KELAS/g, '').replace(/[^A-Z0-9]/g, '')
+        .replace(/^[O]/, '0').replace(/^[I|L]/, '1').replace(/^S(?=[A-Z])/, '5');
+    const digits = (s) => String(s || '').toUpperCase().replace(/[OQ]/g, '0').replace(/[IL|]/g, '1').replace(/S/g, '5').replace(/B/g, '8').replace(/[^0-9]/g, '');
+    const ratio = (a, b) => (!a || !b) ? 0 : 1 - lev(a, b) / Math.max(a.length, b.length);
+
+    function nameSim(ocr, real) {
+        const a = normName(ocr), b = normName(real);
+        if (!a || !b) return 0;
+        let s = Math.max(ratio(a, b), ratio(a.replace(/ /g, ''), b.replace(/ /g, '')));
+        // cocokkan per kata (urutan bebas), berguna jika OCR hanya membaca sebagian nama
+        const ta = a.split(' '), tb = b.split(' ');
+        let tot = 0;
+        for (const t of ta) tot += Math.max(...tb.map(u => ratio(t, u)));
+        s = Math.max(s, (tot / ta.length) * Math.min(1, ta.length / tb.length + 0.25));
+        return s;
+    }
+
+    // students: [{nama, kelas, nomor?}]
+    function match(fields, students) {
+        const res = { kelas: null, nama: null, kelasScore: 0, namaScore: 0, via: '', alternatives: [] };
+        if (!students || !students.length) return res;
+        // 1) nomor peserta (bila kolom No Peserta ada di Sheet)
+        const nd = digits(fields.nomor);
+        if (nd.length >= 3) {
+            const hits = students.filter(s => s.nomor && digits(s.nomor) === nd);
+            if (hits.length === 1) return Object.assign(res, { kelas: String(hits[0].kelas), nama: hits[0].nama, kelasScore: 1, namaScore: 1, via: 'nomor' });
+        }
+        // 2) kelas
+        const classes = [...new Set(students.map(s => String(s.kelas)))];
+        const oc = normCls(fields.kelas);
+        if (oc) {
+            const sc = classes.map(c => ({ c, s: normCls(c) === oc ? 1 : ratio(normCls(c), oc) })).sort((a, b) => b.s - a.s);
+            if (sc[0].s >= 0.5 && (sc.length < 2 || sc[0].s > sc[1].s)) { res.kelas = sc[0].c; res.kelasScore = sc[0].s; }
+        }
+        // 3) nama (di dalam kelas terpilih; jika lemah, cari di semua siswa)
+        const rank = (pool) => pool.map(s => ({ s, v: nameSim(fields.nama, s.nama) })).sort((a, b) => b.v - a.v);
+        let r = res.kelas ? rank(students.filter(s => String(s.kelas) === res.kelas)) : [];
+        if (!r.length || r[0].v < 0.55) {
+            const all = rank(students);
+            if (all.length && (!r.length || all[0].v > r[0].v + 0.1)) r = all;
+        }
+        if (r.length) {
+            res.alternatives = r.slice(0, 3).map(x => ({ nama: x.s.nama, kelas: String(x.s.kelas), skor: +x.v.toFixed(2) }));
+            const margin = r.length > 1 ? r[0].v - r[1].v : 1;
+            if (r[0].v >= 0.55 && margin >= 0.06) {
+                res.nama = r[0].s.nama; res.namaScore = r[0].v; res.via = 'nama';
+                if (!res.kelas || res.kelas !== String(r[0].s.kelas)) { res.kelas = String(r[0].s.kelas); }
+            }
+        }
+        return res;
+    }
+
+    // hasil OCR per kotak isian F4 -> field bersih
+    function fromFields(t) {
+        const one = (s) => String(s || '').replace(/\r?\n/g, ' ').replace(/[|_\[\]{}]/g, ' ').replace(/\s+/g, ' ').trim();
+        return {
+            nama: one(t.nama).toUpperCase().replace(/[0-9]/g, d => ({ '0': 'O', '1': 'I', '2': 'Z', '4': 'A', '5': 'S', '6': 'G', '8': 'B' }[d] || '')).replace(/[^A-Z' .-]/g, '').replace(/\s+/g, ' ').trim(),
+            nomor: digits(one(t.nomor)),
+            kelas: one(t.kelas).toUpperCase().replace(/[^A-Z0-9 -]/g, '').replace(/\s+/g, ''),
+            mapel: ''
+        };
+    }
+
+    return { parse, match, nameSim, normCls, digits, fromFields };
+})();
+if (typeof module !== 'undefined' && module.exports) module.exports = LJKIdent;
+else root.LJKIdent = LJKIdent;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+/* Buleud Teu — aplikasi web (PWA). Bergantung pada: ljk-spec.js, ljk-template.js, ljk-engine.js, ljk-ident.js */
+(function () {
+    'use strict';
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const store = {
+        get(k, d) { try { const v = localStorage.getItem('bt_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+        set(k, v) { try { localStorage.setItem('bt_' + k, JSON.stringify(v)); } catch (e) { } },
+        del(k) { try { localStorage.removeItem('bt_' + k); } catch (e) { } }
+    };
+    const SPEC = LJKSpec.SPEC;
+    const S = {
+        api: store.get('api', ''), token: store.get('token', ''), guru: store.get('guru', null), config: store.get('config', null),
+        data: store.get('exams', null), exam: null, scanMode: 'exam', editing: null, lastImage: null, res: null, answers: [], status: [], suggest: [],
+        ident: null, params: store.get('params', { sens: 50, con: 10 }), ocr: store.get('ocr', true), auto: store.get('auto', true),
+        layers: store.get('layers', { view: 'rect', kisi: true, dark: false, conf: true, circ: false }), queue: store.get('queue', []),
+        stream: null, loop: null, stable: 0, lastCorners: null, busy: false, pin: '', keyDraft: '', procMs: 0
+    };
+
+    // ------------------------------------------------------------ UI dasar
+    function go(name) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 'scr-' + name)); }
+    let toastT;
+    function toast(msg, ms = 3200) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), ms); }
+    function busy(on, tx) { $('busy').classList.toggle('on', !!on); if (tx) $('busyTx').textContent = tx; }
+    function log(m) { const l = $('log'); if (l) { l.textContent += m + '\n'; l.scrollTop = l.scrollHeight; } }
+
+    // ------------------------------------------------------------ API
+    async function apiGet(action) {
+        const r = await fetch(S.api + '?action=' + encodeURIComponent(action), { redirect: 'follow' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const t = await r.text(); let j;
+        try { j = JSON.parse(t); } catch (e) { throw new Error('Server membalas halaman, bukan data. Pastikan deploy Web App dengan akses "Siapa saja".'); }
+        if (j.error) throw new Error(j.error);
+        return j;
+    }
+    async function apiPost(obj) {
+        const body = JSON.stringify(Object.assign({ token: S.token }, obj));
+        const r = await fetch(S.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body });
+        const j = await r.json();
+        if (j.auth) { S.token = ''; store.del('token'); go('login'); renderLogin(); throw new Error(j.error); }
+        if (j.error) throw new Error(j.error);
+        return j;
+    }
+
+    // ------------------------------------------------------------ setup & login
+    async function saveApi() {
+        const v = $('inApi').value.trim();
+        if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(v)) { $('setupDiag').innerHTML = '<span style="color:#fca5a5">URL harus https://script.google.com/macros/s/…/exec (URL Web App, bukan URL editor).</span>'; return; }
+        S.api = v; $('setupDiag').textContent = 'Menghubungi…';
+        try {
+            const c = await apiGet('config');
+            if (c.version !== 'V40') throw new Error('Apps Script masih versi lama (' + (c.version || '?') + '). Pasang kode Apps Script Buleud Teu V40.');
+            store.set('api', v); S.config = c; store.set('config', c);
+            go('login'); renderLogin();
+        } catch (e) {
+            $('setupDiag').innerHTML = '<span style="color:#fca5a5">' + esc(e.message === 'Failed to fetch' ? 'Tidak bisa dihubungi. Cek internet, dan pastikan akses Web App = "Siapa saja (Anyone)".' : e.message) + '</span>';
+        }
+    }
+    function brand(prefix) {
+        const sk = (S.config && S.config.sekolah) || {}, img = $(prefix + 'Logo');
+        if (sk.logo) { img.src = sk.logo; img.style.display = 'block'; } else img.style.display = 'none';
+        return sk;
+    }
+    function renderLogin() {
+        const sk = brand('login');
+        $('loginSchool').innerHTML = esc(sk.nama || 'Sekolah') + '<span class="sub">Masuk guru</span>';
+        $('selGuru').innerHTML = ((S.config && S.config.guru) || []).map(g => `<option>${esc(g.nama)}</option>`).join('');
+        if (S.guru) $('selGuru').value = S.guru.nama;
+        S.pin = ''; drawPin();
+        $('pinPad').innerHTML = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', '✓'].map(k => `<button class="btn" data-k="${k}">${k}</button>`).join('');
+        $('pinPad').onclick = (e) => { const k = e.target.dataset && e.target.dataset.k; if (!k) return; if (k === '⌫') S.pin = S.pin.slice(0, -1); else if (k === '✓') return doLogin(); else if (S.pin.length < 4) S.pin += k; drawPin(); if (S.pin.length === 4) doLogin(); };
+        // segarkan konfigurasi di latar
+        apiGet('config').then(c => { S.config = c; store.set('config', c); const cur = $('selGuru').value; $('selGuru').innerHTML = c.guru.map(g => `<option>${esc(g.nama)}</option>`).join(''); if (cur) $('selGuru').value = cur; brand('login'); }).catch(() => { });
+    }
+    function drawPin() { [...$('pinDots').children].forEach((d, i) => d.classList.toggle('f', i < S.pin.length)); }
+    async function doLogin() {
+        if (S.pin.length !== 4) return;
+        $('loginMsg').textContent = 'Memeriksa…';
+        try {
+            const r = await apiPost({ action: 'login', guru: $('selGuru').value, pin: S.pin });
+            S.token = r.token; S.guru = r.guru; store.set('token', r.token); store.set('guru', r.guru);
+            $('loginMsg').textContent = ''; go('home'); loadExams(true);
+        } catch (e) { $('loginMsg').innerHTML = '<span style="color:#fca5a5">' + esc(e.message) + '</span>'; S.pin = ''; drawPin(); }
+    }
+    function logout() { S.token = ''; store.del('token'); store.del('exams'); S.data = null; go('login'); renderLogin(); }
+
+    // ------------------------------------------------------------ beranda
+    async function loadExams(fresh) {
+        const sk = brand('home');
+        $('homeSub').textContent = (S.guru ? S.guru.nama : '') + (sk.nama ? ' · ' + sk.nama : '');
+        renderHome();
+        if (!fresh && S.data) return;
+        try { S.data = await apiPost({ action: 'exams' }); store.set('exams', S.data); renderHome(); flushQueue(); }
+        catch (e) { if (!S.data) $('examList').innerHTML = `<div class="note n-bad">${esc(e.message)}</div>`; else toast('Offline: memakai data terakhir'); }
+    }
+    function examStudents(u) {
+        const all = (S.data && S.data.siswa) || [];
+        if (!u) return all;
+        if (!u.kelas.length || u.kelas.indexOf('SEMUA') >= 0) return all.filter(s => !u.tingkat || String(s.tingkat) === String(u.tingkat));
+        return all.filter(s => u.kelas.indexOf(s.kelas) >= 0);
+    }
+    function renderHome() {
+        const q = S.queue.length;
+        $('queueNote').innerHTML = q ? `<div class="note n-warn">${q} hasil scan menunggu dikirim (offline). <button class="btn sm" onclick="App.flushQueue(true)">Kirim sekarang</button></div>` : '';
+        const list = (S.data && S.data.ujian) || [];
+        if (!list.length) { $('examList').innerHTML = '<div class="card muted">Belum ada ujian aktif. Buat ujian baru, isi kunci, lalu cetak LJK.</div>'; return; }
+        $('examList').innerHTML = list.map((u, i) => {
+            const tot = examStudents(u).length, done = (u.terscan || []).length, pct = tot ? Math.min(100, Math.round(done / tot * 100)) : 0;
+            return `<div class="card exam"><div class="row" style="align-items:flex-start"><div style="flex:1"><div class="t">${esc(u.nama)}</div>
+                <div class="m">${esc(u.mapel)} · ${esc(u.kelas.join(', ') || 'Tingkat ' + u.tingkat)} · ${u.jumlah} soal · ${u.opsi} · KKTP ${u.kktp}</div></div>
+                <span class="badge b-info">${done}/${tot}</span></div><div class="bar"><i style="width:${pct}%"></i></div>
+                <div class="row"><button class="btn pri sm" onclick="App.startScan(${i},'exam')">📷 Scan</button><button class="btn sm" onclick="App.editExam(${i})">Edit</button>
+                <button class="btn sm" onclick="App.openPrint(${i})">Cetak LJK</button><button class="btn sm" onclick="App.openAnalysis(${i})">Analisis</button></div></div>`;
+        }).join('');
+    }
+
+    // ------------------------------------------------------------ edit ujian & kunci
+    function editExam(i) {
+        const u = i == null ? null : S.data.ujian[i];
+        S.editing = u ? Object.assign({}, u) : { id: '', nama: '', mapel: (S.guru.mapel || [])[0] || '', kelas: [], opsi: (S.data && S.data.opsiDefault) || 'ABCD', kunci: '', kktp: 75 };
+        $('examTitle').textContent = u ? 'Edit ujian' : 'Ujian baru';
+        $('exNama').value = S.editing.nama; $('exMapel').value = S.editing.mapel; $('exKktp').value = S.editing.kktp;
+        $('dlMapel').innerHTML = (S.guru.mapel || []).map(m => `<option>${esc(m)}</option>`).join('');
+        const kelasAll = [...new Set([...(S.guru.kelas || []), ...((S.data && S.data.kelasSemua) || [])])];
+        $('exKelas').innerHTML = kelasAll.map(k => `<span class="chip ${S.editing.kelas.indexOf(k) >= 0 ? 'on' : ''}" data-k="${esc(k)}">${esc(k)}</span>`).join('') || '<span class="muted small">Belum ada data siswa/kelas di sheet Siswa.</span>';
+        $('exKelas').onclick = (e) => { const k = e.target.dataset && e.target.dataset.k; if (!k) return; const a = S.editing.kelas, ix = a.indexOf(k); if (ix >= 0) a.splice(ix, 1); else a.push(k); e.target.classList.toggle('on'); };
+        $('btnArchive').style.display = u ? '' : 'none';
+        $('examMsg').innerHTML = '';
+        $('exKunci').value = S.editing.kunci; setOpsi(S.editing.opsi); go('exam');
+    }
+    function setOpsi(o) {
+        S.editing.opsi = o;
+        document.querySelectorAll('[data-opsi]').forEach(c => c.classList.toggle('on', c.dataset.opsi === o));
+        keyTyped();
+    }
+    function keyTyped() {
+        const raw = $('exKunci').value.toUpperCase().replace(/[^A-E?-]/g, '').slice(0, 50);
+        if (raw !== $('exKunci').value) $('exKunci').value = raw;
+        S.editing.kunci = raw; $('keyCount').textContent = raw.length + ' soal';
+        renderLjk($('keyGrid'), { n: 50, opsi: S.editing.opsi, answers: [...raw].map(c => /[A-E]/.test(c) ? c : null), keyMode: true, onTap: (q, L) => {
+            const arr = [...S.editing.kunci.padEnd(Math.max(S.editing.kunci.length, q + 1), '-')];
+            arr[q] = arr[q] === L ? '-' : L;
+            $('exKunci').value = arr.join('').replace(/-+$/, ''); keyTyped();
+        } });
+    }
+    function keyClear() { $('exKunci').value = ''; keyTyped(); }
+    async function saveExam() {
+        const e = S.editing;
+        e.nama = $('exNama').value.trim(); e.mapel = $('exMapel').value.trim().toUpperCase(); e.kktp = Number($('exKktp').value) || 75;
+        const k = e.kunci;
+        const msg = (t, c = 'n-bad') => $('examMsg').innerHTML = `<div class="note ${c}">${esc(t)}</div>`;
+        if (!e.nama || !e.mapel) return msg('Nama ujian dan mapel wajib diisi.');
+        if (!e.kelas.length) return msg('Pilih minimal satu kelas.');
+        if (!k.length) return msg('Kunci jawaban masih kosong.');
+        if (/[-?]/.test(k)) return msg('Ada nomor kunci yang kosong di tengah (tanda -). Lengkapi atau hapus.');
+        if (e.opsi === 'ABCD' && /E/.test(k)) return msg('Kunci berisi E, padahal opsi ABCD.');
+        busy(true, 'Menyimpan ujian…');
+        try { await apiPost({ action: 'saveExam', exam: e }); toast('Ujian tersimpan (' + k.length + ' soal)'); go('home'); await loadExams(true); }
+        catch (err) { msg(err.message); } finally { busy(false); }
+    }
+    async function archiveExam() {
+        if (!S.editing || !S.editing.id) return;
+        busy(true, 'Mengarsipkan…');
+        try { await apiPost({ action: 'archiveExam', id: S.editing.id }); go('home'); await loadExams(true); } catch (e) { toast(e.message); } finally { busy(false); }
+    }
+
+    // ------------------------------------------------------------ LJK digital
+    function renderLjk(el, o) {
+        const n = o.n, L = o.opsi, rows = o.rows || 10, letters = L.split('');
+        let h = '';
+        for (let b = 0; b * rows < (o.total || 50); b++) {
+            h += '<div class="blk">';
+            for (let r = 0; r < rows; r++) {
+                const q = b * rows + r; if (q >= (o.total || 50)) break;
+                const off = q >= n, st = o.status ? o.status[q] : 'ok', a = o.answers[q], key = o.key ? o.key[q] : null;
+                const flag = !off && (st === 'double' || st === 'weak');
+                h += `<div class="q ${off ? 'off' : ''} ${flag ? 'flag' : ''}"><span class="no">${q + 1}</span>`;
+                letters.forEach(Lt => {
+                    let c = 'bub';
+                    if (!off) {
+                        if (a === Lt) c += ' sel' + (o.keyMode ? '' : (key ? (key === Lt ? ' right' : ' wrong') : ''));
+                        else if (flag && (o.suggest[q] || '').indexOf(Lt) >= 0) c += ' cand';
+                        if (key === Lt && a !== Lt) c += ' key';
+                    }
+                    h += `<span class="${c}" data-q="${q}" data-l="${Lt}">${Lt}</span>`;
+                });
+                h += '</div>';
+            }
+            h += '</div>';
+        }
+        el.innerHTML = h;
+        el.onclick = (e) => { const t = e.target; if (t.dataset && t.dataset.q != null && o.onTap) o.onTap(Number(t.dataset.q), t.dataset.l); };
+    }
+
+    // ------------------------------------------------------------ kamera
+    async function startScan(i, mode) {
+        S.scanMode = mode;
+        S.exam = mode === 'exam' ? S.data.ujian[i] : null;
+        const title = mode === 'key' ? 'Scan LJK kunci' : mode === 'markerless' ? 'LJK lama (tanpa marker)' : S.exam.nama;
+        const sub = mode === 'key' ? `Varian ${S.editing.opsi}` : mode === 'markerless' ? '20 soal · 4 kolom × 5 baris' : `${S.exam.mapel} · ${S.exam.jumlah} soal · ${S.exam.opsi}`;
+        $('scanTitle').innerHTML = esc(title) + `<span class="sub">${esc(sub)}</span>`;
+        $('scanHint').textContent = mode === 'markerless' ? 'Masukkan seluruh tabel pilihan ganda ke layar, lalu tekan tombol' : 'Arahkan ke seluruh LJK — 4 kotak hitam di sudut harus terlihat';
+        $('chkAuto').checked = S.auto && mode !== 'markerless'; $('chkAuto').parentElement.style.display = mode === 'markerless' ? 'none' : '';
+        go('scan');
+        try {
+            if (!S.stream) S.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 2560 }, height: { ideal: 1440 } }, audio: false });
+            $('video').srcObject = S.stream; await $('video').play().catch(() => { });
+        } catch (e) { $('scanHint').textContent = 'Kamera tidak tersedia — pakai tombol galeri 🖼'; }
+        startLoop();
+    }
+    function stopCamera() { clearTimeout(S.loop); S.loop = null; if (S.stream) { S.stream.getTracks().forEach(t => t.stop()); S.stream = null; } }
+    function stopScan() { stopCamera(); go(S.scanMode === 'key' ? 'exam' : 'home'); }
+    function setAuto(v) { S.auto = v; store.set('auto', v); }
+    const small = document.createElement('canvas');
+    function startLoop() {
+        clearTimeout(S.loop); S.stable = 0; S.lastCorners = null;
+        const tick = () => {
+            S.loop = setTimeout(tick, 260);
+            if (S.busy || !$('scr-scan').classList.contains('on') || S.scanMode === 'markerless') return;
+            const v = $('video'); if (!v.videoWidth) return;
+            const sc = 720 / Math.max(v.videoWidth, v.videoHeight);
+            small.width = Math.round(v.videoWidth * sc); small.height = Math.round(v.videoHeight * sc);
+            const cx = small.getContext('2d', { willReadFrequently: true }); cx.drawImage(v, 0, 0, small.width, small.height);
+            const det = LJKEngine.detectMarkersFast(cx.getImageData(0, 0, small.width, small.height), { maxSide: 720 });
+            drawOverlay(det, sc);
+        };
+        tick();
+    }
+    function drawOverlay(det, sc) {
+        const v = $('video'), ov = $('overlay'), W = ov.clientWidth, H = ov.clientHeight;
+        ov.width = W; ov.height = H; const ctx = ov.getContext('2d'); ctx.clearRect(0, 0, W, H);
+        const sh = $('shutter');
+        if (!det) { S.stable = 0; S.lastCorners = null; sh.classList.remove('ready'); $('scanHint').textContent = 'Cari 4 kotak hitam di sudut LJK…'; return; }
+        // video object-fit: cover -> koordinat layar
+        const s = Math.max(W / v.videoWidth, H / v.videoHeight), ox = (W - v.videoWidth * s) / 2, oy = (H - v.videoHeight * s) / 2;
+        const pts = det.corners.map(p => ({ x: p.x / sc * s + ox, y: p.y / sc * s + oy }));
+        // stabilitas
+        const diag = Math.hypot(W, H);
+        const moved = S.lastCorners ? pts.reduce((a, p, i) => a + Math.hypot(p.x - S.lastCorners[i].x, p.y - S.lastCorners[i].y), 0) / 4 : 1e9;
+        S.lastCorners = pts;
+        const fullPxMm = det.pxPerMm / sc;   // skala pada resolusi penuh
+        const okRes = fullPxMm >= 2.3;
+        if (moved < diag * 0.012 && okRes) S.stable++; else S.stable = 0;
+        const ready = S.stable >= 3;
+        ctx.lineWidth = 4; ctx.strokeStyle = ready ? '#22c55e' : okRes ? '#facc15' : '#f97316'; ctx.fillStyle = ready ? '#22c55e33' : '#facc1522';
+        ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.fill(); ctx.stroke();
+        pts.forEach(p => { ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(p.x - 7, p.y - 7, 14, 14); });
+        sh.classList.toggle('ready', ready);
+        $('scanHint').textContent = !okRes ? 'Dekatkan kamera sedikit' : ready ? 'Tahan… mengambil foto' : 'Tahan HP tetap diam';
+        if (ready && S.auto) { S.stable = 0; capture(); }
+    }
+    function capture() {
+        const v = $('video');
+        if (!v.videoWidth) return toast('Kamera belum siap');
+        const c = document.createElement('canvas'); c.width = v.videoWidth; c.height = v.videoHeight;
+        c.getContext('2d').drawImage(v, 0, 0);
+        if (navigator.vibrate) navigator.vibrate(40);
+        processImage(c.getContext('2d').getImageData(0, 0, c.width, c.height));
+    }
+    function fromFile(input) {
+        const f = input.files && input.files[0]; if (!f) return;
+        const img = new Image();
+        img.onload = () => {
+            const s = Math.min(1, 3000 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+            c.width = Math.round(img.width * s); c.height = Math.round(img.height * s); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            URL.revokeObjectURL(img.src); processImage(c.getContext('2d').getImageData(0, 0, c.width, c.height));
+        };
+        img.onerror = () => toast('File gambar tidak bisa dibaca');
+        img.src = URL.createObjectURL(f); input.value = '';
+    }
+
+    // ------------------------------------------------------------ proses
+    function runEngine(img) {
+        const p = { sensitivity: S.params.sens, contrast: S.params.con };
+        if (S.scanMode === 'markerless') return LJKEngine.processMarkerless(img, Object.assign(p, { layout: { questions: 20, blocks: 4, options: 4 } }));
+        const opsi = S.scanMode === 'key' ? S.editing.opsi : S.exam.opsi;
+        return LJKEngine.processMarker(img, Object.assign(p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
+    }
+    function processImage(img) {
+        if (S.busy) return; S.busy = true; busy(true, 'Memproses LJK…');
+        setTimeout(() => {
+            try {
+                const t0 = performance.now();
+                S.lastImage = img;
+                const r = runEngine(img);
+                S.procMs = Math.round(performance.now() - t0);
+                if (!r.success) { toast(r.error, 4500); S.busy = false; busy(false); return; }
+                if (S.scanMode === 'key') { keyFromScan(r); return; }
+                S.res = r; S.answers = r.answers.slice(); S.status = r.status.slice(); S.suggest = r.suggest.slice(); S.confirm = false; S.scanId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+                showResult();
+                S.busy = false;
+            } catch (e) { console.error(e); toast('Error: ' + e.message); S.busy = false; }
+            finally { busy(false); }
+        }, 50);
+    }
+    function reprocess() { if (!S.lastImage) return; const r = runEngine(S.lastImage); if (!r.success) return toast(r.error); S.res = r; S.answers = r.answers.slice(); S.status = r.status.slice(); S.suggest = r.suggest.slice(); showResult(true); }
+    function keyFromScan(r) {
+        S.busy = false; stopCamera();
+        let last = -1; r.answers.forEach((a, i) => { if (a) last = i; });
+        const k = r.answers.slice(0, last + 1).map(a => a || '-').join('');
+        const flags = r.status.slice(0, last + 1).map((s, i) => s === 'double' || s === 'weak' ? i + 1 : 0).filter(Boolean);
+        $('exKunci').value = k; go('exam'); keyTyped();
+        $('examMsg').innerHTML = `<div class="note ${flags.length || /-/.test(k) ? 'n-warn' : 'n-ok'}">Kunci dari scan: ${k.length} soal.${flags.length ? ' Periksa nomor ' + flags.join(', ') + '.' : ''}${/-/.test(k) ? ' Ada nomor kosong (-).' : ''}</div>`;
+    }
+
+    // ------------------------------------------------------------ hasil
+    function keyArr() { return S.exam ? [...S.exam.kunci] : null; }
+    function score() {
+        if (!S.exam) return null;
+        let b = 0; for (let i = 0; i < S.exam.jumlah; i++) if (S.answers[i] && S.answers[i] === S.exam.kunci[i]) b++;
+        return { benar: b, skor: Math.round(b / S.exam.jumlah * 10000) / 100 };
+    }
+    function showResult(keepIdent) {
+        stopLoopOnly();
+        const r = S.res, u = S.exam;
+        go('result');
+        $('resTitle').innerHTML = esc(u ? u.nama : 'LJK lama') + `<span class="sub">${esc(u ? u.mapel + ' · ' + u.jumlah + ' soal' : '20 soal · tanpa marker')}</span>`;
+        renderAnswers();
+        const q = r.quality || {};
+        const g = q.grade || '-';
+        $('resBadges').innerHTML = `<span class="badge ${g === 'A' ? 'b-ok' : g === 'B' ? 'b-warn' : 'b-bad'}">Kualitas foto ${g}${q.score != null ? ' · ' + q.score : ''}</span> ` +
+            `<span class="badge b-info">${r.mode === 'marker' ? 'Mode marker F4' : 'Mode tanpa marker'}</span> <span class="badge b-info">${S.procMs} ms</span>`;
+        $('resNotes').innerHTML = (r.warnings || []).map(w => `<div class="note n-warn">${esc(w)}</div>`).join('') + (g === 'C' ? '<div class="note n-warn">Kualitas foto rendah. Sebaiknya foto ulang lebih dekat, terang, dan tidak buram.</div>' : '');
+        renderLayersChips(); drawEvidence(); renderQuality();
+        $('log').textContent = ''; (r.logs || []).forEach(log);
+        $('idCard').style.display = u ? '' : 'none';
+        if (u && !keepIdent) setupIdentity();
+    }
+    function stopLoopOnly() { clearTimeout(S.loop); S.loop = null; }
+    function renderAnswers() {
+        const u = S.exam, n = u ? u.jumlah : 20;
+        const sc = score();
+        if (sc) {
+            $('resScore').textContent = sc.skor % 1 ? sc.skor.toFixed(1) : sc.skor;
+            $('resBenar').textContent = `${sc.benar} benar dari ${n} soal`;
+            const ring = $('resRing'); ring.style.strokeDashoffset = 264 - 264 * sc.skor / 100; ring.style.stroke = sc.skor < (u.kktp || 75) ? '#ef4444' : '#22c55e';
+        } else { $('resScore').textContent = S.answers.filter(Boolean).length; $('resBenar').textContent = 'jawaban terbaca (tanpa kunci)'; }
+        renderLjk($('ljkGrid'), { n, total: u ? 50 : 20, rows: u ? 10 : 5, opsi: u ? u.opsi : 'ABCD', answers: S.answers, status: S.status, suggest: S.suggest, key: keyArr(), onTap: (q, L) => {
+            S.answers[q] = S.answers[q] === L ? null : L; S.status[q] = S.answers[q] ? 'ok' : 'blank'; S.confirm = false; renderAnswers(); drawEvidence();
+        } });
+        if (u) { const fl = flagged(); $('saveNote').innerHTML = fl.length ? `<div class="note n-warn">Perlu dicek: nomor ${fl.join(', ')} (kuning).</div>` : ''; }
+    }
+    function flagged() { const out = []; S.status.forEach((s, i) => { if ((s === 'double' || s === 'weak') && (!S.exam || i < S.exam.jumlah)) out.push(i + 1); }); return out; }
+
+    // ---- lapisan bukti deteksi
+    const LAYERS = [['view', 'Diluruskan / Foto asli'], ['kisi', 'Kisi'], ['dark', 'Kehitaman %'], ['conf', 'Keyakinan'], ['circ', 'Lingkaran terdeteksi']];
+    function renderLayersChips() {
+        $('layerChips').innerHTML = LAYERS.map(([k, t]) => {
+            const on = k === 'view' ? true : S.layers[k];
+            const label = k === 'view' ? (S.layers.view === 'rect' ? '▣ Diluruskan' : '📷 Foto asli') : t;
+            return `<span class="chip ${on ? 'on' : ''}" data-ly="${k}">${label}</span>`;
+        }).join('');
+        $('layerChips').onclick = (e) => { const k = e.target.dataset && e.target.dataset.ly; if (!k) return; if (k === 'view') S.layers.view = S.layers.view === 'rect' ? 'foto' : 'rect'; else S.layers[k] = !S.layers[k]; store.set('layers', S.layers); renderLayersChips(); drawEvidence(); };
+    }
+    function putGray(cv, w, h, data) {
+        cv.width = w; cv.height = h; const ctx = cv.getContext('2d'), id = ctx.createImageData(w, h);
+        for (let i = 0, p = 0; i < w * h; i++, p += 4) { id.data[p] = id.data[p + 1] = id.data[p + 2] = data[i]; id.data[p + 3] = 255; }
+        ctx.putImageData(id, 0, 0); return ctx;
+    }
+    function bubbleColor(q, L) {
+        const st = S.status[q], a = S.answers[q], key = S.exam ? S.exam.kunci[q] : null;
+        if ((st === 'double' || st === 'weak') && (S.suggest[q] || '').indexOf(L) >= 0) return '#f59e0b';
+        if (a === L) return key ? (key === L ? '#16a34a' : '#dc2626') : '#16a34a';
+        return null;
+    }
+    function drawEvidence() {
+        const r = S.res, cv = $('evCanvas'); if (!r || !r.debug) return;
+        const dbg = r.debug, ly = S.layers;
+        const n = S.exam ? S.exam.jumlah : 20, LET = (S.exam ? S.exam.opsi : 'ABCD').split('');
+        let ctx, toOut, R, ptsOf;
+        if (r.mode === 'marker') {
+            const P = SPEC.pg, geo = r.geo, mapper = LJKEngine.mmMapper(geo);
+            if (ly.view === 'rect') {
+                const rc = LJKEngine.rectifyMM(S.lastImage, geo, SPEC.regions.view, 1000);
+                ctx = putGray(cv, rc.w, rc.h, rc.data); toOut = (u, v) => rc.toOut(u, v); R = P.r * rc.k;
+            } else {
+                const f = Math.min(1, 1000 / dbg.W);
+                const g = f < 1 ? downs(dbg.g, dbg.W, dbg.H, f) : { w: dbg.W, h: dbg.H, d: dbg.g };
+                ctx = putGray(cv, g.w, g.h, g.d);
+                toOut = (u, v) => { const p = mapper(u, v); return { x: p.x * f, y: p.y * f }; }; R = P.r * geo.pxPerMm * f;
+                // tepi halaman + marker
+                ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.beginPath();
+                [[0, 0], [SPEC.page.w, 0], [SPEC.page.w, SPEC.page.h], [0, SPEC.page.h]].forEach((c, i) => { const p = geo.H.fwd(c[0], c[1]); i ? ctx.lineTo(p.x * f, p.y * f) : ctx.moveTo(p.x * f, p.y * f); }); ctx.closePath(); ctx.stroke();
+                ctx.fillStyle = '#38bdf8'; (dbg.markers || []).forEach(m => ctx.fillRect(m.x * f - 5, m.y * f - 5, 10, 10));
+                if (ly.circ) { ctx.strokeStyle = '#e879f9'; ctx.lineWidth = 1; (dbg.cands || []).forEach(c => { ctx.beginPath(); ctx.arc(c.x * f, c.y * f, c.r * f, 0, 6.3); ctx.stroke(); }); }
+            }
+            ptsOf = (q, o) => { const b = LJKSpec.bubbleMM(q, o); return toOut(b.x, b.y); };
+            if (ly.kisi) {   // garis baris & kolom melalui pusat bulatan (mengikuti lengkung kertas di "Foto asli")
+                ctx.strokeStyle = '#facc15aa'; ctx.lineWidth = Math.max(1, R / 5);
+                for (let rr = 0; rr < P.rows; rr++) { ctx.beginPath(); let first = true; for (let b = 0; b < P.blocks; b++) for (let o = 0; o < LET.length; o++) { const q = b * P.rows + rr, p = ptsOf(q, o); first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); first = false; } ctx.stroke(); }
+                for (let b = 0; b < P.blocks; b++) for (let o = 0; o < LET.length; o++) { ctx.beginPath(); for (let rr = 0; rr < P.rows; rr++) { const p = ptsOf(b * P.rows + rr, o); rr ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); } ctx.stroke(); }
+            }
+        } else {
+            const geo = r.geo, L = geo.layout, ROWS = Math.ceil(L.questions / L.blocks);
+            if (ly.view === 'rect') {
+                const rc = LJKEngine.rectifyLattice(S.lastImage, geo, 1000);
+                ctx = putGray(cv, rc.w, rc.h, rc.data); toOut = (u, v) => rc.toOut(u, v); R = geo.R0 * rc.k;
+            } else {
+                const f = Math.min(1, 1000 / dbg.W), g = f < 1 ? downs(dbg.g, dbg.W, dbg.H, f) : { w: dbg.W, h: dbg.H, d: dbg.g };
+                ctx = putGray(cv, g.w, g.h, g.d); toOut = (u, v) => { const p = geo.map(u, v); return { x: p.x * f, y: p.y * f }; }; R = geo.R0 * f;
+                if (ly.circ) { ctx.strokeStyle = '#e879f9'; ctx.lineWidth = 1; (dbg.cands || []).forEach(c => { ctx.beginPath(); ctx.arc(c.x * f, c.y * f, c.r * f, 0, 6.3); ctx.stroke(); }); }
+            }
+            ptsOf = (q, o) => { const b = Math.floor(q / ROWS), rr = q % ROWS; return toOut(geo.colU[b * L.options + o], geo.rowV[rr]); };
+            if (ly.kisi) {
+                ctx.strokeStyle = '#facc15aa'; ctx.lineWidth = Math.max(1, R / 5);
+                geo.rowV.forEach(v => { ctx.beginPath(); geo.colU.forEach((u, i) => { const p = toOut(u, v); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }); ctx.stroke(); });
+                geo.colU.forEach(u => { ctx.beginPath(); geo.rowV.forEach((v, i) => { const p = toOut(u, v); i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }); ctx.stroke(); });
+            }
+        }
+        // bulatan + kehitaman + keyakinan
+        ctx.textAlign = 'center';
+        for (let q = 0; q < n; q++) {
+            LET.forEach((Lt, o) => {
+                const p = ptsOf(q, o), col = bubbleColor(q, Lt);
+                ctx.beginPath(); ctx.arc(p.x, p.y, R * 1.15, 0, 6.3);
+                ctx.strokeStyle = col || '#3b82f655'; ctx.lineWidth = col ? Math.max(2, R / 3) : 1; ctx.stroke();
+                if (ly.dark && r.dark[q]) { ctx.font = `${Math.max(8, R * 0.9)}px sans-serif`; ctx.fillStyle = '#f43f5e'; ctx.fillText(Math.round(r.dark[q][o] * 100), p.x, p.y - R * 1.35); }
+            });
+            if (ly.conf) {
+                const p = ptsOf(q, 0), st = S.status[q], cf = r.conf ? r.conf[q] : 1;
+                ctx.beginPath(); ctx.arc(p.x - R * 3.1, p.y, R * 0.55, 0, 6.3);
+                ctx.fillStyle = st === 'double' || st === 'weak' ? '#f59e0b' : st === 'blank' ? '#94a3b8' : cf > 0.5 ? '#22c55e' : '#a3e635'; ctx.fill();
+            }
+        }
+    }
+    function downs(g, W, H, f) { const w = Math.round(W * f), h = Math.round(H * f), d = new Uint8ClampedArray(w * h); for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) d[y * w + x] = g[Math.min(H - 1, Math.floor(y / f)) * W + Math.min(W - 1, Math.floor(x / f))]; return { w, h, d }; }
+    function renderQuality() {
+        const q = S.res.quality || {}, items = [
+            ['Kualitas', (q.grade || '-') + (q.score != null ? ' (' + q.score + ')' : '')], ['Skala', q.pxPerMm != null ? q.pxPerMm + ' px/mm' : '-'],
+            ['Residu kisi', q.residMm != null ? q.residMm + ' mm' : '-'], ['Cahaya rata', q.light != null ? Math.round(q.light * 100) + '%' : '-'],
+            ['Ketajaman', q.sharp != null ? q.sharp : '-'], ['Kemiringan', q.tilt != null ? q.tilt + '°' : '-']];
+        $('qualGrid').innerHTML = items.map(([a, b]) => `<div><span class="muted">${a}</span><b>${esc(b)}</b></div>`).join('');
+    }
+
+    // ---- identitas
+    function setupIdentity() {
+        const u = S.exam, sts = examStudents(u), kelas = [...new Set(sts.map(s => s.kelas))].sort();
+        $('selKelas').innerHTML = '<option value="">Kelas…</option>' + kelas.map(k => `<option>${esc(k)}</option>`).join('');
+        if (kelas.length === 1) $('selKelas').value = kelas[0];
+        fillStudents(); $('ocrAlts').innerHTML = ''; $('ocrStatus').textContent = '';
+        S.ident = { nomor: '' };
+        const r = S.res;
+        if (r.mode !== 'marker') { $('idStrips').innerHTML = ''; return; }
+        const strips = LJKEngine.identityStrips(S.lastImage, r.geo, 12);
+        $('idStrips').innerHTML = '';
+        const b64 = {};
+        ['nama', 'nomor', 'kelas'].forEach(k => {
+            const s = strips[k], c = document.createElement('canvas'); c.width = s.w; c.height = s.h; c.className = 'strip';
+            c.style.width = Math.round(s.w / strips.nama.w * 100) + '%';
+            const id = c.getContext('2d').createImageData(s.w, s.h); id.data.set(s.data); c.getContext('2d').putImageData(id, 0, 0);
+            $('idStrips').appendChild(c);
+            if (s.inkRatio > 0.003) b64[k] = c.toDataURL('image/jpeg', 0.9).split(',')[1];
+        });
+        if (!S.ocr) { $('ocrStatus').textContent = 'OCR mati — pilih kelas & nama.'; return; }
+        if (!Object.keys(b64).length) { $('ocrStatus').innerHTML = '<span style="color:#fcd34d">Kolom identitas tampak kosong. Pilih manual.</span>'; return; }
+        if (!navigator.onLine) { $('ocrStatus').textContent = 'Offline — pilih kelas & nama secara manual.'; return; }
+        const scan = S.scanId;
+        $('ocrStatus').textContent = 'Membaca identitas (OCR Google)…';
+        Promise.all(['nama', 'nomor', 'kelas'].map(k => b64[k] ? apiPost({ action: 'ocr', image: b64[k] }).then(j => j.text || '').catch(e => { S.ocrErr = e.message; return ''; }) : Promise.resolve('')))
+            .then(([nama, nomor, kelas]) => { if (scan !== S.scanId) return; applyIdentity(LJKIdent.fromFields({ nama, nomor, kelas })); });
+    }
+    function applyIdentity(f) {
+        const sts = examStudents(S.exam), m = LJKIdent.match(f, sts);
+        S.ident = { nomor: f.nomor }; log(`OCR: nama="${f.nama}" nomor="${f.nomor}" kelas="${f.kelas}"`);
+        if (!f.nama && !f.nomor && !f.kelas) { $('ocrStatus').innerHTML = `<span style="color:#fcd34d">OCR tidak membaca apa pun${S.ocrErr ? ' (' + esc(S.ocrErr) + ')' : ''}. Pilih manual.</span>`; return; }
+        if (m.kelas) { $('selKelas').value = m.kelas; fillStudents(); }
+        if (m.nama) {
+            $('selSiswa').value = m.nama;
+            const pct = Math.round((m.namaScore || 1) * 100);
+            $('ocrStatus').innerHTML = `<span style="color:${pct >= 80 ? '#86efac' : '#fcd34d'}">OCR: <b>${esc(f.nama || f.nomor)}</b> → <b>${esc(m.nama)}</b> (${esc(m.kelas)}, cocok ${pct}%${m.via === 'nomor' ? ', via nomor' : ''}). Periksa sebelum simpan.</span>`;
+        } else $('ocrStatus').innerHTML = `<span style="color:#fcd34d">OCR membaca "<b>${esc(f.nama || '?')}</b>", kelas "<b>${esc(f.kelas || '?')}</b>" — belum yakin. Pilih atau ketuk saran:</span>`;
+        $('ocrAlts').innerHTML = (m.alternatives || []).filter(a => a.skor >= 0.3 && a.nama !== m.nama).map(a => `<span class="chip" data-n="${esc(a.nama)}" data-k="${esc(a.kelas)}">${esc(a.nama)} (${esc(a.kelas)})</span>`).join('');
+        $('ocrAlts').onclick = (e) => { const d = e.target.dataset; if (!d || !d.n) return; $('selKelas').value = d.k; fillStudents(); $('selSiswa').value = d.n; };
+    }
+    function fillStudents() {
+        const u = S.exam; if (!u) return;
+        const k = $('selKelas').value, done = new Set(u.terscan || []);
+        const list = examStudents(u).filter(s => !k || s.kelas === k).sort((a, b) => a.nama.localeCompare(b.nama));
+        $('selSiswa').innerHTML = '<option value="">Nama siswa…</option>' + list.map(s => `<option value="${esc(s.nama)}">${done.has(s.kelas + '|' + s.nama) ? '✓ ' : ''}${esc(s.nama)}</option>`).join('');
+    }
+
+    // ---- simpan + antrean offline
+    async function save() {
+        const u = S.exam, kelas = $('selKelas').value, nama = $('selSiswa').value;
+        if (!kelas || !nama) return toast('Pilih kelas dan nama siswa dulu');
+        const fl = flagged();
+        if (fl.length && !S.confirm) { S.confirm = true; toast('Nomor ' + fl.join(', ') + ' perlu dicek. Tekan Simpan sekali lagi untuk tetap menyimpan.', 4500); return; }
+        if ((u.terscan || []).indexOf(kelas + '|' + nama) >= 0 && S.confirmDup !== nama) { S.confirmDup = nama; toast(nama + ' sudah pernah discan. Tekan Simpan lagi untuk menimpa (scan terakhir yang dipakai).', 4500); return; }
+        const st = examStudents(u).find(s => s.kelas === kelas && s.nama === nama) || {};
+        const payload = { action: 'save', examId: u.id, siswa: { nama, kelas, nomor: st.nomor || (S.ident && S.ident.nomor) || '', nisn: st.nisn || '' },
+            answers: S.answers.slice(0, u.jumlah).map(a => a || '-'), flags: fl, mode: S.res.mode, quality: S.res.quality ? S.res.quality.grade + S.res.quality.score : '', scanId: S.scanId };
+        $('btnSave').disabled = true;
+        try {
+            const r = await apiPost(payload);
+            toast(`✅ ${nama}: ${r.skor} (${r.benar}/${r.jumlah})`);
+            markScanned(u, kelas, nama);
+        } catch (e) {
+            if (/fetch|network|Load failed/i.test(e.message) || !navigator.onLine) { S.queue.push(payload); store.set('queue', S.queue); markScanned(u, kelas, nama); toast('Offline: disimpan di antrean, akan dikirim otomatis'); }
+            else { toast('Gagal simpan: ' + e.message, 5000); $('btnSave').disabled = false; return; }
+        }
+        $('btnSave').disabled = false; S.confirm = false; S.confirmDup = null;
+        backToScan();
+    }
+    function markScanned(u, kelas, nama) { u.terscan = u.terscan || []; if (u.terscan.indexOf(kelas + '|' + nama) < 0) u.terscan.push(kelas + '|' + nama); store.set('exams', S.data); }
+    async function flushQueue(manual) {
+        if (!S.queue.length || !S.token) return;
+        const rest = [];
+        for (const p of S.queue) { try { await apiPost(p); } catch (e) { rest.push(p); } }
+        const sent = S.queue.length - rest.length; S.queue = rest; store.set('queue', rest);
+        if (sent) toast(`${sent} hasil antrean terkirim`); else if (manual) toast('Masih belum bisa mengirim antrean');
+        renderHome();
+    }
+    function backToScan() { if (S.scanMode === 'markerless' || S.exam) { go('scan'); startLoop(); if (!S.stream) startScan(S.exam ? S.data.ujian.indexOf(S.exam) : null, S.scanMode); } else go('home'); }
+
+    // ------------------------------------------------------------ analisis
+    function openAnalysis(i) {
+        S.exam = S.data.ujian[i];
+        $('anTitle').innerHTML = 'Analisis butir<span class="sub">' + esc(S.exam.nama + ' · ' + S.exam.mapel) + '</span>';
+        S.anScope = { lingkup: 'tingkat', kelas: '' };
+        const kls = S.exam.kelas.filter(k => k !== 'SEMUA');
+        $('anScope').innerHTML = `<span class="chip on" data-s="tingkat">Seluruh tingkat ${esc(S.exam.tingkat || '')}</span>` + kls.map(k => `<span class="chip" data-s="kelas" data-k="${esc(k)}">Kelas ${esc(k)}</span>`).join('');
+        $('anScope').onclick = (e) => { const d = e.target.dataset; if (!d || !d.s) return; S.anScope = { lingkup: d.s, kelas: d.k || '' }; [...$('anScope').children].forEach(c => c.classList.toggle('on', c === e.target)); };
+        $('anOut').innerHTML = ''; go('analysis');
+    }
+    async function runAnalysis() {
+        busy(true, 'Menghitung analisis butir…');
+        try {
+            const r = await apiPost({ action: 'analyze', examId: S.exam.id, lingkup: S.anScope.lingkup, kelas: S.anScope.kelas });
+            const R = r.ringkasan || {};
+            const box = (a, b) => `<div><span class="muted">${a}</span><b>${esc(b == null ? '-' : b)}</b></div>`;
+            let h = `<div class="card"><h3>Ringkasan</h3>${(r.peringatan || []).map(p => `<div class="note n-warn">${esc(p)}</div>`).join('')}<div class="qgrid">` +
+                box('Siswa', R.n) + box('Soal', R.k) + box('Rata-rata', R.rataRata) + box('Simpangan baku', R.sd) + box('KR-20', R.kr20 != null ? R.kr20 + ' ' + R.kategoriKr20 : '-') + box('SEM', R.sem) +
+                box('Tuntas', (R.tuntas || 0) + ' (' + (R.persenTuntas || 0) + '%)') + box('Diterima', R.diterima) + box('Revisi / Buang', (R.direvisi || 0) + ' / ' + (R.dibuang || 0)) +
+                `</div><p class="muted small">Lembar lengkap: sheet <b>${esc(r.sheet)}</b> di spreadsheet sekolah.</p><button class="btn pri wide" onclick="App.saveBank()">Simpan ke Bank Soal</button></div>`;
+            h += `<div class="card" style="overflow-x:auto"><h3>Butir soal</h3><table class="t"><tr><th>No</th><th>Kunci</th><th>P</th><th>D</th><th>r</th><th>Rekomendasi</th></tr>` +
+                (r.butir || []).map(b => `<tr class="${b.rekomendasi === 'Diterima' ? 'tr-ok' : b.rekomendasi === 'Dibuang' ? 'tr-bad' : 'tr-rev'}"><td>${b.no}</td><td>${b.kunci}</td><td>${b.p}<br><span class="muted">${b.tk}</span></td><td>${b.d == null ? '-' : b.d}<br><span class="muted">${b.dp}</span></td><td>${b.rpbis == null ? '-' : b.rpbis}<br><span class="muted">${b.valid ? 'valid' : 'tidak'}</span></td><td><b>${b.rekomendasi}</b><br><span class="muted">${esc(b.alasan)}</span></td></tr>`).join('') + '</table></div>';
+            $('anOut').innerHTML = h;
+        } catch (e) { $('anOut').innerHTML = `<div class="note n-bad">${esc(e.message)}</div>`; } finally { busy(false); }
+    }
+    async function saveBank() {
+        busy(true, 'Menyimpan ke Bank Soal…');
+        try { const r = await apiPost({ action: 'bank', examId: S.exam.id, lingkup: S.anScope.lingkup, kelas: S.anScope.kelas }); toast(`Bank Soal: ${r.baru} baru, ${r.diperbarui} diperbarui`); }
+        catch (e) { toast(e.message); } finally { busy(false); }
+    }
+
+    // ------------------------------------------------------------ cetak
+    function openPrint(i) { S.exam = S.data.ujian[i]; $('prTitle').innerHTML = 'Cetak LJK<span class="sub">' + esc(S.exam.nama) + '</span>'; $('prVar').value = S.exam.opsi; renderPrint(); go('print'); }
+    function renderPrint() {
+        const sk = (S.config && S.config.sekolah) || {}, u = S.exam;
+        const svg = LJKTemplate.renderLJK({ variant: $('prVar').value, school: { nama: sk.nama, logo: sk.logo }, exam: { judul: u ? u.nama.toUpperCase() : '', mapel: u ? u.mapel : '', tahun: sk.tahun } });
+        $('prPreview').innerHTML = svg.replace(/width="215mm" height="330mm"/, 'width="100%"');
+        const n = Math.max(1, Math.min(60, Number($('prCopies').value) || 1));
+        $('printArea').innerHTML = Array(n).fill(svg).join('');
+    }
+
+    // ------------------------------------------------------------ tuning
+    function toggleTuning() { const t = $('tuning'); t.style.display = t.style.display === 'none' ? '' : 'none'; if (t.style.display === '') t.scrollIntoView({ behavior: 'smooth' }); }
+    function param(k, v) { S.params[k] = Number(v); store.set('params', S.params); $(k === 'sens' ? 'vSens' : 'vCon').textContent = v; }
+    function setOcr(v) { S.ocr = v; store.set('ocr', v); }
+
+    // ------------------------------------------------------------ mulai
+    function init() {
+        $('slSens').value = S.params.sens; $('vSens').textContent = S.params.sens; $('slCon').value = S.params.con; $('vCon').textContent = S.params.con; $('chkOcr').checked = S.ocr;
+        $('inApi').value = S.api;
+        if (!S.api) go('setup');
+        else if (!S.token) { go('login'); renderLogin(); }
+        else { go('home'); loadExams(true); }
+        window.addEventListener('online', () => flushQueue());
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
+    }
+    window.App = { go, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
+    document.addEventListener('DOMContentLoaded', init);
+})();
+
+</script>
+</body>
+</html>

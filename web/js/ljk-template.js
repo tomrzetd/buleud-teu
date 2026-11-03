@@ -1,0 +1,88 @@
+/*
+ * Buleud Teu — renderer template LJK F4 (SVG, satuan mm).
+ * renderLJK({ variant:'ABCD'|'ABCDE', school:{nama, logo(dataURL)}, exam:{judul, mapel, tahun, tingkat} })
+ * -> string <svg> 215x330 mm siap cetak (print dari browser / PDF via Chromium).
+ */
+(function (root) {
+    const S = (typeof module !== 'undefined' && module.exports) ? require('./ljk-spec.js') : root.LJKSpec;
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    function renderLJK(opt = {}) {
+        const spec = S.SPEC, P = spec.pg, M = spec.markers;
+        const variant = opt.variant === 'ABCDE' ? 'ABCDE' : 'ABCD';
+        const nOpt = variant.length;
+        const school = opt.school || {}, exam = opt.exam || {};
+        const INK = '#111', GRAY = '#555', LIGHT = '#9aa7b8', DROP = '#b9c8dc', PINK = '#f0a6b6'; // PINK = warna dropout kotak isian (aman untuk pulpen biru/hitam & pensil)
+        const out = [];
+        const T = (x, y, s, size = 3, o = {}) => out.push(`<text x="${x}" y="${y}" font-size="${size}" font-family="DejaVu Sans, Arial, Helvetica, sans-serif"${o.anchor ? ` text-anchor="${o.anchor}"` : ''}${o.bold ? ' font-weight="bold"' : ''} fill="${o.fill || INK}">${esc(s)}</text>`);
+        const R = (x, y, w, h, o = {}) => out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}"${o.rx ? ` rx="${o.rx}"` : ''} fill="${o.fill || 'none'}"${o.stroke ? ` stroke="${o.stroke}" stroke-width="${o.sw || 0.3}"` : ''}/>`);
+        const Lh = (x1, y, x2, o = {}) => out.push(`<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" stroke="${o.stroke || INK}" stroke-width="${o.sw || 0.25}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`);
+
+        // ---- marker (hitam penuh)
+        const sq = (c, s) => R(c[0] - s / 2, c[1] - s / 2, s, s, { fill: '#000' });
+        M.corner.centers.forEach(c => sq(c, M.corner.size));
+        M.mid.centers.forEach(c => sq(c, M.mid.size));
+        sq(M.orient.center, M.orient.size);
+
+        // ---- kop
+        if (opt.school && school.logo) out.push(`<image href="${esc(school.logo)}" x="16" y="16" width="22" height="22" preserveAspectRatio="xMidYMid meet"/>`);
+        else { R(16, 16, 22, 22, { stroke: LIGHT, sw: 0.3, rx: 1.5 }); T(27, 28.2, 'LOGO', 2.6, { anchor: 'middle', fill: LIGHT }); }
+        T(107.5, 21.5, 'LEMBAR JAWABAN', 5, { anchor: 'middle', bold: true });
+        T(107.5, 28, school.nama || 'NAMA SEKOLAH ............................................', 3.6, { anchor: 'middle', bold: true });
+        T(107.5, 33.5, exam.judul || 'PENILAIAN ........................................', 3.1, { anchor: 'middle' });
+        T(107.5, 38.4, `TAHUN PELAJARAN ${exam.tahun || '..........'}${exam.mapel ? '  •  ' + exam.mapel : ''}`, 2.8, { anchor: 'middle', fill: GRAY });
+        // kode varian (kanan atas, dibaca guru)
+        R(176, 16, 23, 22, { stroke: GRAY, sw: 0.3, rx: 1.5 });
+        T(187.5, 22, 'LJK F4 • 50 SOAL', 2.1, { anchor: 'middle', fill: GRAY });
+        T(187.5, 30.5, variant, 5.2, { anchor: 'middle', bold: true });
+        T(187.5, 35.5, spec.id, 1.9, { anchor: 'middle', fill: GRAY });
+        Lh(14, 41, 201, { sw: 0.5 }); Lh(14, 42.2, 201, { sw: 0.2 });
+
+        // ---- identitas (kotak per huruf merah muda = warna dropout, dihapus engine sebelum OCR)
+        T(16, 47.6, 'Tulis dengan HURUF KAPITAL, satu huruf per kotak, pakai pulpen/pensil gelap.', 2.3, { fill: GRAY });
+        const comb = (field) => {
+            const f = spec.ident[field];
+            for (let i = 0; i < f.n; i++) R(f.x + i * f.cw, f.y, f.cw, f.h, { stroke: PINK, sw: 0.35 });
+        };
+        T(16, 57, 'Nama Peserta', 3); comb('nama');
+        T(16, 68, 'Nomor Peserta', 3); comb('nomor');
+        T(136, 68, 'Kelas', 3); comb('kelas');
+        spec.ident.lines.forEach(l => {
+            T(l.x === 52 ? 16 : l.x - 16, l.y, l.label, 3);
+            Lh(l.x, l.y + 0.6, l.x2, { stroke: GRAY, sw: 0.2, dash: '0.6 0.6' });
+        });
+
+        // ---- pilihan ganda
+        T(15, 101.5, 'I. PILIHAN GANDA', 3.4, { bold: true });
+        T(200, 101.5, 'Hitamkan PENUH satu bulatan. Jangan menyilang.', 2.3, { anchor: 'end', fill: GRAY });
+        const [fx1, fy1, fx2, fy2] = P.frame;
+        R(fx1, fy1, fx2 - fx1, fy2 - fy1, { stroke: INK, sw: 0.35, rx: 1 });
+        for (let b = 1; b < P.blocks; b++) {
+            const x = P.x0 + b * P.blockW + 1.0;
+            out.push(`<line x1="${x}" y1="${fy1 + 3}" x2="${x}" y2="${fy2 - 3}" stroke="${DROP}" stroke-width="0.2"/>`);
+        }
+        for (let q = 0; q < P.questions; q++) {
+            const p0 = S.bubbleMM(q, 0);
+            T(P.x0 + Math.floor(q / P.rows) * P.blockW + P.numRight, p0.y + 1.05, `${q + 1}.`, 2.6, { anchor: 'end', bold: true });
+            for (let o = 0; o < nOpt; o++) {
+                const p = S.bubbleMM(q, o);
+                out.push(`<circle cx="${p.x}" cy="${p.y}" r="${P.r}" fill="none" stroke="${GRAY}" stroke-width="0.3"/>`);
+                T(p.x, p.y + 0.85, S.LETTERS[o], 2.3, { anchor: 'middle', fill: LIGHT });
+            }
+        }
+
+        // ---- esai / catatan
+        T(15, 203, 'II. ESAI / CATATAN', 3.4, { bold: true });
+        for (let y = 211; y <= 296; y += 8.5) Lh(15, y, 200, { stroke: DROP, sw: 0.2 });
+        R(15, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(17, 304, 'Nilai', 2.4, { fill: GRAY });
+        R(80, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(82, 304, 'Paraf Guru', 2.4, { fill: GRAY });
+        T(200, 309.5, 'Buleud Teu • "Mun buleud, ku urang dipariksa!"', 2, { anchor: 'end', fill: LIGHT });
+
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${spec.page.w}mm" height="${spec.page.h}mm" viewBox="0 0 ${spec.page.w} ${spec.page.h}">` +
+            `<rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>`;
+    }
+
+    const api = { renderLJK };
+    if (typeof module !== 'undefined' && module.exports) module.exports = api;
+    else root.LJKTemplate = api;
+})(typeof self !== 'undefined' ? self : this);
