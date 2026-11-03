@@ -134,6 +134,12 @@ fun ScanScreen(vm: AppViewModel) {
                 color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
         }
 
+        // watermark kecil transparan dengan efek timbul (bayangan gelap + sorot terang), tetap terbaca di atas kertas putih
+        Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 128.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.28f))
+            .border(1.dp, Color.White.copy(alpha = 0.14f), CircleShape).padding(horizontal = 10.dp, vertical = 3.dp)) {
+            Text(AppViewModel.WATERMARK, fontSize = 10.sp, color = Color.White.copy(alpha = 0.82f),
+                style = androidx.compose.ui.text.TextStyle(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.7f), Offset(0f, 1f), 1.5f)))
+        }
         Row(Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(Color(0xAA000000)).padding(22.dp), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
             Text("🖼", fontSize = 26.sp, modifier = Modifier.clickable { gallery.launch("image/*") })
             Box(Modifier.size(78.dp).clip(CircleShape).background(if (det?.ready == true) Color(0xFF22C55E) else Color(0xFF4F7CFF)).border(5.dp, Color(0x88FFFFFF), CircleShape).clickable { shoot() })

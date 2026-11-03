@@ -117,6 +117,10 @@ fun AppRoot(vm: AppViewModel) {
         Top("Ujian saya", "${vm.store.guruNama} · ${vm.sekolah?.nama ?: ""}", actions = {
             Text("↻", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.loadExams() }.padding(8.dp))
             Text("⎋", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.logout() }.padding(8.dp)) })
+        vm.loading?.let { msg ->
+            LinearProgressIndicator(Modifier.fillMaxWidth(), color = PRI)
+            Text(msg, color = TX2, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
+        }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
             if (vm.queueSize > 0) Note("${vm.queueSize} hasil scan menunggu dikirim (offline). Ketuk ↻ untuk mengirim.")
             val list = vm.data?.ujian ?: emptyList()
@@ -129,6 +133,7 @@ fun AppRoot(vm: AppViewModel) {
                 OutlinedButton({ shareTemplate(ctx, "ABCDE") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCDE (PDF)") }
                 Text("Untuk menilai & menyimpan LJK lama 20 soal: buat ujian 20 soal ABCD lalu tekan Scan pada kartu ujian (LJK lama dikenali otomatis). Tombol di atas hanya untuk cek cepat. LJK berkop sekolah: cetak dari web app.", color = TX2, fontSize = 12.sp)
             }
+            SchoolFooter(vm)
         }
         Button({ vm.editExam(null) }, Modifier.fillMaxWidth().padding(14.dp).height(52.dp)) { Text("＋ Ujian baru") }
     }
@@ -346,5 +351,25 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
                     } } }
             }
         }
+    }
+}
+
+
+/** logo sekolah dari Sheet (data URL base64) -> bitmap; null bila tidak ada */
+fun logoBitmap(dataUrl: String?): Bitmap? = try {
+    if (dataUrl.isNullOrEmpty() || !dataUrl.contains(",")) null
+    else android.util.Base64.decode(dataUrl.substringAfter(","), android.util.Base64.DEFAULT).let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
+} catch (e: Exception) { null }
+
+/** kaki dashboard: logo + nama sekolah + watermark pembuat */
+@Composable fun SchoolFooter(vm: AppViewModel) {
+    val sk = vm.sekolah
+    val logo = remember(sk?.logo) { logoBitmap(sk?.logo) }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (logo != null) Image(logo.asImageBitmap(), "logo sekolah", Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).padding(4.dp), contentScale = ContentScale.Fit)
+        if (!sk?.nama.isNullOrEmpty()) Text(sk!!.nama, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp))
+        if (!sk?.tahun.isNullOrEmpty()) Text("Tahun Pelajaran ${sk!!.tahun}", color = TX2, fontSize = 12.sp)
+        Text("Buleud Teu • \"Mun buleud, ku urang dipariksa!\"", color = TX2.copy(alpha = 0.7f), fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
+        Text(AppViewModel.WATERMARK, color = TX2.copy(alpha = 0.85f), fontSize = 11.sp)
     }
 }

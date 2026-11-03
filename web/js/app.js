@@ -9,6 +9,7 @@
         del(k) { try { localStorage.removeItem('bt_' + k); } catch (e) { } }
     };
     const SPEC = LJKSpec.SPEC;
+    const WATERMARK = 'by : rizalabdurrahman05@guru.smp.belajar.id';
     const S = {
         api: store.get('api', ''), token: store.get('token', ''), guru: store.get('guru', null), config: store.get('config', null),
         data: store.get('exams', null), exam: null, scanMode: 'exam', editing: null, lastImage: null, res: null, answers: [], status: [], suggest: [],
@@ -46,7 +47,7 @@
     async function saveApi() {
         const v = $('inApi').value.trim();
         if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(v)) { $('setupDiag').innerHTML = '<span style="color:#fca5a5">URL harus https://script.google.com/macros/s/…/exec (URL Web App, bukan URL editor).</span>'; return; }
-        S.api = v; $('setupDiag').textContent = 'Menghubungi…';
+        S.api = v; $('setupDiag').textContent = 'Menghubungi…'; busy(true, 'Menghubungi server sekolah…');
         try {
             const c = await apiGet('config');
             if (c.version !== 'V40') throw new Error('Apps Script masih versi lama (' + (c.version || '?') + '). Pasang kode Apps Script Buleud Teu V40.');
@@ -54,7 +55,7 @@
             go('login'); renderLogin();
         } catch (e) {
             $('setupDiag').innerHTML = '<span style="color:#fca5a5">' + esc(e.message === 'Failed to fetch' ? 'Tidak bisa dihubungi. Cek internet, dan pastikan akses Web App = "Siapa saja (Anyone)".' : e.message) + '</span>';
-        }
+        } finally { busy(false); }
     }
     function brand(prefix) {
         const sk = (S.config && S.config.sekolah) || {}, img = $(prefix + 'Logo');
@@ -75,12 +76,12 @@
     function drawPin() { [...$('pinDots').children].forEach((d, i) => d.classList.toggle('f', i < S.pin.length)); }
     async function doLogin() {
         if (S.pin.length !== 4) return;
-        $('loginMsg').textContent = 'Memeriksa…';
+        $('loginMsg').textContent = 'Memeriksa…'; busy(true, 'Masuk…');
         try {
             const r = await apiPost({ action: 'login', guru: $('selGuru').value, pin: S.pin });
             S.token = r.token; S.guru = r.guru; store.set('token', r.token); store.set('guru', r.guru);
             $('loginMsg').textContent = ''; go('home'); loadExams(true);
-        } catch (e) { $('loginMsg').innerHTML = '<span style="color:#fca5a5">' + esc(e.message) + '</span>'; S.pin = ''; drawPin(); }
+        } catch (e) { $('loginMsg').innerHTML = '<span style="color:#fca5a5">' + esc(e.message) + '</span>'; S.pin = ''; drawPin(); } finally { busy(false); }
     }
     function logout() { S.token = ''; store.del('token'); store.del('exams'); S.data = null; go('login'); renderLogin(); }
 
@@ -90,8 +91,18 @@
         $('homeSub').textContent = (S.guru ? S.guru.nama : '') + (sk.nama ? ' · ' + sk.nama : '');
         renderHome();
         if (!fresh && S.data) return;
+        homeLoading('Memuat data ujian & siswa dari spreadsheet…');
         try { S.data = await apiPost({ action: 'exams' }); store.set('exams', S.data); renderHome(); flushQueue(); }
         catch (e) { if (!S.data) $('examList').innerHTML = `<div class="note n-bad">${esc(e.message)}</div>`; else toast('Offline: memakai data terakhir'); }
+        finally { homeLoading(null); }
+        apiGet('config').then(c => { S.config = c; store.set('config', c); brand('home'); renderFooter(); }).catch(() => { });
+    }
+    function homeLoading(msg) { const el = $('homeLoad'); el.style.display = msg ? '' : 'none'; if (msg) $('homeLoadTx').textContent = msg; }
+    function renderFooter() {
+        const sk = (S.config && S.config.sekolah) || {};
+        $('schoolFoot').innerHTML = (sk.logo ? `<img src="${esc(sk.logo)}" alt="logo" class="flogo">` : '') +
+            (sk.nama ? `<div class="fname">${esc(sk.nama)}</div>` : '') + (sk.tahun ? `<div class="muted small">Tahun Pelajaran ${esc(sk.tahun)}</div>` : '') +
+            `<div class="muted small" style="margin-top:10px;opacity:.75">Buleud Teu • "Mun buleud, ku urang dipariksa!"</div><div class="muted small">${WATERMARK}</div>`;
     }
     function examStudents(u) {
         const all = (S.data && S.data.siswa) || [];
@@ -100,6 +111,7 @@
         return all.filter(s => u.kelas.indexOf(s.kelas) >= 0);
     }
     function renderHome() {
+        renderFooter();
         const q = S.queue.length;
         $('queueNote').innerHTML = q ? `<div class="note n-warn">${q} hasil scan menunggu dikirim (offline). <button class="btn sm" onclick="App.flushQueue(true)">Kirim sekarang</button></div>` : '';
         const list = (S.data && S.data.ujian) || [];
@@ -549,15 +561,16 @@
         const st = examStudents(u).find(s => s.kelas === kelas && s.nama === nama) || {};
         const payload = { action: 'save', examId: u.id, siswa: { nama, kelas, nomor: st.nomor || (S.ident && S.ident.nomor) || '', nisn: st.nisn || '' },
             answers: S.answers.slice(0, u.jumlah).map(a => a || '-'), flags: fl, mode: S.res.mode, quality: S.res.quality ? S.res.quality.grade + S.res.quality.score : '', scanId: S.scanId };
-        $('btnSave').disabled = true;
+        $('btnSave').disabled = true; busy(true, `Menyimpan hasil ${nama} ke database…`);
         try {
             const r = await apiPost(payload);
-            toast(`✅ ${nama}: ${r.skor} (${r.benar}/${r.jumlah})`);
+            toast(`✅ Tersimpan — ${nama}: ${r.skor} (${r.benar}/${r.jumlah})`);
             markScanned(u, kelas, nama);
         } catch (e) {
             if (/fetch|network|Load failed/i.test(e.message) || !navigator.onLine) { S.queue.push(payload); store.set('queue', S.queue); markScanned(u, kelas, nama); toast('Offline: disimpan di antrean, akan dikirim otomatis'); }
-            else { toast('Gagal simpan: ' + e.message, 5000); $('btnSave').disabled = false; return; }
+            else { busy(false); toast('Gagal simpan: ' + e.message, 5000); $('btnSave').disabled = false; return; }
         }
+        busy(false);
         $('btnSave').disabled = false; S.confirm = false; S.confirmDup = null;
         backToScan();
     }
@@ -565,8 +578,9 @@
     async function flushQueue(manual) {
         if (!S.queue.length || !S.token) return;
         const rest = [];
+        homeLoading(`Mengirim ${S.queue.length} hasil antrean…`);
         for (const p of S.queue) { try { await apiPost(p); } catch (e) { rest.push(p); } }
-        const sent = S.queue.length - rest.length; S.queue = rest; store.set('queue', rest);
+        const sent = S.queue.length - rest.length; S.queue = rest; store.set('queue', rest); homeLoading(null);
         if (sent) toast(`${sent} hasil antrean terkirim`); else if (manual) toast('Masih belum bisa mengirim antrean');
         renderHome();
     }

@@ -47,6 +47,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var draftMsg by mutableStateOf("")
     var scanMode by mutableStateOf(ScanMode.EXAM)
     var queueSize by mutableStateOf(store.queue().length())
+    var loading by mutableStateOf<String?>(null)        // progres ringan (memuat data) di beranda
+
+    companion object { const val WATERMARK = "by : rizalabdurrahman05@guru.smp.belajar.id" }
 
     // hasil scan
     var result by mutableStateOf<LjkResult?>(null)
@@ -74,22 +77,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun connect(url: String) = viewModelScope.launch {
         val u = url.trim()
         if (!Regex("^https://script\\.google\\.com/macros/s/[^/]+/exec$").matches(u)) { setupMsg = "URL harus https://script.google.com/macros/s/…/exec"; return@launch }
-        setupMsg = "Menghubungi…"
+        setupMsg = "Menghubungi…"; busy = "Menghubungi server sekolah…"
         try {
             val c = api.get("config", u)
             if (c.optString("version") != "V40") throw ApiException("Apps Script masih versi lama. Pasang kode Buleud Teu V40.")
             store.api = u; store.configJson = c.toString(); applyConfig(c); setupMsg = ""; screen = Screen.LOGIN
         } catch (e: Exception) { setupMsg = if (isNetwork(e)) "Tidak bisa dihubungi. Cek internet & akses Web App \"Siapa saja\"." else e.message ?: "Gagal" }
+        busy = null
     }
     private fun applyConfig(c: JSONObject) { sekolah = Api.sekolah(c); guruList = Api.guruList(c) }
     fun refreshConfig() = viewModelScope.launch { runCatching { api.get("config") }.onSuccess { store.configJson = it.toString(); applyConfig(it) } }
 
     fun login(guru: String, pin: String) = viewModelScope.launch {
-        loginMsg = "Memeriksa…"
+        loginMsg = "Memeriksa…"; busy = "Masuk…"
         try {
             val r = api.post(JSONObject().put("action", "login").put("guru", guru).put("pin", pin).put("token", ""))
             store.token = r.getString("token"); store.guruNama = guru; loginMsg = ""; screen = Screen.HOME; loadExams()
         } catch (e: Exception) { loginMsg = e.message ?: "Gagal" }
+        busy = null
     }
     fun logout() { store.token = ""; store.examsJson = ""; data = null; screen = Screen.LOGIN }
 
@@ -99,7 +104,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------------- ujian
     fun loadExams() = viewModelScope.launch {
+        loading = "Memuat data ujian & siswa dari spreadsheet…"
         call { api.post(JSONObject().put("action", "exams")) }?.let { store.examsJson = it.toString(); data = Api.exams(it); flushQueue() }
+        loading = null
+        refreshConfig()
     }
     fun studentsOf(u: Ujian?) = data?.siswa?.filter { s -> u == null || (if (u.kelas.isEmpty() || "SEMUA" in u.kelas) (u.tingkat.isEmpty() || s.tingkat == u.tingkat) else s.kelas in u.kelas) } ?: emptyList()
 
@@ -245,20 +253,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             .put("siswa", JSONObject().put("nama", selSiswa).put("kelas", selKelas).put("nomor", st?.nomor?.ifEmpty { null } ?: nomorOcr).put("nisn", st?.nisn ?: ""))
             .put("answers", JSONArray((0 until u.jumlah).map { (answers.getOrNull(it) ?: '-').toString() })).put("flags", JSONArray(fl))
             .put("mode", "marker-android").put("quality", (q?.grade ?: "") + (q?.score ?: "")).put("scanId", scanId)
+        busy = "Menyimpan hasil $selSiswa ke database…"
         try {
-            val r = api.post(body); say("✅ $selSiswa: ${r.optDouble("skor")} (${r.optInt("benar")}/${r.optInt("jumlah")})")
+            val r = api.post(body); say("✅ Tersimpan — $selSiswa: ${r.optDouble("skor")} (${r.optInt("benar")}/${r.optInt("jumlah")})")
         } catch (e: Exception) {
-            if (isNetwork(e)) { val qa = store.queue(); qa.put(body); store.setQueue(qa); queueSize = qa.length(); say("Offline: disimpan di antrean") }
-            else { say("Gagal simpan: ${e.message}"); return@launch }
+            if (isNetwork(e)) { val qa = store.queue(); qa.put(body); store.setQueue(qa); queueSize = qa.length(); say("Offline: disimpan di antrean, dikirim otomatis nanti") }
+            else { busy = null; say("Gagal simpan: ${e.message}"); return@launch }
         }
+        busy = null
         u.terscan.add("$selKelas|$selSiswa"); screen = Screen.SCAN
     }
 
     fun flushQueue() = viewModelScope.launch {
         val qa = store.queue(); if (qa.length() == 0) return@launch
         val rest = JSONArray()
+        loading = "Mengirim ${qa.length()} hasil antrean…"
         for (i in 0 until qa.length()) { val b = qa.getJSONObject(i); try { b.put("token", store.token); api.post(b) } catch (e: Exception) { rest.put(b) } }
-        store.setQueue(rest); queueSize = rest.length()
+        store.setQueue(rest); queueSize = rest.length(); loading = null
         if (rest.length() < qa.length()) say("${qa.length() - rest.length()} hasil antrean terkirim")
     }
 

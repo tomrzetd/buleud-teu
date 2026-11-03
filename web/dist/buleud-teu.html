@@ -86,6 +86,9 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
 #busy.on{display:flex}.spin{width:44px;height:44px;border:4px solid #fff2;border-top-color:var(--pri);border-radius:50%;animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(1turn)}}
 .log{font:11px/1.45 ui-monospace,Menlo,monospace;background:#000;border:1px solid var(--line);border-radius:10px;padding:8px;max-height:180px;overflow:auto;white-space:pre-wrap;color:#a7f3d0}
 #printArea{display:none}
+.lbar{height:3px;background:#ffffff12;overflow:hidden}.lbar i{display:block;height:100%;width:35%;background:var(--pri);animation:lb 1.1s ease-in-out infinite}@keyframes lb{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+.foot{text-align:center;padding:10px 0 4px}.flogo{width:56px;height:56px;object-fit:contain;background:#fff;border-radius:10px;padding:4px}.fname{font-weight:700;margin-top:6px}
+.wm{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(132px + env(safe-area-inset-bottom));z-index:6;white-space:nowrap;font-size:10px;letter-spacing:.02em;pointer-events:none;color:rgba(255,255,255,.82);background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:3px 10px;backdrop-filter:blur(2px);text-shadow:0 1px 1.5px rgba(0,0,0,.7),0 -.5px 0 rgba(255,255,255,.25)}
 @media print{
   @page{size:215mm 330mm;margin:0}
   body{background:#fff;height:auto;overflow:visible}
@@ -129,12 +132,14 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
 <section class="screen" id="scr-home">
   <div class="top"><img id="homeLogo" alt="" style="width:36px;height:36px;border-radius:8px;object-fit:contain;display:none;background:#fff"><h1 id="homeTitle">Ujian saya<span class="sub" id="homeSub"></span></h1>
     <div class="icon" onclick="App.loadExams(true)" title="Muat ulang">↻</div><div class="icon" onclick="App.logout()" title="Keluar">⎋</div></div>
+  <div id="homeLoad" style="display:none"><div class="lbar"><i></i></div><div class="muted small" id="homeLoadTx" style="padding:4px 14px"></div></div>
   <div class="body">
     <div id="queueNote"></div>
     <div id="examList"></div>
     <div class="card"><h3>Mode lain</h3>
       <button class="btn ghost wide" onclick="App.startScan(null,'markerless')">Scan LJK lama 20 soal (tanpa marker)</button>
-      <p class="muted small">Hanya cek cepat (tidak disimpan). Untuk <b>menilai & menyimpan</b> LJK lama 20 soal: buat ujian 20 soal ABCD, lalu tekan <b>Scan</b> di kartu ujian — LJK lama dikenali otomatis.</p></div>
+      <p class="muted small" style="margin-bottom:0">Hanya cek cepat (tidak disimpan). Untuk <b>menilai & menyimpan</b> LJK lama 20 soal: buat ujian 20 soal ABCD, lalu tekan <b>Scan</b> di kartu ujian — LJK lama dikenali otomatis.</p></div>
+    <div id="schoolFoot" class="foot"></div>
   </div>
   <div class="fab"><button class="btn pri wide" onclick="App.editExam(null)">＋ Ujian baru</button></div>
 </section>
@@ -169,6 +174,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
   <canvas id="overlay"></canvas>
   <div class="scan-top"><div class="top" style="background:none;border:0"><div class="icon" onclick="App.stopScan()">←</div><h1 id="scanTitle">Scan<span class="sub" id="scanSub"></span></h1></div></div>
   <div class="hint" id="scanHint">Arahkan ke seluruh LJK — 4 kotak hitam di sudut harus terlihat</div>
+  <div class="wm">by : rizalabdurrahman05@guru.smp.belajar.id</div>
   <div class="scan-bot">
     <label class="icon" title="Dari galeri">🖼<input type="file" accept="image/*" style="display:none" onchange="App.fromFile(this)"></label>
     <button class="shutter" id="shutter" onclick="App.capture()"></button>
@@ -1352,6 +1358,7 @@ else root.LJKIdent = LJKIdent;
         del(k) { try { localStorage.removeItem('bt_' + k); } catch (e) { } }
     };
     const SPEC = LJKSpec.SPEC;
+    const WATERMARK = 'by : rizalabdurrahman05@guru.smp.belajar.id';
     const S = {
         api: store.get('api', ''), token: store.get('token', ''), guru: store.get('guru', null), config: store.get('config', null),
         data: store.get('exams', null), exam: null, scanMode: 'exam', editing: null, lastImage: null, res: null, answers: [], status: [], suggest: [],
@@ -1389,7 +1396,7 @@ else root.LJKIdent = LJKIdent;
     async function saveApi() {
         const v = $('inApi').value.trim();
         if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(v)) { $('setupDiag').innerHTML = '<span style="color:#fca5a5">URL harus https://script.google.com/macros/s/…/exec (URL Web App, bukan URL editor).</span>'; return; }
-        S.api = v; $('setupDiag').textContent = 'Menghubungi…';
+        S.api = v; $('setupDiag').textContent = 'Menghubungi…'; busy(true, 'Menghubungi server sekolah…');
         try {
             const c = await apiGet('config');
             if (c.version !== 'V40') throw new Error('Apps Script masih versi lama (' + (c.version || '?') + '). Pasang kode Apps Script Buleud Teu V40.');
@@ -1397,7 +1404,7 @@ else root.LJKIdent = LJKIdent;
             go('login'); renderLogin();
         } catch (e) {
             $('setupDiag').innerHTML = '<span style="color:#fca5a5">' + esc(e.message === 'Failed to fetch' ? 'Tidak bisa dihubungi. Cek internet, dan pastikan akses Web App = "Siapa saja (Anyone)".' : e.message) + '</span>';
-        }
+        } finally { busy(false); }
     }
     function brand(prefix) {
         const sk = (S.config && S.config.sekolah) || {}, img = $(prefix + 'Logo');
@@ -1418,12 +1425,12 @@ else root.LJKIdent = LJKIdent;
     function drawPin() { [...$('pinDots').children].forEach((d, i) => d.classList.toggle('f', i < S.pin.length)); }
     async function doLogin() {
         if (S.pin.length !== 4) return;
-        $('loginMsg').textContent = 'Memeriksa…';
+        $('loginMsg').textContent = 'Memeriksa…'; busy(true, 'Masuk…');
         try {
             const r = await apiPost({ action: 'login', guru: $('selGuru').value, pin: S.pin });
             S.token = r.token; S.guru = r.guru; store.set('token', r.token); store.set('guru', r.guru);
             $('loginMsg').textContent = ''; go('home'); loadExams(true);
-        } catch (e) { $('loginMsg').innerHTML = '<span style="color:#fca5a5">' + esc(e.message) + '</span>'; S.pin = ''; drawPin(); }
+        } catch (e) { $('loginMsg').innerHTML = '<span style="color:#fca5a5">' + esc(e.message) + '</span>'; S.pin = ''; drawPin(); } finally { busy(false); }
     }
     function logout() { S.token = ''; store.del('token'); store.del('exams'); S.data = null; go('login'); renderLogin(); }
 
@@ -1433,8 +1440,18 @@ else root.LJKIdent = LJKIdent;
         $('homeSub').textContent = (S.guru ? S.guru.nama : '') + (sk.nama ? ' · ' + sk.nama : '');
         renderHome();
         if (!fresh && S.data) return;
+        homeLoading('Memuat data ujian & siswa dari spreadsheet…');
         try { S.data = await apiPost({ action: 'exams' }); store.set('exams', S.data); renderHome(); flushQueue(); }
         catch (e) { if (!S.data) $('examList').innerHTML = `<div class="note n-bad">${esc(e.message)}</div>`; else toast('Offline: memakai data terakhir'); }
+        finally { homeLoading(null); }
+        apiGet('config').then(c => { S.config = c; store.set('config', c); brand('home'); renderFooter(); }).catch(() => { });
+    }
+    function homeLoading(msg) { const el = $('homeLoad'); el.style.display = msg ? '' : 'none'; if (msg) $('homeLoadTx').textContent = msg; }
+    function renderFooter() {
+        const sk = (S.config && S.config.sekolah) || {};
+        $('schoolFoot').innerHTML = (sk.logo ? `<img src="${esc(sk.logo)}" alt="logo" class="flogo">` : '') +
+            (sk.nama ? `<div class="fname">${esc(sk.nama)}</div>` : '') + (sk.tahun ? `<div class="muted small">Tahun Pelajaran ${esc(sk.tahun)}</div>` : '') +
+            `<div class="muted small" style="margin-top:10px;opacity:.75">Buleud Teu • "Mun buleud, ku urang dipariksa!"</div><div class="muted small">${WATERMARK}</div>`;
     }
     function examStudents(u) {
         const all = (S.data && S.data.siswa) || [];
@@ -1443,6 +1460,7 @@ else root.LJKIdent = LJKIdent;
         return all.filter(s => u.kelas.indexOf(s.kelas) >= 0);
     }
     function renderHome() {
+        renderFooter();
         const q = S.queue.length;
         $('queueNote').innerHTML = q ? `<div class="note n-warn">${q} hasil scan menunggu dikirim (offline). <button class="btn sm" onclick="App.flushQueue(true)">Kirim sekarang</button></div>` : '';
         const list = (S.data && S.data.ujian) || [];
@@ -1892,15 +1910,16 @@ else root.LJKIdent = LJKIdent;
         const st = examStudents(u).find(s => s.kelas === kelas && s.nama === nama) || {};
         const payload = { action: 'save', examId: u.id, siswa: { nama, kelas, nomor: st.nomor || (S.ident && S.ident.nomor) || '', nisn: st.nisn || '' },
             answers: S.answers.slice(0, u.jumlah).map(a => a || '-'), flags: fl, mode: S.res.mode, quality: S.res.quality ? S.res.quality.grade + S.res.quality.score : '', scanId: S.scanId };
-        $('btnSave').disabled = true;
+        $('btnSave').disabled = true; busy(true, `Menyimpan hasil ${nama} ke database…`);
         try {
             const r = await apiPost(payload);
-            toast(`✅ ${nama}: ${r.skor} (${r.benar}/${r.jumlah})`);
+            toast(`✅ Tersimpan — ${nama}: ${r.skor} (${r.benar}/${r.jumlah})`);
             markScanned(u, kelas, nama);
         } catch (e) {
             if (/fetch|network|Load failed/i.test(e.message) || !navigator.onLine) { S.queue.push(payload); store.set('queue', S.queue); markScanned(u, kelas, nama); toast('Offline: disimpan di antrean, akan dikirim otomatis'); }
-            else { toast('Gagal simpan: ' + e.message, 5000); $('btnSave').disabled = false; return; }
+            else { busy(false); toast('Gagal simpan: ' + e.message, 5000); $('btnSave').disabled = false; return; }
         }
+        busy(false);
         $('btnSave').disabled = false; S.confirm = false; S.confirmDup = null;
         backToScan();
     }
@@ -1908,8 +1927,9 @@ else root.LJKIdent = LJKIdent;
     async function flushQueue(manual) {
         if (!S.queue.length || !S.token) return;
         const rest = [];
+        homeLoading(`Mengirim ${S.queue.length} hasil antrean…`);
         for (const p of S.queue) { try { await apiPost(p); } catch (e) { rest.push(p); } }
-        const sent = S.queue.length - rest.length; S.queue = rest; store.set('queue', rest);
+        const sent = S.queue.length - rest.length; S.queue = rest; store.set('queue', rest); homeLoading(null);
         if (sent) toast(`${sent} hasil antrean terkirim`); else if (manual) toast('Masih belum bisa mengirim antrean');
         renderHome();
     }
