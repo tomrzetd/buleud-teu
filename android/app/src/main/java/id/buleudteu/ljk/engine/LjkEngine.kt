@@ -59,6 +59,7 @@ class LjkResult {
     var thr = 0.0; var empty = 0.0; var full = 0.0
     // mode tanpa marker
     var lattice: Lattice? = null
+    var image: ArgbImage? = null; var rotation = 0
 }
 class Lattice(val map: (Double, Double) -> Pt, val colU: DoubleArray, val rowV: DoubleArray, val scale: Double, val r0: Double, val questions: Int, val blocks: Int, val options: Int)
 
@@ -658,6 +659,72 @@ object LjkEngine {
         ret.quality = Quality(jsRound(best.quality * 100).toInt(), if (best.quality > 0.9) "A" else if (best.quality > 0.75) "B" else "C", 0.0, null, 1.0, 0.0, Math.round(best.th * 180 / PI * 10) / 10.0)
         ret.success = true
         return ret
+    }
+
+    // ---- LJK lama: arah otomatis (0/90/180/270) — port dari web processMarkerlessAuto
+    fun rotateImg(img: ArgbImage, deg: Int): ArgbImage {
+        if (deg == 0) return img
+        val w = img.width; val h = img.height
+        val W = if (deg % 180 != 0) h else w; val H = if (deg % 180 != 0) w else h
+        val o = IntArray(W * H)
+        for (y in 0 until h) for (x in 0 until w) {
+            val X: Int; val Y: Int
+            when (deg) { 90 -> { X = h - 1 - y; Y = x }; 180 -> { X = w - 1 - x; Y = h - 1 - y }; else -> { X = y; Y = w - 1 - x } }
+            o[Y * W + X] = img.px[y * w + x]
+        }
+        return ArgbImage(W, H, o)
+    }
+    fun shrinkImg(img: ArgbImage, maxSide: Int): ArgbImage {
+        val s = min(1.0, maxSide.toDouble() / max(img.width, img.height))
+        if (s == 1.0) return img
+        val W = max(1, jsRound(img.width * s).toInt()); val H = max(1, jsRound(img.height * s).toInt())
+        return ArgbImage(W, H, IntArray(W * H) { i -> val x = i % W; val y = i / W
+            img.px[min(img.height - 1, floor(y / s).toInt()) * img.width + min(img.width - 1, floor(x / s).toInt())] })
+    }
+    class Cue(val left: Double, val right: Double, val flipped: Boolean)
+    /** nomor soal selalu di KIRI kolom A: tinta kiri vs kanan tiap blok, relatif kertas setempat */
+    fun legacyCue(r: LjkResult): Cue {
+        val gr = r.gray!!; val g = gr.g; val W = gr.w; val H = gr.h; val lat = r.lattice!!; val R = lat.r0
+        fun ink(u: Double, v: Double): Double {
+            val vals = ArrayList<Int>(); val inn = ArrayList<Int>()
+            var dv = -1.6
+            while (dv <= 1.6) {
+                var du = -1.6
+                while (du <= 1.6) {
+                    val p = lat.map(u + du * R, v + dv * R); val x = jsRound(p.x).toInt(); val y = jsRound(p.y).toInt()
+                    if (x >= 0 && y >= 0 && x < W && y < H) { val v0 = g[y * W + x]; vals.add(v0); if (abs(du) <= 0.8 && abs(dv) <= 0.7) inn.add(v0) }
+                    du += 0.2
+                }
+                dv += 0.2
+            }
+            if (inn.isEmpty()) return 0.0
+            vals.sort()
+            val paper = vals[floor(vals.size * 0.9).toInt()].let { if (it == 0) 1 else it }
+            return inn.count { it < paper * 0.7 }.toDouble() / inn.size
+        }
+        var left = 0.0; var right = 0.0
+        for (b in 0 until lat.blocks) for (v in lat.rowV) {
+            left += ink(lat.colU[b * lat.options] - 2.4 * R, v)
+            right += ink(lat.colU[b * lat.options + lat.options - 1] + 2.4 * R, v)
+        }
+        return Cue(left, right, right > left * 1.15 && right - left > 0.15)
+    }
+    /** LJK lama dari arah mana pun; r.image = gambar yang sudah diputar (dipakai potongan identitas & bukti) */
+    fun processMarkerlessAuto(img: ArgbImage, sensitivity: Double = 50.0, contrast: Double = 10.0): LjkResult {
+        val small = shrinkImg(img, 1000)
+        var rot: Int? = null
+        for (deg in intArrayOf(0, 90, 270)) {
+            val r = processMarkerless(rotateImg(small, deg), sensitivity = sensitivity, contrast = contrast)
+            if (!r.success) continue
+            rot = if (legacyCue(r).flipped) (deg + 180) % 360 else deg
+            break
+        }
+        if (rot == null) return processMarkerless(img, sensitivity = sensitivity, contrast = contrast)
+        val im = rotateImg(img, rot)
+        val r = processMarkerless(im, sensitivity = sensitivity, contrast = contrast)
+        r.image = im; r.rotation = rot
+        if (rot != 0 && r.success) r.warnings.add("LJK lama diputar $rot° secara otomatis.")
+        return r
     }
 
     // ------------------------------------------------------------ 8. pelurusan & potongan identitas

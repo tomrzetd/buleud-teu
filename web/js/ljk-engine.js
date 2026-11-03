@@ -654,6 +654,69 @@
         }
     }
 
+    // ---- LJK lama: arah otomatis (0/90/180/270)
+    function rotateImg(img, deg) {
+        const { width: w, height: h, data: d } = img;
+        if (!deg) return img;
+        const W = deg % 180 ? h : w, H = deg % 180 ? w : h, o = new Uint8ClampedArray(W * H * 4);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            let X, Y;
+            if (deg === 90) { X = h - 1 - y; Y = x; } else if (deg === 180) { X = w - 1 - x; Y = h - 1 - y; } else { X = y; Y = w - 1 - x; }
+            const si = (y * w + x) * 4, ti = (Y * W + X) * 4;
+            o[ti] = d[si]; o[ti + 1] = d[si + 1]; o[ti + 2] = d[si + 2]; o[ti + 3] = 255;
+        }
+        return { width: W, height: H, data: o };
+    }
+    function shrinkImg(img, maxSide) {
+        const s = Math.min(1, maxSide / Math.max(img.width, img.height));
+        if (s === 1) return img;
+        const W = Math.max(1, Math.round(img.width * s)), H = Math.max(1, Math.round(img.height * s)), o = new Uint8ClampedArray(W * H * 4);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const si = (Math.min(img.height - 1, Math.floor(y / s)) * img.width + Math.min(img.width - 1, Math.floor(x / s))) * 4, ti = (y * W + x) * 4;
+            o[ti] = img.data[si]; o[ti + 1] = img.data[si + 1]; o[ti + 2] = img.data[si + 2]; o[ti + 3] = 255;
+        }
+        return { width: W, height: H, data: o };
+    }
+    // nomor soal ("1.", "2." ...) selalu di KIRI kolom A: bandingkan tinta kiri vs kanan tiap blok (relatif kertas setempat)
+    function legacyCue(r) {
+        const g = r.debug.g, W = r.debug.W, H = r.debug.H, geo = r.geo, R = geo.R0, L = geo.layout;
+        const ink = (u, v) => {
+            const vals = [], inn = [];
+            for (let dv = -1.6; dv <= 1.6; dv += 0.2) for (let du = -1.6; du <= 1.6; du += 0.2) {
+                const p = geo.map(u + du * R, v + dv * R), x = Math.round(p.x), y = Math.round(p.y);
+                if (x < 0 || y < 0 || x >= W || y >= H) continue;
+                const val = g[y * W + x]; vals.push(val);
+                if (Math.abs(du) <= 0.8 && Math.abs(dv) <= 0.7) inn.push(val);
+            }
+            if (!inn.length) return 0;
+            vals.sort((a, b) => a - b);
+            const paper = vals[Math.floor(vals.length * 0.9)] || 1;
+            return inn.filter(x => x < paper * 0.7).length / inn.length;
+        };
+        let left = 0, right = 0;
+        for (let b = 0; b < L.blocks; b++) for (const v of geo.rowV) {
+            left += ink(geo.colU[b * L.options] - 2.4 * R, v);
+            right += ink(geo.colU[b * L.options + L.options - 1] + 2.4 * R, v);
+        }
+        return { left, right, flipped: right > left * 1.15 && right - left > 0.15 };
+    }
+    // LJK lama dari arah mana pun: arah dipilih pada salinan kecil, lalu diproses penuh sekali
+    function processMarkerlessAuto(img, opt = {}) {
+        const small = shrinkImg(img, 1000);
+        let rot = null;
+        for (const deg of [0, 90, 270]) {
+            const r = processMarkerless(rotateImg(small, deg), opt);
+            if (!r.success) continue;
+            rot = legacyCue(r).flipped ? (deg + 180) % 360 : deg;
+            break;
+        }
+        if (rot == null) return processMarkerless(img, opt);
+        const im = rotateImg(img, rot), r = processMarkerless(im, opt);
+        r.image = im; r.rotation = rot;
+        if (rot && r.success) r.warnings.push(`LJK lama diputar ${rot}° secara otomatis.`);
+        return r;
+    }
+
     // =================================================================
     // 8. Pelurusan & potongan
     // =================================================================
@@ -753,7 +816,7 @@
         return out;
     }
 
-    const api = { processMarker, processMarkerless, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
+    const api = { processMarker, processMarkerless, processMarkerlessAuto, legacyCue, rotateImg, shrinkImg, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKEngine = api;
 })(typeof self !== 'undefined' ? self : this);

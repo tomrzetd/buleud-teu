@@ -15,9 +15,10 @@ fun main(args: Array<String>) {
     val out = StringBuilder("[")
     for ((i, c) in rows.withIndex()) {
         val name = c[0]; val file = c[1]; val w = c[2].toInt(); val h = c[3].toInt()
-        val img = loadRaw(file, w, h)
+        val img0 = loadRaw(file, w, h)
+        val img = if (c.size > 6) LjkEngine.rotateImg(img0, c[6].toInt()) else img0
         val t = System.currentTimeMillis()
-        val r = if (mode == "marker") LjkEngine.processMarker(img, c[4].toInt(), c[5].toInt()) else LjkEngine.processMarkerless(img)
+        val r = when (mode) { "marker" -> LjkEngine.processMarker(img, c[4].toInt(), c[5].toInt()); "auto" -> LjkEngine.processMarkerlessAuto(img); else -> LjkEngine.processMarkerless(img) }
         val ms = System.currentTimeMillis() - t
         val ans = r.answers.joinToString("") { (it ?: '-').toString() }
         val st = r.status.joinToString(",")

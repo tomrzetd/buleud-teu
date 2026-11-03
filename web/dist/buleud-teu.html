@@ -1042,6 +1042,69 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
         }
     }
 
+    // ---- LJK lama: arah otomatis (0/90/180/270)
+    function rotateImg(img, deg) {
+        const { width: w, height: h, data: d } = img;
+        if (!deg) return img;
+        const W = deg % 180 ? h : w, H = deg % 180 ? w : h, o = new Uint8ClampedArray(W * H * 4);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+            let X, Y;
+            if (deg === 90) { X = h - 1 - y; Y = x; } else if (deg === 180) { X = w - 1 - x; Y = h - 1 - y; } else { X = y; Y = w - 1 - x; }
+            const si = (y * w + x) * 4, ti = (Y * W + X) * 4;
+            o[ti] = d[si]; o[ti + 1] = d[si + 1]; o[ti + 2] = d[si + 2]; o[ti + 3] = 255;
+        }
+        return { width: W, height: H, data: o };
+    }
+    function shrinkImg(img, maxSide) {
+        const s = Math.min(1, maxSide / Math.max(img.width, img.height));
+        if (s === 1) return img;
+        const W = Math.max(1, Math.round(img.width * s)), H = Math.max(1, Math.round(img.height * s)), o = new Uint8ClampedArray(W * H * 4);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const si = (Math.min(img.height - 1, Math.floor(y / s)) * img.width + Math.min(img.width - 1, Math.floor(x / s))) * 4, ti = (y * W + x) * 4;
+            o[ti] = img.data[si]; o[ti + 1] = img.data[si + 1]; o[ti + 2] = img.data[si + 2]; o[ti + 3] = 255;
+        }
+        return { width: W, height: H, data: o };
+    }
+    // nomor soal ("1.", "2." ...) selalu di KIRI kolom A: bandingkan tinta kiri vs kanan tiap blok (relatif kertas setempat)
+    function legacyCue(r) {
+        const g = r.debug.g, W = r.debug.W, H = r.debug.H, geo = r.geo, R = geo.R0, L = geo.layout;
+        const ink = (u, v) => {
+            const vals = [], inn = [];
+            for (let dv = -1.6; dv <= 1.6; dv += 0.2) for (let du = -1.6; du <= 1.6; du += 0.2) {
+                const p = geo.map(u + du * R, v + dv * R), x = Math.round(p.x), y = Math.round(p.y);
+                if (x < 0 || y < 0 || x >= W || y >= H) continue;
+                const val = g[y * W + x]; vals.push(val);
+                if (Math.abs(du) <= 0.8 && Math.abs(dv) <= 0.7) inn.push(val);
+            }
+            if (!inn.length) return 0;
+            vals.sort((a, b) => a - b);
+            const paper = vals[Math.floor(vals.length * 0.9)] || 1;
+            return inn.filter(x => x < paper * 0.7).length / inn.length;
+        };
+        let left = 0, right = 0;
+        for (let b = 0; b < L.blocks; b++) for (const v of geo.rowV) {
+            left += ink(geo.colU[b * L.options] - 2.4 * R, v);
+            right += ink(geo.colU[b * L.options + L.options - 1] + 2.4 * R, v);
+        }
+        return { left, right, flipped: right > left * 1.15 && right - left > 0.15 };
+    }
+    // LJK lama dari arah mana pun: arah dipilih pada salinan kecil, lalu diproses penuh sekali
+    function processMarkerlessAuto(img, opt = {}) {
+        const small = shrinkImg(img, 1000);
+        let rot = null;
+        for (const deg of [0, 90, 270]) {
+            const r = processMarkerless(rotateImg(small, deg), opt);
+            if (!r.success) continue;
+            rot = legacyCue(r).flipped ? (deg + 180) % 360 : deg;
+            break;
+        }
+        if (rot == null) return processMarkerless(img, opt);
+        const im = rotateImg(img, rot), r = processMarkerless(im, opt);
+        r.image = im; r.rotation = rot;
+        if (rot && r.success) r.warnings.push(`LJK lama diputar ${rot}° secara otomatis.`);
+        return r;
+    }
+
     // =================================================================
     // 8. Pelurusan & potongan
     // =================================================================
@@ -1141,7 +1204,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
         return out;
     }
 
-    const api = { processMarker, processMarkerless, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
+    const api = { processMarker, processMarkerless, processMarkerlessAuto, legacyCue, rotateImg, shrinkImg, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKEngine = api;
 })(typeof self !== 'undefined' ? self : this);
@@ -1512,11 +1575,20 @@ else root.LJKIdent = LJKIdent;
     function legacyAllowed() { return S.scanMode === 'markerless' || (S.scanMode === 'exam' && S.exam && S.exam.jumlah <= 20 && S.exam.opsi === 'ABCD'); }
     // kisi LJK lama di frame preview kecil: semua bulatan + mana yang terisi
     function detectLegacy(id) {
-        const r = LJKEngine.processMarkerless(id, { maxSide: 720, layout: { questions: 20, blocks: 4, options: 4 } });
-        if (!r.success) return null;
-        const g = r.geo, pad = g.R0 * 2.2, u0 = g.colU[0] - pad, u1 = g.colU[g.colU.length - 1] + pad, v0 = g.rowV[0] - pad, v1 = g.rowV[g.rowV.length - 1] + pad;
-        const pts = []; r.debug.grid.forEach(row => row.forEach(p => pts.push({ x: p.x, y: p.y, f: p.d >= r.thr })));
-        return { legacy: true, corners: [g.map(u0, v0), g.map(u1, v0), g.map(u1, v1), g.map(u0, v1)], bubbles: pts, r: g.R0, pxPerMm: g.R0 >= 4.5 ? 99 : 0 };
+        const w = id.width, h = id.height, cyc = [0, 90, 270];
+        // hemat CPU: arah terakhir yang berhasil dulu, lalu SATU arah lain bergiliran per frame
+        S.legTry = ((S.legTry || 0) + 1) % 3;
+        const order = [S.legDeg || 0, cyc[S.legTry]].filter((d, i, a) => a.indexOf(d) === i);
+        for (const deg of order) {        // LJK boleh tegak atau menyamping
+            const r = LJKEngine.processMarkerless(LJKEngine.rotateImg(id, deg), { maxSide: 720, layout: { questions: 20, blocks: 4, options: 4 } });
+            if (!r.success) continue;
+            S.legDeg = deg;
+            const back = (p) => deg === 90 ? { x: p.y, y: h - 1 - p.x } : deg === 270 ? { x: w - 1 - p.y, y: p.x } : { x: p.x, y: p.y };
+            const g = r.geo, pad = g.R0 * 2.2, u0 = g.colU[0] - pad, u1 = g.colU[g.colU.length - 1] + pad, v0 = g.rowV[0] - pad, v1 = g.rowV[g.rowV.length - 1] + pad;
+            const pts = []; r.debug.grid.forEach(row => row.forEach(p => { const q = back(p); pts.push({ x: q.x, y: q.y, f: p.d >= r.thr }); }));
+            return { legacy: true, corners: [g.map(u0, v0), g.map(u1, v0), g.map(u1, v1), g.map(u0, v1)].map(back), bubbles: pts, r: g.R0, pxPerMm: g.R0 >= 4.5 ? 99 : 0 };
+        }
+        return null;
     }
     function drawOverlay(det, sc) {
         const v = $('video'), ov = $('overlay'), W = ov.clientWidth, H = ov.clientHeight;
@@ -1575,12 +1647,12 @@ else root.LJKIdent = LJKIdent;
     // ------------------------------------------------------------ proses
     function runEngine(img) {
         const p = { sensitivity: S.params.sens, contrast: S.params.con };
-        if (S.scanMode === 'markerless') return LJKEngine.processMarkerless(img, Object.assign(p, { layout: { questions: 20, blocks: 4, options: 4 } }));
+        if (S.scanMode === 'markerless') return LJKEngine.processMarkerlessAuto(img, Object.assign(p, { layout: { questions: 20, blocks: 4, options: 4 } }));
         const opsi = S.scanMode === 'key' ? S.editing.opsi : S.exam.opsi;
         const r = LJKEngine.processMarker(img, Object.assign({}, p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
         // LJK lama (tanpa marker, 4 kolom x 5 baris) dikenali otomatis untuk ujian <= 20 soal ABCD
         if (!r.success && S.scanMode === 'exam' && S.exam.jumlah <= 20 && S.exam.opsi === 'ABCD') {
-            const l = LJKEngine.processMarkerless(img, Object.assign({}, p, { layout: { questions: 20, blocks: 4, options: 4 } }));
+            const l = LJKEngine.processMarkerlessAuto(img, Object.assign({}, p, { layout: { questions: 20, blocks: 4, options: 4 } }));
             if (l.success) { l.warnings.push('LJK lama (tanpa marker) terdeteksi — dinilai dengan kunci ujian ini.'); return l; }
         }
         return r;
@@ -1594,6 +1666,7 @@ else root.LJKIdent = LJKIdent;
                 const r = runEngine(img);
                 S.procMs = Math.round(performance.now() - t0);
                 if (!r.success) { toast(r.error, 4500); S.busy = false; busy(false); return; }
+                if (r.image) S.lastImage = r.image;
                 if (S.scanMode === 'key') { keyFromScan(r); return; }
                 S.res = r; S.answers = r.answers.slice(); S.status = r.status.slice(); S.suggest = r.suggest.slice(); S.confirm = false; S.scanId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
                 showResult();
@@ -1602,7 +1675,7 @@ else root.LJKIdent = LJKIdent;
             finally { busy(false); }
         }, 50);
     }
-    function reprocess() { if (!S.lastImage) return; const r = runEngine(S.lastImage); if (!r.success) return toast(r.error); S.res = r; S.answers = r.answers.slice(); S.status = r.status.slice(); S.suggest = r.suggest.slice(); showResult(true); }
+    function reprocess() { if (!S.lastImage) return; const r = runEngine(S.lastImage); if (!r.success) return toast(r.error); if (r.image) S.lastImage = r.image; S.res = r; S.answers = r.answers.slice(); S.status = r.status.slice(); S.suggest = r.suggest.slice(); showResult(true); }
     function keyFromScan(r) {
         S.busy = false; stopCamera();
         let last = -1; r.answers.forEach((a, i) => { if (a) last = i; });

@@ -29,6 +29,9 @@ class MarkerAnalyzer(private val legacyAllowed: () -> Boolean, private val onRes
     )
 
     private var last: List<Pt>? = null
+    private var lastDeg = 0
+    private var tryIdx = 0
+    private val CYC = intArrayOf(0, 90, 270)
     private var stable = 0
     @Volatile var paused = false
 
@@ -88,22 +91,27 @@ class MarkerAnalyzer(private val legacyAllowed: () -> Boolean, private val onRes
                 }
             }
 
-            // ---- 2) LJK lama: kisi bulatan langsung dari pola lingkaran
+            // ---- 2) LJK lama: frame diputar TEGAK dulu (sensor kamera = landscape), lalu kisi bulatan.
+            //         LJK boleh tegak atau menyamping: arah terakhir yang berhasil dulu + satu arah lain bergiliran.
             if (det == null && legacyAllowed()) {
-                val img = ArgbImage(sw, sh, IntArray(sw * sh) { val v = gi[it]; (0xFF shl 24) or (v shl 16) or (v shl 8) or v })
-                val r = LjkEngine.processMarkerless(img, maxSide = 720)
-                if (r.success && r.grid.isNotEmpty()) {
-                    val grid = r.grid
-                    val pts = grid.flatten()
-                    val bub = pts.map { rot(it.x / sw, it.y / sh, rotDeg) }
-                    val fil = pts.map { it.d >= r.thr }
-                    // bingkai = sudut kisi diperlebar setengah jarak bulatan
+                val up = LjkEngine.rotateImg(ArgbImage(sw, sh, IntArray(sw * sh) { val v = gi[it]; (0xFF shl 24) or (v shl 16) or (v shl 8) or v }), rotDeg)
+                val uw = up.width; val uh = up.height
+                tryIdx = (tryIdx + 1) % 3
+                val order = listOf(lastDeg, CYC[tryIdx]).distinct()
+                for (deg in order) {
+                    val r = LjkEngine.processMarkerless(LjkEngine.rotateImg(up, deg), maxSide = 720)
+                    if (!r.success || r.grid.isEmpty()) continue
+                    lastDeg = deg
+                    // titik di gambar yang diputar 'deg' -> kembali ke frame tegak -> 0..1
+                    fun back(x: Double, y: Double): Pt { val q = when (deg) { 90 -> Pt(y, uh - 1 - x); 270 -> Pt(uw - 1 - y, x); else -> Pt(x, y) }; return Pt(q.x / uw, q.y / uh) }
+                    val pts = r.grid.flatten()
                     val lat = r.lattice!!
                     val pad = lat.r0 * 2.2
                     val u0 = lat.colU.first() - pad; val u1 = lat.colU.last() + pad; val v0 = lat.rowV.first() - pad; val v1 = lat.rowV.last() + pad
-                    val corners = listOf(lat.map(u0, v0), lat.map(u1, v0), lat.map(u1, v1), lat.map(u0, v1)).map { rot(it.x / sw, it.y / sh, rotDeg) }
-                    val tooFar = lat.r0 < 4.5                                    // bulatan terlalu kecil di frame 720 px
-                    det = Detection(corners, settle(corners, tooFar), tooFar, true, bub, fil, lat.r0 / max(sw, sh))
+                    val corners = listOf(lat.map(u0, v0), lat.map(u1, v0), lat.map(u1, v1), lat.map(u0, v1)).map { back(it.x, it.y) }
+                    val tooFar = lat.r0 < 4.5
+                    det = Detection(corners, settle(corners, tooFar), tooFar, true, pts.map { back(it.x, it.y) }, pts.map { it.d >= r.thr }, lat.r0 / max(uw, uh))
+                    break
                 }
             }
             if (det == null) { last = null; stable = 0 }

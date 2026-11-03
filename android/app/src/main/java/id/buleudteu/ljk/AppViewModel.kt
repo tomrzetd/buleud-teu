@@ -139,14 +139,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val px = IntArray(bmp.width * bmp.height); bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
             val img = ArgbImage(bmp.width, bmp.height, px); image = img
             when (scanMode) {
-                ScanMode.LEGACY -> LjkEngine.processMarkerless(img, sensitivity = store.sensitivity.toDouble(), contrast = store.contrast.toDouble())
+                ScanMode.LEGACY -> LjkEngine.processMarkerlessAuto(img, store.sensitivity.toDouble(), store.contrast.toDouble())
                 ScanMode.KEY -> LjkEngine.processMarker(img, draft.opsi.length, 50, store.sensitivity.toDouble(), store.contrast.toDouble())
                 ScanMode.EXAM -> {
                     val u = exam!!
                     val m = LjkEngine.processMarker(img, u.opsi.length, u.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble())
                     // LJK lama (tanpa marker, 4 kolom x 5 baris) dikenali otomatis untuk ujian <= 20 soal ABCD
                     if (!m.success && u.jumlah <= 20 && u.opsi == "ABCD") {
-                        val l = LjkEngine.processMarkerless(img, sensitivity = store.sensitivity.toDouble(), contrast = store.contrast.toDouble())
+                        val l = LjkEngine.processMarkerlessAuto(img, store.sensitivity.toDouble(), store.contrast.toDouble())
                         if (l.success) { l.warnings.add("LJK lama (tanpa marker) terdeteksi — dinilai dengan kunci ujian ini."); l } else m
                     } else m
                 }
@@ -155,6 +155,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         busy = null
         if (!r.success) { say(r.error ?: "Gagal deteksi"); return@launch }
         if (scanMode == ScanMode.KEY) { keyFromScan(r); return@launch }
+        r.image?.let { image = it }      // LJK lama yang diputar otomatis: potongan identitas & bukti memakai gambar tegak
         result = r; answers.clear(); answers.addAll(r.answers); status.clear(); status.addAll(r.status)
         confirmFlags = false; scanId = UUID.randomUUID().toString().take(8); match = null; ocrMsg = ""; selSiswa = ""; nomorOcr = ""
         val kelasList = studentsOf(exam).map { it.kelas }.distinct().sorted()

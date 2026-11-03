@@ -232,11 +232,20 @@
     function legacyAllowed() { return S.scanMode === 'markerless' || (S.scanMode === 'exam' && S.exam && S.exam.jumlah <= 20 && S.exam.opsi === 'ABCD'); }
     // kisi LJK lama di frame preview kecil: semua bulatan + mana yang terisi
     function detectLegacy(id) {
-        const r = LJKEngine.processMarkerless(id, { maxSide: 720, layout: { questions: 20, blocks: 4, options: 4 } });
-        if (!r.success) return null;
-        const g = r.geo, pad = g.R0 * 2.2, u0 = g.colU[0] - pad, u1 = g.colU[g.colU.length - 1] + pad, v0 = g.rowV[0] - pad, v1 = g.rowV[g.rowV.length - 1] + pad;
-        const pts = []; r.debug.grid.forEach(row => row.forEach(p => pts.push({ x: p.x, y: p.y, f: p.d >= r.thr })));
-        return { legacy: true, corners: [g.map(u0, v0), g.map(u1, v0), g.map(u1, v1), g.map(u0, v1)], bubbles: pts, r: g.R0, pxPerMm: g.R0 >= 4.5 ? 99 : 0 };
+        const w = id.width, h = id.height, cyc = [0, 90, 270];
+        // hemat CPU: arah terakhir yang berhasil dulu, lalu SATU arah lain bergiliran per frame
+        S.legTry = ((S.legTry || 0) + 1) % 3;
+        const order = [S.legDeg || 0, cyc[S.legTry]].filter((d, i, a) => a.indexOf(d) === i);
+        for (const deg of order) {        // LJK boleh tegak atau menyamping
+            const r = LJKEngine.processMarkerless(LJKEngine.rotateImg(id, deg), { maxSide: 720, layout: { questions: 20, blocks: 4, options: 4 } });
+            if (!r.success) continue;
+            S.legDeg = deg;
+            const back = (p) => deg === 90 ? { x: p.y, y: h - 1 - p.x } : deg === 270 ? { x: w - 1 - p.y, y: p.x } : { x: p.x, y: p.y };
+            const g = r.geo, pad = g.R0 * 2.2, u0 = g.colU[0] - pad, u1 = g.colU[g.colU.length - 1] + pad, v0 = g.rowV[0] - pad, v1 = g.rowV[g.rowV.length - 1] + pad;
+            const pts = []; r.debug.grid.forEach(row => row.forEach(p => { const q = back(p); pts.push({ x: q.x, y: q.y, f: p.d >= r.thr }); }));
+            return { legacy: true, corners: [g.map(u0, v0), g.map(u1, v0), g.map(u1, v1), g.map(u0, v1)].map(back), bubbles: pts, r: g.R0, pxPerMm: g.R0 >= 4.5 ? 99 : 0 };
+        }
+        return null;
     }
     function drawOverlay(det, sc) {
         const v = $('video'), ov = $('overlay'), W = ov.clientWidth, H = ov.clientHeight;
@@ -295,12 +304,12 @@
     // ------------------------------------------------------------ proses
     function runEngine(img) {
         const p = { sensitivity: S.params.sens, contrast: S.params.con };
-        if (S.scanMode === 'markerless') return LJKEngine.processMarkerless(img, Object.assign(p, { layout: { questions: 20, blocks: 4, options: 4 } }));
+        if (S.scanMode === 'markerless') return LJKEngine.processMarkerlessAuto(img, Object.assign(p, { layout: { questions: 20, blocks: 4, options: 4 } }));
         const opsi = S.scanMode === 'key' ? S.editing.opsi : S.exam.opsi;
         const r = LJKEngine.processMarker(img, Object.assign({}, p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
         // LJK lama (tanpa marker, 4 kolom x 5 baris) dikenali otomatis untuk ujian <= 20 soal ABCD
         if (!r.success && S.scanMode === 'exam' && S.exam.jumlah <= 20 && S.exam.opsi === 'ABCD') {
-            const l = LJKEngine.processMarkerless(img, Object.assign({}, p, { layout: { questions: 20, blocks: 4, options: 4 } }));
+            const l = LJKEngine.processMarkerlessAuto(img, Object.assign({}, p, { layout: { questions: 20, blocks: 4, options: 4 } }));
             if (l.success) { l.warnings.push('LJK lama (tanpa marker) terdeteksi — dinilai dengan kunci ujian ini.'); return l; }
         }
         return r;
@@ -314,6 +323,7 @@
                 const r = runEngine(img);
                 S.procMs = Math.round(performance.now() - t0);
                 if (!r.success) { toast(r.error, 4500); S.busy = false; busy(false); return; }
+                if (r.image) S.lastImage = r.image;
                 if (S.scanMode === 'key') { keyFromScan(r); return; }
                 S.res = r; S.answers = r.answers.slice(); S.status = r.status.slice(); S.suggest = r.suggest.slice(); S.confirm = false; S.scanId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
                 showResult();
@@ -322,7 +332,7 @@
             finally { busy(false); }
         }, 50);
     }
-    function reprocess() { if (!S.lastImage) return; const r = runEngine(S.lastImage); if (!r.success) return toast(r.error); S.res = r; S.answers = r.answers.slice(); S.status = r.status.slice(); S.suggest = r.suggest.slice(); showResult(true); }
+    function reprocess() { if (!S.lastImage) return; const r = runEngine(S.lastImage); if (!r.success) return toast(r.error); if (r.image) S.lastImage = r.image; S.res = r; S.answers = r.answers.slice(); S.status = r.status.slice(); S.suggest = r.suggest.slice(); showResult(true); }
     function keyFromScan(r) {
         S.busy = false; stopCamera();
         let last = -1; r.answers.forEach((a, i) => { if (a) last = i; });
