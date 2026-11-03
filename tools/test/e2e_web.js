@@ -56,7 +56,7 @@ const API = 'https://script.google.com/macros/s/UJI_BULEUD/exec';
     await page.waitForSelector('#scr-scan.on');
     await page.setInputFiles('#scr-scan input[type=file]', c02.file.replace('.raw', '.jpg'));
     await page.waitForSelector('#scr-result.on', { timeout: 20000 });
-    await page.waitForFunction(() => /→|tidak|belum|kosong/.test(document.getElementById('ocrStatus').textContent), null, { timeout: 30000 });
+    await page.waitForFunction(() => /→|tidak|belum|kosong|Rekomendasi|Offline/.test(document.getElementById('ocrStatus').textContent), null, { timeout: 30000 });
     const st = await page.evaluate(() => ({ score: document.getElementById('resScore').textContent, benar: document.getElementById('resBenar').textContent, kelas: document.getElementById('selKelas').value, siswa: document.getElementById('selSiswa').value, ocr: document.getElementById('ocrStatus').textContent, ans: App._S.answers.slice(0, 40).map(a => a || '-').join('') }));
     console.log('Hasil scan:', st);
     assert.strictEqual(st.benar, '39 benar dari 40 soal');
@@ -75,7 +75,15 @@ const API = 'https://script.google.com/macros/s/UJI_BULEUD/exec';
     await page.click(`#ljkGrid [data-q="0"][data-l="${KEY[0]}"]`);
     assert.strictEqual(await page.textContent('#resBenar'), '40 benar dari 40 soal');
     // 5) simpan (pastikan siswa terpilih)
-    if (!st.siswa) { await page.selectOption('#selKelas', '9A'); await page.selectOption('#selSiswa', 'IBNU BIN LADEN'); }
+    assert.strictEqual(st.siswa, '', 'OCR tidak boleh memilih siswa otomatis');
+    await page.fill('#cariSiswa', 'ibnu ladn');               // salah ketik tetap ketemu
+    await page.waitForSelector('#cariHasil .hit');
+    assert.ok((await page.textContent('#cariHasil .hit')).includes('IBNU BIN LADEN'));
+    await page.click('#cariHasil .hit');
+    assert.strictEqual(await page.evaluate(() => document.getElementById('selSiswa').value), 'IBNU BIN LADEN');
+    assert.ok((await page.textContent('#pilihan')).includes('IBNU BIN LADEN'));
+    await page.evaluate(() => document.querySelector('#idCard').scrollIntoView());
+    await page.screenshot({ path: path.join(SHOT, '11_identitas_cari.png') });
     await page.click('#btnSave');
     await page.waitForFunction(() => /✅/.test(document.getElementById('toast').textContent), null, { timeout: 10000 });
     const hs = ss.getSheetByName('HasilScan'); assert.strictEqual(hs.getLastRow(), 2);
@@ -95,7 +103,7 @@ const API = 'https://script.google.com/macros/s/UJI_BULEUD/exec';
         await page.evaluate((i) => App.startScan(i, 'exam'), idx);
         await page.setInputFiles('#scr-scan input[type=file]', OLD);
         await page.waitForSelector('#scr-result.on', { timeout: 20000 });
-        await page.waitForFunction(() => /→|tidak|belum|kosong|Offline/.test(document.getElementById('ocrStatus').textContent), null, { timeout: 30000 });
+        await page.waitForFunction(() => /→|tidak|belum|kosong|Rekomendasi|Offline/.test(document.getElementById('ocrStatus').textContent), null, { timeout: 30000 });
         const o = await page.evaluate(() => ({ mode: App._S.res.mode, benar: document.getElementById('resBenar').textContent, notes: document.getElementById('resNotes').textContent, ocr: document.getElementById('ocrStatus').textContent, strip: !!document.querySelector('#idStrips canvas'), bubbles: document.querySelectorAll('#ljkGrid .bub').length }));
         console.log('LJK lama dari kartu ujian:', o);
         assert.strictEqual(o.mode, 'markerless'); assert.strictEqual(o.benar, '20 benar dari 20 soal'); assert.ok(o.strip); assert.strictEqual(o.bubbles, 80);

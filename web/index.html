@@ -34,6 +34,8 @@ label.l{display:block;font-size:12px;color:var(--tx2);margin:10px 0 5px}
 .muted{color:var(--tx2);font-size:13px}.small{font-size:12px}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:#ffffff08;font-size:13px;margin:3px;cursor:pointer}
 .chip.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.chip.rec{border-color:var(--ok);background:#14532d66}
+.hits{max-height:240px;overflow:auto;border-radius:10px}.hit{padding:9px 8px;border-bottom:1px solid var(--line);cursor:pointer}.hit:active{background:#ffffff10}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
 .b-ok{background:#14532d;color:#86efac}.b-warn{background:#422006;color:#fcd34d}.b-bad{background:#450a0a;color:#fca5a5}.b-info{background:#1e2a4a;color:#a5b8ff}
 .note{border-radius:11px;padding:9px 11px;font-size:13px;margin:8px 0}
@@ -188,6 +190,9 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
       <div id="idStrips"></div>
       <div id="ocrStatus" class="muted small"></div>
       <div id="ocrAlts"></div>
+      <div id="pilihan" style="margin-top:8px;font-size:14px"></div>
+      <input id="cariSiswa" class="in" style="margin-top:8px" placeholder="🔎 Cari nama siswa (semua kelas)…" autocomplete="off">
+      <div id="cariHasil" class="hits"></div>
       <div class="row" style="margin-top:8px"><select id="selKelas" class="in" onchange="App.fillStudents()"></select><select id="selSiswa" class="in" style="flex:1.6"></select></div>
       <div id="saveNote"></div>
       <button id="btnSave" class="btn ok wide" style="margin-top:10px" onclick="App.save()">Simpan & scan berikutnya</button>

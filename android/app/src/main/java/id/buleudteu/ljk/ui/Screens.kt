@@ -229,12 +229,34 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                 Text("Identitas siswa", color = TX2, fontSize = 12.sp)
                 val wRef = (vm.strips["nama"] ?: vm.strips.values.firstOrNull())?.width ?: 1
                 vm.strips.forEach { (k, b) -> Image(b.asImageBitmap(), k, Modifier.fillMaxWidth(minOf(1f, b.width.toFloat() / wRef)).padding(bottom = 4.dp).background(Color.White), contentScale = ContentScale.FillWidth) }
-                if (vm.ocrMsg.isNotEmpty()) Text(vm.ocrMsg, color = if (vm.match?.nama != null) OK else WARN, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
-                Row(Modifier.horizontalScroll(rememberScrollState())) { vm.match?.alternatives?.filter { it.skor >= 0.3 && it.nama != vm.match?.nama }?.forEach { a -> AssistChip({ vm.selKelas = a.kelas; vm.selSiswa = a.nama }, { Text("${a.nama} (${a.kelas})") }, Modifier.padding(end = 6.dp)) } }
+                if (vm.ocrMsg.isNotEmpty()) Text(vm.ocrMsg, color = TX2, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
+                // rekomendasi OCR (tidak dipilih otomatis)
+                Row(Modifier.horizontalScroll(rememberScrollState())) {
+                    vm.match?.alternatives?.filter { it.skor >= 0.3 }?.forEachIndexed { i, a ->
+                        val pct = (a.skor * 100).toInt()
+                        FilterChip(vm.selSiswa == a.nama && vm.selKelas == a.kelas, { vm.pickStudent(a.nama, a.kelas) }, { Text("${a.nama} (${a.kelas}) $pct%") }, Modifier.padding(end = 6.dp),
+                            colors = FilterChipDefaults.filterChipColors(containerColor = if (i == 0 && pct >= 80) OK.copy(alpha = 0.15f) else Color.Transparent))
+                    }
+                }
+                // terpilih
+                Text(if (vm.selSiswa.isEmpty()) "Belum ada siswa dipilih" else "✓ ${vm.selSiswa} (${vm.selKelas})", color = if (vm.selSiswa.isEmpty()) WARN else OK, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                // cari manual (lintas kelas, toleran salah ketik) + saring kelas
                 val sts = vm.studentsOf(u)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(Modifier.weight(0.4f)) { Picker(vm.selKelas.ifEmpty { "Kelas…" }, sts.map { it.kelas }.distinct().sorted()) { vm.selKelas = it; vm.selSiswa = "" } }
-                    Box(Modifier.weight(0.6f)) { Picker(vm.selSiswa.ifEmpty { "Nama siswa…" }, sts.filter { vm.selKelas.isEmpty() || it.kelas == vm.selKelas }.map { it.nama }.sorted()) { vm.selSiswa = it } }
+                var q by remember(vm.result) { mutableStateOf("") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 6.dp)) {
+                    Box(Modifier.weight(0.38f)) { Picker(vm.selKelasFilter.ifEmpty { "Semua kelas" }, listOf("Semua kelas") + sts.map { it.kelas }.distinct().sorted()) { vm.selKelasFilter = if (it == "Semua kelas") "" else it } }
+                    OutlinedTextField(q, { q = it }, Modifier.weight(0.62f), singleLine = true, placeholder = { Text("Cari nama siswa…") })
+                }
+                val hasil = remember(q, vm.selKelasFilter, sts) { vm.searchStudents(q) }
+                Column(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+                    hasil.forEach { st ->
+                        val sel = st.nama == vm.selSiswa && st.kelas == vm.selKelas
+                        val done = "${st.kelas}|${st.nama}" in u.terscan
+                        Row(Modifier.fillMaxWidth().clickable { vm.pickStudent(st.nama, st.kelas); q = "" }.background(if (sel) PRI.copy(alpha = 0.2f) else Color.Transparent).padding(vertical = 8.dp, horizontal = 6.dp)) {
+                            Text((if (done) "✓ " else "") + st.nama, color = Color.White, modifier = Modifier.weight(1f)); Text(st.kelas, color = TX2)
+                        }
+                    }
+                    if (hasil.isEmpty()) Text("Tidak ada nama yang cocok.", color = TX2, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
                 }
                 val fl = vm.flagged(); if (fl.isNotEmpty()) Note("Perlu dicek: nomor ${fl.joinToString()} (kuning).")
                 Button({ vm.save() }, Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = OK)) { Text("Simpan & scan berikutnya", color = Color(0xFF06210F)) }

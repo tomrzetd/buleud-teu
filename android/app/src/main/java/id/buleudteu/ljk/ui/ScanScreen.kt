@@ -49,12 +49,13 @@ fun ScanScreen(vm: AppViewModel) {
     val ctx = LocalContext.current
     val owner = LocalLifecycleOwner.current
     var det by remember { mutableStateOf<MarkerAnalyzer.Detection?>(null) }
-    var auto by remember { mutableStateOf(vm.store.auto && vm.scanMode != ScanMode.LEGACY) }
+    var auto by remember { mutableStateOf(vm.store.auto) }
     val capture = remember { ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
         .setResolutionSelector(ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY).build()).build() }
     val exec = remember { Executors.newSingleThreadExecutor() }
     var shooting by remember { mutableStateOf(false) }
-    val analyzer = remember { MarkerAnalyzer { d -> det = d } }
+    // LJK lama dideteksi langsung di preview bila: mode cek cepat, atau ujian <= 20 soal ABCD
+    val analyzer = remember { MarkerAnalyzer({ vm.scanMode == ScanMode.LEGACY || (vm.scanMode == ScanMode.EXAM && (vm.exam?.let { it.jumlah <= 20 && it.opsi == "ABCD" } ?: false)) }) { d -> det = d } }
 
     fun shoot() {
         if (shooting || vm.busy != null) return
@@ -68,7 +69,7 @@ fun ScanScreen(vm: AppViewModel) {
             override fun onError(e: ImageCaptureException) { ContextCompat.getMainExecutor(ctx).execute { vm.say("Gagal memotret: ${e.message}"); shooting = false; analyzer.paused = false } }
         })
     }
-    LaunchedEffect(det) { val d = det; if (auto && d != null && d.ready && vm.scanMode != ScanMode.LEGACY) shoot() }
+    LaunchedEffect(det) { val d = det; if (auto && d != null && d.ready) shoot() }
 
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) ctx.contentResolver.openInputStream(uri)?.use { s -> BitmapFactory.decodeStream(s)?.let { b: Bitmap -> vm.process(b, 0) } }
@@ -100,7 +101,18 @@ fun ScanScreen(vm: AppViewModel) {
             val pts = d.corners.map { Offset(ox + it.x.toFloat() * sw, oy + it.y.toFloat() * sh) }
             val col = if (d.ready) Color(0xFF22C55E) else if (d.tooFar) Color(0xFFF97316) else Color(0xFFFACC15)
             val path = Path().apply { moveTo(pts[0].x, pts[0].y); pts.drop(1).forEach { lineTo(it.x, it.y) }; close() }
-            drawPath(path, col.copy(alpha = 0.18f)); drawPath(path, col, style = Stroke(width = 8f))
+            drawPath(path, col.copy(alpha = if (d.legacy) 0.08f else 0.18f)); drawPath(path, col, style = Stroke(width = if (d.legacy) 5f else 8f))
+            if (d.legacy) {   // setiap bulatan jawaban: terisi = menyala hijau, kosong = cincin tipis
+                val r = (d.bubbleR * maxOf(sw, sh)).toFloat().coerceAtLeast(4f)
+                d.bubbles.forEachIndexed { i, b ->
+                    val c = Offset(ox + b.x.toFloat() * sw, oy + b.y.toFloat() * sh)
+                    if (d.filled.getOrElse(i) { false }) {
+                        drawCircle(Color(0xFF22C55E).copy(alpha = 0.25f), r * 2.0f, c)
+                        drawCircle(Color(0xFF22C55E).copy(alpha = 0.55f), r * 1.35f, c)
+                        drawCircle(Color(0xFF86EFAC), r * 1.1f, c, style = Stroke(width = 4f))
+                    } else drawCircle(Color.White.copy(alpha = 0.55f), r * 1.1f, c, style = Stroke(width = 2f))
+                }
+            }
         }
 
         Column(Modifier.fillMaxWidth().background(Color(0xAA000000)).padding(top = 36.dp, start = 14.dp, end = 14.dp, bottom = 10.dp)) {
@@ -112,7 +124,13 @@ fun ScanScreen(vm: AppViewModel) {
                 }
             }
             Text(
-                when { vm.scanMode == ScanMode.LEGACY -> "Masukkan seluruh tabel PG, lalu tekan tombol"; det == null -> "Cari 4 kotak hitam di sudut LJK…"; det!!.tooFar -> "Dekatkan kamera sedikit"; det!!.ready -> "Tahan… mengambil foto"; else -> "Tahan HP tetap diam" },
+                when {
+                    det == null -> if (vm.scanMode == ScanMode.LEGACY) "Masukkan seluruh tabel pilihan ganda ke layar…" else "Cari LJK… (F4: 4 kotak hitam di sudut)"
+                    det!!.tooFar -> "Dekatkan kamera sedikit"
+                    det!!.ready -> "Tahan… mengambil foto"
+                    det!!.legacy -> "LJK lama terdeteksi · ${det!!.filled.count { it }} bulatan terisi — tahan HP tetap diam"
+                    else -> "LJK F4 terdeteksi — tahan HP tetap diam"
+                },
                 color = Color.White, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
         }
 
@@ -121,7 +139,7 @@ fun ScanScreen(vm: AppViewModel) {
             Box(Modifier.size(78.dp).clip(CircleShape).background(if (det?.ready == true) Color(0xFF22C55E) else Color(0xFF4F7CFF)).border(5.dp, Color(0x88FFFFFF), CircleShape).clickable { shoot() })
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Auto", color = Color.White, fontSize = 13.sp)
-                Switch(checked = auto, onCheckedChange = { auto = it; vm.store.auto = it }, enabled = vm.scanMode != ScanMode.LEGACY)
+                Switch(checked = auto, onCheckedChange = { auto = it; vm.store.auto = it })
             }
         }
     }

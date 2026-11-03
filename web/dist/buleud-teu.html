@@ -34,6 +34,8 @@ label.l{display:block;font-size:12px;color:var(--tx2);margin:10px 0 5px}
 .muted{color:var(--tx2);font-size:13px}.small{font-size:12px}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:#ffffff08;font-size:13px;margin:3px;cursor:pointer}
 .chip.on{background:var(--pri);border-color:var(--pri);color:#fff}
+.chip.rec{border-color:var(--ok);background:#14532d66}
+.hits{max-height:240px;overflow:auto;border-radius:10px}.hit{padding:9px 8px;border-bottom:1px solid var(--line);cursor:pointer}.hit:active{background:#ffffff10}
 .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
 .b-ok{background:#14532d;color:#86efac}.b-warn{background:#422006;color:#fcd34d}.b-bad{background:#450a0a;color:#fca5a5}.b-info{background:#1e2a4a;color:#a5b8ff}
 .note{border-radius:11px;padding:9px 11px;font-size:13px;margin:8px 0}
@@ -188,6 +190,9 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
       <div id="idStrips"></div>
       <div id="ocrStatus" class="muted small"></div>
       <div id="ocrAlts"></div>
+      <div id="pilihan" style="margin-top:8px;font-size:14px"></div>
+      <input id="cariSiswa" class="in" style="margin-top:8px" placeholder="🔎 Cari nama siswa (semua kelas)…" autocomplete="off">
+      <div id="cariHasil" class="hits"></div>
       <div class="row" style="margin-top:8px"><select id="selKelas" class="in" onchange="App.fillStudents()"></select><select id="selSiswa" class="in" style="flex:1.6"></select></div>
       <div id="saveNote"></div>
       <button id="btnSave" class="btn ok wide" style="margin-top:10px" onclick="App.save()">Simpan & scan berikutnya</button>
@@ -1475,7 +1480,7 @@ else root.LJKIdent = LJKIdent;
         const sub = mode === 'key' ? `Varian ${S.editing.opsi}` : mode === 'markerless' ? '20 soal · 4 kolom × 5 baris' : `${S.exam.mapel} · ${S.exam.jumlah} soal · ${S.exam.opsi}`;
         $('scanTitle').innerHTML = esc(title) + `<span class="sub">${esc(sub)}</span>`;
         $('scanHint').textContent = mode === 'markerless' ? 'Masukkan seluruh tabel pilihan ganda ke layar, lalu tekan tombol' : 'Arahkan ke seluruh LJK — 4 kotak hitam di sudut harus terlihat';
-        $('chkAuto').checked = S.auto && mode !== 'markerless'; $('chkAuto').parentElement.style.display = mode === 'markerless' ? 'none' : '';
+        $('chkAuto').checked = S.auto;
         go('scan');
         try {
             if (!S.stream) S.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 2560 }, height: { ideal: 1440 } }, audio: false });
@@ -1491,21 +1496,33 @@ else root.LJKIdent = LJKIdent;
         clearTimeout(S.loop); S.stable = 0; S.lastCorners = null;
         const tick = () => {
             S.loop = setTimeout(tick, 260);
-            if (S.busy || !$('scr-scan').classList.contains('on') || S.scanMode === 'markerless') return;
+            if (S.busy || !$('scr-scan').classList.contains('on')) return;
             const v = $('video'); if (!v.videoWidth) return;
             const sc = 720 / Math.max(v.videoWidth, v.videoHeight);
             small.width = Math.round(v.videoWidth * sc); small.height = Math.round(v.videoHeight * sc);
             const cx = small.getContext('2d', { willReadFrequently: true }); cx.drawImage(v, 0, 0, small.width, small.height);
-            const det = LJKEngine.detectMarkersFast(cx.getImageData(0, 0, small.width, small.height), { maxSide: 720 });
+            const id = cx.getImageData(0, 0, small.width, small.height);
+            let det = S.scanMode === 'markerless' ? null : LJKEngine.detectMarkersFast(id, { maxSide: 720 });
+            if (!det && legacyAllowed()) det = detectLegacy(id);
             drawOverlay(det, sc);
         };
         tick();
+    }
+    // LJK lama boleh dideteksi: mode cek cepat, atau ujian <= 20 soal ABCD
+    function legacyAllowed() { return S.scanMode === 'markerless' || (S.scanMode === 'exam' && S.exam && S.exam.jumlah <= 20 && S.exam.opsi === 'ABCD'); }
+    // kisi LJK lama di frame preview kecil: semua bulatan + mana yang terisi
+    function detectLegacy(id) {
+        const r = LJKEngine.processMarkerless(id, { maxSide: 720, layout: { questions: 20, blocks: 4, options: 4 } });
+        if (!r.success) return null;
+        const g = r.geo, pad = g.R0 * 2.2, u0 = g.colU[0] - pad, u1 = g.colU[g.colU.length - 1] + pad, v0 = g.rowV[0] - pad, v1 = g.rowV[g.rowV.length - 1] + pad;
+        const pts = []; r.debug.grid.forEach(row => row.forEach(p => pts.push({ x: p.x, y: p.y, f: p.d >= r.thr })));
+        return { legacy: true, corners: [g.map(u0, v0), g.map(u1, v0), g.map(u1, v1), g.map(u0, v1)], bubbles: pts, r: g.R0, pxPerMm: g.R0 >= 4.5 ? 99 : 0 };
     }
     function drawOverlay(det, sc) {
         const v = $('video'), ov = $('overlay'), W = ov.clientWidth, H = ov.clientHeight;
         ov.width = W; ov.height = H; const ctx = ov.getContext('2d'); ctx.clearRect(0, 0, W, H);
         const sh = $('shutter');
-        if (!det) { S.stable = 0; S.lastCorners = null; sh.classList.remove('ready'); $('scanHint').textContent = 'Cari 4 kotak hitam di sudut LJK…'; return; }
+        if (!det) { S.stable = 0; S.lastCorners = null; sh.classList.remove('ready'); $('scanHint').textContent = S.scanMode === 'markerless' ? 'Masukkan seluruh tabel pilihan ganda ke layar…' : 'Cari LJK… (F4: 4 kotak hitam di sudut)'; return; }
         // video object-fit: cover -> koordinat layar
         const s = Math.max(W / v.videoWidth, H / v.videoHeight), ox = (W - v.videoWidth * s) / 2, oy = (H - v.videoHeight * s) / 2;
         const pts = det.corners.map(p => ({ x: p.x / sc * s + ox, y: p.y / sc * s + oy }));
@@ -1519,9 +1536,20 @@ else root.LJKIdent = LJKIdent;
         const ready = S.stable >= 3;
         ctx.lineWidth = 4; ctx.strokeStyle = ready ? '#22c55e' : okRes ? '#facc15' : '#f97316'; ctx.fillStyle = ready ? '#22c55e33' : '#facc1522';
         ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.fill(); ctx.stroke();
-        pts.forEach(p => { ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(p.x - 7, p.y - 7, 14, 14); });
+        if (!det.legacy) pts.forEach(p => { ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(p.x - 7, p.y - 7, 14, 14); });
+        else {   // setiap bulatan jawaban: terisi = menyala hijau, kosong = cincin tipis
+            const rr = Math.max(4, det.r / sc * s);
+            det.bubbles.forEach(b => {
+                const x = b.x / sc * s + ox, y = b.y / sc * s + oy;
+                if (b.f) {
+                    ctx.fillStyle = '#22c55e40'; ctx.beginPath(); ctx.arc(x, y, rr * 2, 0, 6.3); ctx.fill();
+                    ctx.fillStyle = '#22c55e90'; ctx.beginPath(); ctx.arc(x, y, rr * 1.35, 0, 6.3); ctx.fill();
+                    ctx.strokeStyle = '#86efac'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, rr * 1.1, 0, 6.3); ctx.stroke();
+                } else { ctx.strokeStyle = '#ffffff8c'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, rr * 1.1, 0, 6.3); ctx.stroke(); }
+            });
+        }
         sh.classList.toggle('ready', ready);
-        $('scanHint').textContent = !okRes ? 'Dekatkan kamera sedikit' : ready ? 'Tahan… mengambil foto' : 'Tahan HP tetap diam';
+        $('scanHint').textContent = !okRes ? 'Dekatkan kamera sedikit' : ready ? 'Tahan… mengambil foto' : det.legacy ? `LJK lama terdeteksi · ${det.bubbles.filter(b => b.f).length} bulatan terisi — tahan HP diam` : 'LJK F4 terdeteksi — tahan HP diam';
         if (ready && S.auto) { S.stable = 0; capture(); }
     }
     function capture() {
@@ -1719,7 +1747,7 @@ else root.LJKIdent = LJKIdent;
         const u = S.exam, sts = examStudents(u), kelas = [...new Set(sts.map(s => s.kelas))].sort();
         $('selKelas').innerHTML = '<option value="">Kelas…</option>' + kelas.map(k => `<option>${esc(k)}</option>`).join('');
         if (kelas.length === 1) $('selKelas').value = kelas[0];
-        fillStudents(); $('ocrAlts').innerHTML = ''; $('ocrStatus').textContent = '';
+        fillStudents(); $('ocrAlts').innerHTML = ''; $('ocrStatus').textContent = ''; $('cariSiswa').value = ''; $('cariHasil').innerHTML = ''; $('selSiswa').value = ''; showPicked();
         S.ident = { nomor: '' };
         const r = S.res;
         if (r.mode !== 'marker') { identityLegacy(r); return; }
@@ -1757,14 +1785,22 @@ else root.LJKIdent = LJKIdent;
         const sts = examStudents(S.exam), m = LJKIdent.match(f, sts);
         S.ident = { nomor: f.nomor }; log(`OCR: nama="${f.nama}" nomor="${f.nomor}" kelas="${f.kelas}"`);
         if (!f.nama && !f.nomor && !f.kelas) { $('ocrStatus').innerHTML = `<span style="color:#fcd34d">OCR tidak membaca apa pun${S.ocrErr ? ' (' + esc(S.ocrErr) + ')' : ''}. Pilih manual.</span>`; return; }
-        if (m.kelas) { $('selKelas').value = m.kelas; fillStudents(); }
-        if (m.nama) {
-            $('selSiswa').value = m.nama;
-            const pct = Math.round((m.namaScore || 1) * 100);
-            $('ocrStatus').innerHTML = `<span style="color:${pct >= 80 ? '#86efac' : '#fcd34d'}">OCR: <b>${esc(f.nama || f.nomor)}</b> → <b>${esc(m.nama)}</b> (${esc(m.kelas)}, cocok ${pct}%${m.via === 'nomor' ? ', via nomor' : ''}). Periksa sebelum simpan.</span>`;
-        } else $('ocrStatus').innerHTML = `<span style="color:#fcd34d">OCR membaca "<b>${esc(f.nama || '?')}</b>", kelas "<b>${esc(f.kelas || '?')}</b>" — belum yakin. Pilih atau ketuk saran:</span>`;
-        $('ocrAlts').innerHTML = (m.alternatives || []).filter(a => a.skor >= 0.3 && a.nama !== m.nama).map(a => `<span class="chip" data-n="${esc(a.nama)}" data-k="${esc(a.kelas)}">${esc(a.nama)} (${esc(a.kelas)})</span>`).join('');
-        $('ocrAlts').onclick = (e) => { const d = e.target.dataset; if (!d || !d.n) return; $('selKelas').value = d.k; fillStudents(); $('selSiswa').value = d.n; };
+        const best = (m.alternatives || [])[0], read = f.nama || f.nomor;
+        $('ocrStatus').innerHTML = !read ? '<span style="color:#fcd34d">OCR tidak membaca nama. Cari / pilih siswa secara manual.</span>'
+            : (!best || best.skor < 0.8) ? `<span style="color:#fcd34d">OCR membaca "<b>${esc(read)}</b>" — tidak ada nama yang cocok di daftar. Cari manual, atau ketuk saran terdekat.</span>`
+            : `OCR membaca "<b>${esc(read)}</b>". Rekomendasi (ketuk untuk memilih):`;
+        $('ocrAlts').innerHTML = (m.alternatives || []).filter(a => a.skor >= 0.3).map((a, i) => `<span class="chip ${i === 0 && a.skor >= 0.8 ? 'rec' : ''}" data-n="${esc(a.nama)}" data-k="${esc(a.kelas)}">${esc(a.nama)} (${esc(a.kelas)}) ${Math.round(a.skor * 100)}%</span>`).join('');
+        $('ocrAlts').onclick = (e) => { const d = e.target.dataset; if (!d || !d.n) return; pickStudent(d.n, d.k); };
+    }
+    function pickStudent(nama, kelas) { $('selKelas').value = kelas; fillStudents(); $('selSiswa').value = nama; $('cariSiswa').value = ''; $('cariHasil').innerHTML = ''; showPicked(); }
+    function showPicked() { const n = $('selSiswa').value, k = $('selKelas').value; $('pilihan').innerHTML = n ? `<span style="color:#86efac">✓ <b>${esc(n)}</b> (${esc(k)})</span>` : '<span style="color:#fcd34d">Belum ada siswa dipilih</span>'; }
+    // cari lintas kelas: mengandung kata kunci, atau mirip (toleran salah ketik)
+    function searchStudents() {
+        const q = $('cariSiswa').value.trim().toUpperCase(), u = S.exam; if (!u) return;
+        if (!q) { $('cariHasil').innerHTML = ''; return; }
+        const done = new Set(u.terscan || []);
+        const hasil = examStudents(u).map(st => ({ st, v: st.nama.indexOf(q) >= 0 ? 2 : LJKIdent.nameSim(q, st.nama) })).filter(x => x.v >= 0.5).sort((a, b) => b.v - a.v).slice(0, 10);
+        $('cariHasil').innerHTML = hasil.length ? hasil.map(x => `<div class="hit" data-n="${esc(x.st.nama)}" data-k="${esc(x.st.kelas)}">${done.has(x.st.kelas + '|' + x.st.nama) ? '✓ ' : ''}${esc(x.st.nama)}<span class="muted"> ${esc(x.st.kelas)}</span></div>`).join('') : '<div class="muted small" style="padding:6px">Tidak ada nama yang cocok.</div>';
     }
     function fillStudents() {
         const u = S.exam; if (!u) return;
@@ -1862,6 +1898,11 @@ else root.LJKIdent = LJKIdent;
         window.addEventListener('online', () => flushQueue());
         if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => { });
     }
+    document.addEventListener('DOMContentLoaded', () => {
+        $('cariSiswa').addEventListener('input', searchStudents);
+        $('cariHasil').addEventListener('click', (e) => { const d = e.target.closest('.hit'); if (d) pickStudent(d.dataset.n, d.dataset.k); });
+        $('selSiswa').addEventListener('change', showPicked); $('selKelas').addEventListener('change', showPicked);
+    });
     window.App = { go, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
     document.addEventListener('DOMContentLoaded', init);
 })();

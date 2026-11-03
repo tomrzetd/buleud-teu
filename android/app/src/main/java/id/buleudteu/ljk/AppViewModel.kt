@@ -58,6 +58,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var match by mutableStateOf<Match?>(null)
     var selKelas by mutableStateOf("")
     var selSiswa by mutableStateOf("")
+    var selKelasFilter by mutableStateOf("")
     var nomorOcr = ""
     private var confirmFlags = false
     private var scanId = ""
@@ -157,7 +158,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         result = r; answers.clear(); answers.addAll(r.answers); status.clear(); status.addAll(r.status)
         confirmFlags = false; scanId = UUID.randomUUID().toString().take(8); match = null; ocrMsg = ""; selSiswa = ""; nomorOcr = ""
         val kelasList = studentsOf(exam).map { it.kelas }.distinct().sorted()
-        selKelas = if (kelasList.size == 1) kelasList[0] else ""
+        selKelas = ""; selKelasFilter = if (kelasList.size == 1) kelasList[0] else ""
         screen = Screen.RESULT
         if (scanMode == ScanMode.EXAM) readIdentity(scanId)
     }
@@ -187,10 +188,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (m2.nama != null && (m.nama == null || m2.namaScore > m.namaScore)) { f = g; m = m2 }
         }
         if (id != scanId) return@launch
-        nomorOcr = f.nomor; match = m
-        if (m.kelas != null) selKelas = m.kelas
-        if (m.nama != null) { selSiswa = m.nama; ocrMsg = "OCR: ${f.nama.ifEmpty { f.nomor }} → ${m.nama} (${m.kelas}, cocok ${(m.namaScore * 100).roundToInt()}%). Periksa sebelum simpan." }
-        else ocrMsg = "OCR membaca \"${f.nama.ifEmpty { "?" }}\" — belum yakin. Pilih manual / ketuk saran."
+        nomorOcr = f.nomor; match = m; ocrMsg = recommendMsg(f.nama.ifEmpty { f.nomor }, m)
     }
 
     /** LJK lama: satu potongan berlabel (Nomor/Nama/Kelas/Mapel) -> OCR -> parse -> cocokkan */
@@ -209,11 +207,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (m2.nama != null && (m.nama == null || m2.namaScore > m.namaScore)) { f = g; m = m2 }
         }
         if (id != scanId) return
-        nomorOcr = LjkIdent.digits(f.nomor); match = m
-        if (m.kelas != null) selKelas = m.kelas
-        if (m.nama != null) { selSiswa = m.nama; ocrMsg = "OCR: ${f.nama.ifEmpty { f.nomor }} → ${m.nama} (${m.kelas}, cocok ${(m.namaScore * 100).roundToInt()}%). Periksa sebelum simpan." }
-        else ocrMsg = "OCR membaca \"${f.nama.ifEmpty { "?" }}\" — belum yakin. Pilih manual / ketuk saran."
+        nomorOcr = LjkIdent.digits(f.nomor); match = m; ocrMsg = recommendMsg(f.nama.ifEmpty { f.nomor }, m)
     }
+
+    /** OCR hanya rekomendasi: guru tetap memilih/mencari sendiri */
+    private fun recommendMsg(read: String, m: Match): String {
+        val best = m.alternatives.firstOrNull()
+        return when {
+            read.isEmpty() -> "OCR tidak membaca nama. Cari / pilih siswa secara manual."
+            best == null || best.skor < 0.8 -> "OCR membaca \"$read\" — tidak ada nama yang cocok di daftar siswa. Cari manual, atau ketuk saran terdekat."
+            else -> "OCR membaca \"$read\". Rekomendasi (ketuk untuk memilih):"
+        }
+    }
+
+    /** pencarian siswa lintas kelas: berisi kata kunci, atau mirip (toleran salah ketik) */
+    fun searchStudents(q: String): List<id.buleudteu.ljk.ident.Siswa> {
+        val all = studentsOf(exam).filter { selKelasFilter.isEmpty() || it.kelas == selKelasFilter }
+        val t = q.trim().uppercase()
+        if (t.isEmpty()) return all.sortedBy { it.nama }.take(30)
+        return all.map { it to (if (it.nama.contains(t)) 2.0 else LjkIdent.nameSim(t, it.nama)) }.filter { it.second >= 0.5 }.sortedByDescending { it.second }.take(12).map { it.first }
+    }
+    fun pickStudent(nama: String, kelas: String) { selSiswa = nama; selKelas = kelas }
 
     fun tapAnswer(q: Int, l: Char) { answers[q] = if (answers[q] == l) null else l; status[q] = if (answers[q] != null) "ok" else "blank"; confirmFlags = false }
     fun flagged() = status.mapIndexedNotNull { i, s -> if ((s == "double" || s == "weak") && i < (exam?.jumlah ?: 20)) i + 1 else null }
