@@ -21,5 +21,13 @@ fun main(args: Array<String>) {
         if (got == exp) ok++ else println("BEDA: input=${c.subList(1, 4)}\n  js=$exp\n  kt=$got")
     }
     println("Identitas Kotlin == JS: $ok/$n")
-    if (bad > 0 || ok != n) System.exit(1)
+    var pok = 0; var pn = 0
+    for (l in lines.filter { it.startsWith("P\t") }) {
+        val c = l.split("\t"); pn++
+        val f = LjkIdent.parse(c[1].replace("\\n", "\n"))
+        val got = listOf(f.nama, f.nomor, f.kelas); val exp = listOf(c.getOrElse(2) { "" }, c.getOrElse(3) { "" }, c.getOrElse(4) { "" })
+        if (got == exp) pok++ else println("BEDA parse: ${c[1]}\n  js=$exp\n  kt=$got")
+    }
+    println("Parse LJK lama Kotlin == JS: $pok/$pn")
+    if (bad > 0 || ok != n || pok != pn) System.exit(1)
 }

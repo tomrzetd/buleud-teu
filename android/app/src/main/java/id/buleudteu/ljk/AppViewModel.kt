@@ -140,7 +140,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             when (scanMode) {
                 ScanMode.LEGACY -> LjkEngine.processMarkerless(img, sensitivity = store.sensitivity.toDouble(), contrast = store.contrast.toDouble())
                 ScanMode.KEY -> LjkEngine.processMarker(img, draft.opsi.length, 50, store.sensitivity.toDouble(), store.contrast.toDouble())
-                ScanMode.EXAM -> LjkEngine.processMarker(img, exam!!.opsi.length, exam!!.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble())
+                ScanMode.EXAM -> {
+                    val u = exam!!
+                    val m = LjkEngine.processMarker(img, u.opsi.length, u.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble())
+                    // LJK lama (tanpa marker, 4 kolom x 5 baris) dikenali otomatis untuk ujian <= 20 soal ABCD
+                    if (!m.success && u.jumlah <= 20 && u.opsi == "ABCD") {
+                        val l = LjkEngine.processMarkerless(img, sensitivity = store.sensitivity.toDouble(), contrast = store.contrast.toDouble())
+                        if (l.success) { l.warnings.add("LJK lama (tanpa marker) terdeteksi — dinilai dengan kunci ujian ini."); l } else m
+                    } else m
+                }
             }
         }
         busy = null
@@ -163,7 +171,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun readIdentity(id: String) = viewModelScope.launch {
-        val r = result ?: return@launch; val img = image ?: return@launch; val geo = r.geo ?: return@launch
+        val r = result ?: return@launch; val img = image ?: return@launch
+        if (r.mode == "markerless") { readIdentityLegacy(id, r, img); return@launch }
+        val geo = r.geo ?: return@launch
         val st = withContext(Dispatchers.Default) { LjkEngine.identityStrips(img, geo, 12.0) }
         strips = st.mapValues { (_, v) -> Bitmap.createBitmap(v.first.argb, v.first.w, v.first.h, Bitmap.Config.ARGB_8888) }
         val inked = st.filter { it.value.second > 0.003 }.keys
@@ -178,6 +188,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (id != scanId) return@launch
         nomorOcr = f.nomor; match = m
+        if (m.kelas != null) selKelas = m.kelas
+        if (m.nama != null) { selSiswa = m.nama; ocrMsg = "OCR: ${f.nama.ifEmpty { f.nomor }} → ${m.nama} (${m.kelas}, cocok ${(m.namaScore * 100).roundToInt()}%). Periksa sebelum simpan." }
+        else ocrMsg = "OCR membaca \"${f.nama.ifEmpty { "?" }}\" — belum yakin. Pilih manual / ketuk saran."
+    }
+
+    /** LJK lama: satu potongan berlabel (Nomor/Nama/Kelas/Mapel) -> OCR -> parse -> cocokkan */
+    private suspend fun readIdentityLegacy(id: String, r: LjkResult, img: ArgbImage) {
+        val lat = r.lattice ?: return
+        val rc = withContext(Dispatchers.Default) { LjkEngine.identLattice(img, lat, 1100) }
+        val bmp = Bitmap.createBitmap(rc.argb, rc.w, rc.h, Bitmap.Config.ARGB_8888)
+        strips = mapOf("identitas" to bmp)
+        if (!store.ocr) { ocrMsg = "OCR mati — pilih manual."; return }
+        ocrMsg = "Membaca identitas (ML Kit)…"
+        var f = LjkIdent.parse(IdentOcr.mlkitText(bmp)); var m = LjkIdent.match(f, studentsOf(exam))
+        if ((m.nama == null || m.namaScore < 0.8) && store.token.isNotEmpty()) {
+            ocrMsg = "Membaca identitas (OCR Google)…"
+            val t = try { api.post(JSONObject().put("action", "ocr").put("image", IdentOcr.jpegB64(bmp))).optString("text") } catch (e: Exception) { "" }
+            val g = LjkIdent.parse(t); val m2 = LjkIdent.match(g, studentsOf(exam))
+            if (m2.nama != null && (m.nama == null || m2.namaScore > m.namaScore)) { f = g; m = m2 }
+        }
+        if (id != scanId) return
+        nomorOcr = LjkIdent.digits(f.nomor); match = m
         if (m.kelas != null) selKelas = m.kelas
         if (m.nama != null) { selSiswa = m.nama; ocrMsg = "OCR: ${f.nama.ifEmpty { f.nomor }} → ${m.nama} (${m.kelas}, cocok ${(m.namaScore * 100).roundToInt()}%). Periksa sebelum simpan." }
         else ocrMsg = "OCR membaca \"${f.nama.ifEmpty { "?" }}\" — belum yakin. Pilih manual / ketuk saran."

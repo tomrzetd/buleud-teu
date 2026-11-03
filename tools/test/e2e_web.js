@@ -82,17 +82,42 @@ const API = 'https://script.google.com/macros/s/UJI_BULEUD/exec';
     const row = hs.getRange(2, 1, 1, 17).getDisplayValues()[0];
     console.log('Baris HasilScan:', row.slice(1, 12).join(' | '));
     assert.strictEqual(row[11], '100');
+    // 5b) LJK LAMA (tanpa marker) discan dari kartu ujian 20 soal -> dikenali otomatis, dinilai, OCR, simpan
+    const OLD = process.env.LJK_LAMA || '/home/claude/test/ljk_asli.png';
+    if (fs.existsSync(OLD)) {
+        await page.evaluate(() => App.go('home'));
+        await page.click('text=＋ Ujian baru');
+        await page.fill('#exNama', 'PSAS LJK LAMA'); await page.fill('#exMapel', 'IPA');
+        await page.click('#exKelas [data-k="9A"]'); await page.click('[data-opsi="ABCD"]');
+        await page.fill('#exKunci', 'ACCBBCBCDCCDCBAADCBA'); await page.dispatchEvent('#exKunci', 'input');
+        await page.click('text=Simpan ujian'); await page.waitForSelector('#scr-home.on'); await page.waitForTimeout(400);
+        const idx = await page.evaluate(() => App._S.data.ujian.findIndex(u => u.nama === 'PSAS LJK LAMA'));
+        await page.evaluate((i) => App.startScan(i, 'exam'), idx);
+        await page.setInputFiles('#scr-scan input[type=file]', OLD);
+        await page.waitForSelector('#scr-result.on', { timeout: 20000 });
+        await page.waitForFunction(() => /→|tidak|belum|kosong|Offline/.test(document.getElementById('ocrStatus').textContent), null, { timeout: 30000 });
+        const o = await page.evaluate(() => ({ mode: App._S.res.mode, benar: document.getElementById('resBenar').textContent, notes: document.getElementById('resNotes').textContent, ocr: document.getElementById('ocrStatus').textContent, strip: !!document.querySelector('#idStrips canvas'), bubbles: document.querySelectorAll('#ljkGrid .bub').length }));
+        console.log('LJK lama dari kartu ujian:', o);
+        assert.strictEqual(o.mode, 'markerless'); assert.strictEqual(o.benar, '20 benar dari 20 soal'); assert.ok(o.strip); assert.strictEqual(o.bubbles, 80);
+        await page.screenshot({ path: path.join(SHOT, '10_ljk_lama_hasil.png') });
+        await page.selectOption('#selKelas', '9A'); await page.selectOption('#selSiswa', 'IBNU BIN LADEN');
+        const before = ss.getSheetByName('HasilScan').getLastRow();
+        await page.click('#btnSave'); await page.waitForTimeout(1500);
+        if (ss.getSheetByName('HasilScan').getLastRow() === before) { await page.click('#btnSave'); await page.waitForTimeout(1500); } // konfirmasi siswa sudah pernah discan
+        assert.strictEqual(ss.getSheetByName('HasilScan').getLastRow(), before + 1, 'hasil LJK lama tersimpan');
+        console.log('Baris LJK lama:', ss.getSheetByName('HasilScan').getRange(before + 1, 1, 1, 14).getDisplayValues()[0].slice(1, 14).join(' | '));
+    }
     // 6) analisis (tambahkan beberapa scan langsung lewat API agar n cukup)
-    const tok = await page.evaluate(() => App._S.token), exam = await page.evaluate(() => App._S.data.ujian[0].id);
+    const tok = await page.evaluate(() => App._S.token), exam = await page.evaluate(() => App._S.data.ujian.find(u => u.nama === 'PSAS GANJIL IPA').id);
     ['IBNU SINA', 'INDAH LESTARI', 'BUDI SANTOSO', 'LADENA PUTRI'].forEach((n, i) => gas.POST({ action: 'save', token: tok, examId: exam, siswa: { nama: n, kelas: i < 2 ? '9A' : '9B' }, answers: [...KEY].map((ch, j) => (j + i) % (i + 2) ? ch : 'D') }));
     await page.evaluate(() => App.go('home'));
-    await page.click('text=Analisis'); await page.click('text=Hitung analisis');
+    await page.evaluate(() => App.openAnalysis(App._S.data.ujian.findIndex(u => u.nama === 'PSAS GANJIL IPA'))); await page.click('text=Hitung analisis');
     await page.waitForSelector('#anOut table', { timeout: 15000 });
     await page.screenshot({ path: path.join(SHOT, '8_analisis.png'), fullPage: false });
     await page.click('text=Simpan ke Bank Soal'); await page.waitForFunction(() => /Bank Soal/.test(document.getElementById('toast').textContent));
     assert.strictEqual(ss.getSheetByName('BankSoal').getLastRow(), 41);
     // 7) cetak
-    await page.evaluate(() => App.go('home')); await page.click('text=Cetak LJK');
+    await page.evaluate(() => App.go('home')); await page.click('text=Cetak LJK >> nth=0');
     await page.waitForSelector('#prPreview svg');
     await page.screenshot({ path: path.join(SHOT, '9_cetak.png') });
     await page.emulateMedia({ media: 'print' });

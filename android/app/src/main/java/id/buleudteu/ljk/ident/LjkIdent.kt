@@ -40,6 +40,35 @@ object LjkIdent {
         return s
     }
 
+    // ---------- LJK lama: satu potongan berlabel ("Nama Peserta : IBNU ...") -> field (port parse() JS)
+    private val I = setOf(RegexOption.IGNORE_CASE)
+    private val LABELS = listOf(
+        "nomor" to Regex("n[o0]m[o0]r|n[o0]\\.?\\s*peserta|n[o0]\\.?\\s*ujian", I),
+        "nama" to Regex("\\bnama\\b", I),
+        "kelas" to Regex("\\bke[l1i]as\\b", I),
+        "mapel" to Regex("mata\\s*pe[l1i]|pe[l1i]ajaran|mapel", I))
+    private val RIGHT_COL = Regex("sekolah|hari|tanggal|waktu", I)
+    private val NAMA_RE = Regex("\\bnama\\b", I)
+    private val AFTER = Regex("(peserta|ujian|kelas|ke[l1i]as|pelajaran|pe[l1i]ajaran|mapel)\\s*[:;.]?(.*)$", I)
+    private val JUNK = Regex("lembar|jawaban|penilaian|tahun", I)
+    private fun clean(s: String) = s.replace(Regex("^[\\s:;.,_\\-–—|]+"), "").replace(Regex("[_]{2,}.*$"), "").replace(Regex("[\\s:;.,_\\-–—|]+$"), "").trim()
+
+    fun parse(text: String?): Fields {
+        val lines = (text ?: "").split(Regex("\\r?\\n")).map { it.trim() }.filter { it.isNotEmpty() }.map { it.split(RIGHT_COL)[0].trim() }.filter { it.isNotEmpty() }
+        val out = linkedMapOf("nomor" to "", "nama" to "", "kelas" to "", "mapel" to "")
+        val order = ArrayList<String>(); val loose = ArrayList<String>()
+        for (l in lines) {
+            val lab = LABELS.firstOrNull { (k, re) -> re.containsMatchIn(l) && !(k == "nomor" && NAMA_RE.containsMatchIn(l)) }
+            if (lab != null) {
+                val v = AFTER.find(l)?.let { clean(it.groupValues[2]) } ?: ""
+                if (v.isNotEmpty() && out[lab.first]!!.isEmpty()) out[lab.first] = v else order.add(lab.first)
+            } else { val v = clean(l); if (v.isNotEmpty() && !JUNK.containsMatchIn(v)) loose.add(v) }
+        }
+        for (k in order) if (out[k]!!.isEmpty() && loose.isNotEmpty()) out[k] = loose.removeAt(0)
+        if (out.values.all { it.isEmpty() } && loose.size >= 3) for (k in listOf("nomor", "nama", "kelas", "mapel")) if (loose.isNotEmpty()) out[k] = loose.removeAt(0)
+        return Fields(out["nama"]!!, out["nomor"]!!, out["kelas"]!!)
+    }
+
     fun fromFields(nama: String?, nomor: String?, kelas: String?): Fields {
         fun one(s: String?) = (s ?: "").replace(Regex("\\r?\\n"), " ").replace(Regex("[|_\\[\\]{}]"), " ").replace(Regex("\\s+"), " ").trim()
         val map = mapOf('0' to "O", '1' to "I", '2' to "Z", '4' to "A", '5' to "S", '6' to "G", '8' to "B")

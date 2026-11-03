@@ -27,6 +27,8 @@ object IdentOcr {
         LjkIdent.fromFields(jobs["nama"]?.await(), jobs["nomor"]?.await(), jobs["kelas"]?.await())
     }
 
+    suspend fun mlkitText(b: Bitmap): String = try { recognizer.process(InputImage.fromBitmap(b, 0)).await().text } catch (e: Exception) { "" }
+
     suspend fun google(api: Api, strips: Map<String, Bitmap>): Fields = coroutineScope {
         val jobs = strips.mapValues { (_, b) -> async {
             try { api.post(JSONObject().put("action", "ocr").put("image", jpegB64(b))).optString("text") } catch (e: Exception) { "" }

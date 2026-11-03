@@ -127,7 +127,7 @@ fun AppRoot(vm: AppViewModel) {
                 OutlinedButton({ vm.startScan(null, ScanMode.LEGACY) }, Modifier.fillMaxWidth()) { Text("Scan LJK lama 20 soal (tanpa marker)") }
                 OutlinedButton({ shareTemplate(ctx, "ABCD") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCD (PDF)") }
                 OutlinedButton({ shareTemplate(ctx, "ABCDE") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCDE (PDF)") }
-                Text("LJK dengan kop & logo sekolah: cetak dari web app (menu Cetak LJK).", color = TX2, fontSize = 12.sp)
+                Text("Untuk menilai & menyimpan LJK lama 20 soal: buat ujian 20 soal ABCD lalu tekan Scan pada kartu ujian (LJK lama dikenali otomatis). Tombol di atas hanya untuk cek cepat. LJK berkop sekolah: cetak dari web app.", color = TX2, fontSize = 12.sp)
             }
         }
         Button({ vm.editExam(null) }, Modifier.fillMaxWidth().padding(14.dp).height(52.dp)) { Text("＋ Ujian baru") }
@@ -227,7 +227,8 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
             }
             if (u != null) Card {
                 Text("Identitas siswa", color = TX2, fontSize = 12.sp)
-                listOf("nama", "nomor", "kelas").forEach { k -> vm.strips[k]?.let { b -> Image(b.asImageBitmap(), k, Modifier.fillMaxWidth(if (k == "nama") 1f else b.width.toFloat() / (vm.strips["nama"]?.width ?: b.width)).padding(bottom = 4.dp).background(Color.White), contentScale = ContentScale.FillWidth) } }
+                val wRef = (vm.strips["nama"] ?: vm.strips.values.firstOrNull())?.width ?: 1
+                vm.strips.forEach { (k, b) -> Image(b.asImageBitmap(), k, Modifier.fillMaxWidth(minOf(1f, b.width.toFloat() / wRef)).padding(bottom = 4.dp).background(Color.White), contentScale = ContentScale.FillWidth) }
                 if (vm.ocrMsg.isNotEmpty()) Text(vm.ocrMsg, color = if (vm.match?.nama != null) OK else WARN, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
                 Row(Modifier.horizontalScroll(rememberScrollState())) { vm.match?.alternatives?.filter { it.skor >= 0.3 && it.nama != vm.match?.nama }?.forEach { a -> AssistChip({ vm.selKelas = a.kelas; vm.selSiswa = a.nama }, { Text("${a.nama} (${a.kelas})") }, Modifier.padding(end = 6.dp)) } }
                 val sts = vm.studentsOf(u)

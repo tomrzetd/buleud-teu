@@ -54,7 +54,7 @@ ctx.Utilities.newBlob = (bytes) => ({ bytes });
 ctx.Drive = { Files: { create: (meta, blob) => { const id = 'f' + files.size; files.set(id, blob.bytes); return { id }; } } };
 ctx.DocumentApp = { openById: (id) => ({ getBody: () => ({ getText: () => {
     const f = path.join(os.tmpdir(), 'ocr_' + id + '_' + Date.now() + '.jpg'); fs.writeFileSync(f, files.get(id));
-    try { return cp.execFileSync('tesseract', [f, '-', '--psm', '7'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { return ''; } } }) }) };
+    try { return cp.execFileSync('tesseract', [f, '-', '--psm', '6'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { return ''; } } }) }) };
 ctx.DriveApp = { getFileById: () => ({ setTrashed: () => { } }) };
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Statistik.gs'), 'utf8'), ctx);

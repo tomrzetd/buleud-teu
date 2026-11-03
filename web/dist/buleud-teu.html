@@ -132,7 +132,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
     <div id="examList"></div>
     <div class="card"><h3>Mode lain</h3>
       <button class="btn ghost wide" onclick="App.startScan(null,'markerless')">Scan LJK lama 20 soal (tanpa marker)</button>
-      <p class="muted small">Untuk LJK lama 4 kolom × 5 baris. Jawaban tidak disimpan ke ujian; gunakan untuk memeriksa cepat.</p></div>
+      <p class="muted small">Hanya cek cepat (tidak disimpan). Untuk <b>menilai & menyimpan</b> LJK lama 20 soal: buat ujian 20 soal ABCD, lalu tekan <b>Scan</b> di kartu ujian — LJK lama dikenali otomatis.</p></div>
   </div>
   <div class="fab"><button class="btn pri wide" onclick="App.editExam(null)">＋ Ujian baru</button></div>
 </section>
@@ -1549,7 +1549,13 @@ else root.LJKIdent = LJKIdent;
         const p = { sensitivity: S.params.sens, contrast: S.params.con };
         if (S.scanMode === 'markerless') return LJKEngine.processMarkerless(img, Object.assign(p, { layout: { questions: 20, blocks: 4, options: 4 } }));
         const opsi = S.scanMode === 'key' ? S.editing.opsi : S.exam.opsi;
-        return LJKEngine.processMarker(img, Object.assign(p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
+        const r = LJKEngine.processMarker(img, Object.assign({}, p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
+        // LJK lama (tanpa marker, 4 kolom x 5 baris) dikenali otomatis untuk ujian <= 20 soal ABCD
+        if (!r.success && S.scanMode === 'exam' && S.exam.jumlah <= 20 && S.exam.opsi === 'ABCD') {
+            const l = LJKEngine.processMarkerless(img, Object.assign({}, p, { layout: { questions: 20, blocks: 4, options: 4 } }));
+            if (l.success) { l.warnings.push('LJK lama (tanpa marker) terdeteksi — dinilai dengan kunci ujian ini.'); return l; }
+        }
+        return r;
     }
     function processImage(img) {
         if (S.busy) return; S.busy = true; busy(true, 'Memproses LJK…');
@@ -1610,7 +1616,8 @@ else root.LJKIdent = LJKIdent;
             $('resBenar').textContent = `${sc.benar} benar dari ${n} soal`;
             const ring = $('resRing'); ring.style.strokeDashoffset = 264 - 264 * sc.skor / 100; ring.style.stroke = sc.skor < (u.kktp || 75) ? '#ef4444' : '#22c55e';
         } else { $('resScore').textContent = S.answers.filter(Boolean).length; $('resBenar').textContent = 'jawaban terbaca (tanpa kunci)'; }
-        renderLjk($('ljkGrid'), { n, total: u ? 50 : 20, rows: u ? 10 : 5, opsi: u ? u.opsi : 'ABCD', answers: S.answers, status: S.status, suggest: S.suggest, key: keyArr(), onTap: (q, L) => {
+        const lama = S.res && S.res.mode === 'markerless';
+        renderLjk($('ljkGrid'), { n, total: lama ? 20 : 50, rows: lama ? 5 : 10, opsi: u ? u.opsi : 'ABCD', answers: S.answers, status: S.status, suggest: S.suggest, key: keyArr(), onTap: (q, L) => {
             S.answers[q] = S.answers[q] === L ? null : L; S.status[q] = S.answers[q] ? 'ok' : 'blank'; S.confirm = false; renderAnswers(); drawEvidence();
         } });
         if (u) { const fl = flagged(); $('saveNote').innerHTML = fl.length ? `<div class="note n-warn">Perlu dicek: nomor ${fl.join(', ')} (kuning).</div>` : ''; }
@@ -1715,7 +1722,7 @@ else root.LJKIdent = LJKIdent;
         fillStudents(); $('ocrAlts').innerHTML = ''; $('ocrStatus').textContent = '';
         S.ident = { nomor: '' };
         const r = S.res;
-        if (r.mode !== 'marker') { $('idStrips').innerHTML = ''; return; }
+        if (r.mode !== 'marker') { identityLegacy(r); return; }
         const strips = LJKEngine.identityStrips(S.lastImage, r.geo, 12);
         $('idStrips').innerHTML = '';
         const b64 = {};
@@ -1733,6 +1740,18 @@ else root.LJKIdent = LJKIdent;
         $('ocrStatus').textContent = 'Membaca identitas (OCR Google)…';
         Promise.all(['nama', 'nomor', 'kelas'].map(k => b64[k] ? apiPost({ action: 'ocr', image: b64[k] }).then(j => j.text || '').catch(e => { S.ocrErr = e.message; return ''; }) : Promise.resolve('')))
             .then(([nama, nomor, kelas]) => { if (scan !== S.scanId) return; applyIdentity(LJKIdent.fromFields({ nama, nomor, kelas })); });
+    }
+    // LJK lama: satu potongan berlabel -> OCR -> parse -> cocokkan
+    function identityLegacy(r) {
+        const rc = LJKEngine.identLattice(S.lastImage, r.geo, 1100);
+        const c = document.createElement('canvas'); c.className = 'strip'; putGray(c, rc.w, rc.h, rc.data);
+        $('idStrips').innerHTML = ''; $('idStrips').appendChild(c);
+        if (!S.ocr) { $('ocrStatus').textContent = 'OCR mati — pilih kelas & nama.'; return; }
+        if (!navigator.onLine) { $('ocrStatus').textContent = 'Offline — pilih kelas & nama secara manual.'; return; }
+        const scan = S.scanId;
+        $('ocrStatus').textContent = 'Membaca identitas (OCR Google)…';
+        apiPost({ action: 'ocr', image: c.toDataURL('image/jpeg', 0.9).split(',')[1] }).then(j => j.text || '').catch(e => { S.ocrErr = e.message; return ''; })
+            .then(t => { if (scan !== S.scanId) return; const f = LJKIdent.parse(t); f.nomor = LJKIdent.digits(f.nomor); applyIdentity(f); });
     }
     function applyIdentity(f) {
         const sts = examStudents(S.exam), m = LJKIdent.match(f, sts);

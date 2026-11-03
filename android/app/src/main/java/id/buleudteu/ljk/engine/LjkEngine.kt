@@ -684,6 +684,11 @@ object LjkEngine {
         }
         return Rect(outW, outH, out, k, u1, v1)
     }
+    /** potongan identitas LJK lama (tanpa marker): area di atas tabel PG, satuan kisi kanonik (sama dengan web identLattice) */
+    fun identLattice(img: ArgbImage, l: Lattice, outW: Int = 1100): Rect {
+        val u0 = l.colU[0]; val gw = l.colU[l.colU.size - 1] - u0; val v0 = l.rowV[0]
+        return sampleRect(img, l.map, l.scale, u0 - 0.078 * gw, v0 - 0.300 * gw, u0 + 0.470 * gw, v0 - 0.148 * gw, outW)
+    }
     fun rectifyView(img: ArgbImage, geo: Geo, outW: Int = 1000): Rect {
         val r = LjkSpec.REGION_VIEW
         return sampleRect(img, { u, v -> geo.map(u, v) }, geo.scale, r[0], r[1], r[2], r[3], outW)
