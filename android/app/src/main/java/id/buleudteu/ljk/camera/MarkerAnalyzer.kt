@@ -14,6 +14,7 @@ import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import kotlin.math.hypot
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
 
 /**
@@ -22,7 +23,8 @@ import kotlin.math.sqrt
  *  2) LJK lama (bila diizinkan): engine tanpa marker pada frame kecil -> posisi semua bulatan + mana yang terisi.
  * Hasil dalam koordinat frame tegak 0..1, + status "siap" ketika stabil (untuk auto-capture).
  */
-class MarkerAnalyzer(private val legacyAllowed: () -> Boolean, private val onResult: (Detection?) -> Unit) : ImageAnalysis.Analyzer {
+/** legacyLayouts(): tata letak LJK lama yang boleh dideteksi di preview (kosong = tidak) */
+class MarkerAnalyzer(private val legacyLayouts: () -> List<LjkEngine.LegacyLayout>, private val onResult: (Detection?) -> Unit) : ImageAnalysis.Analyzer {
     class Detection(
         val corners: List<Pt>, val ready: Boolean, val tooFar: Boolean,
         val legacy: Boolean = false, val bubbles: List<Pt> = emptyList(), val filled: List<Boolean> = emptyList(), val bubbleR: Double = 0.0
@@ -30,6 +32,7 @@ class MarkerAnalyzer(private val legacyAllowed: () -> Boolean, private val onRes
 
     private var last: List<Pt>? = null
     private var lastDeg = 0
+    private var lastLay = 0
     private var tryIdx = 0
     private val CYC = intArrayOf(0, 90, 270)
     private var stable = 0
@@ -93,15 +96,19 @@ class MarkerAnalyzer(private val legacyAllowed: () -> Boolean, private val onRes
 
             // ---- 2) LJK lama: frame diputar TEGAK dulu (sensor kamera = landscape), lalu kisi bulatan.
             //         LJK boleh tegak atau menyamping: arah terakhir yang berhasil dulu + satu arah lain bergiliran.
-            if (det == null && legacyAllowed()) {
+            val lays = if (det == null) legacyLayouts() else emptyList()
+            if (lays.isNotEmpty()) {
                 val up = LjkEngine.rotateImg(ArgbImage(sw, sh, IntArray(sw * sh) { val v = gi[it]; (0xFF shl 24) or (v shl 16) or (v shl 8) or v }), rotDeg)
                 val uw = up.width; val uh = up.height
-                tryIdx = (tryIdx + 1) % 3
-                val order = listOf(lastDeg, CYC[tryIdx]).distinct()
-                for (deg in order) {
-                    val r = LjkEngine.processMarkerless(LjkEngine.rotateImg(up, deg), maxSide = 720)
+                // hemat CPU: arah + tata letak terakhir yang berhasil dulu, lalu SATU kombinasi lain bergiliran per frame
+                val combos = CYC.flatMap { d -> lays.indices.map { d to it } }
+                tryIdx = (tryIdx + 1) % combos.size
+                val order = listOf(lastDeg to min(lastLay, lays.size - 1), combos[tryIdx]).distinct()
+                for ((deg, li) in order) {
+                    val L = lays[li]
+                    val r = LjkEngine.processMarkerless(LjkEngine.rotateImg(up, deg), L.questions, L.blocks, L.options, maxSide = 720, minDet = 0.3)
                     if (!r.success || r.grid.isEmpty()) continue
-                    lastDeg = deg
+                    lastDeg = deg; lastLay = li
                     // titik di gambar yang diputar 'deg' -> kembali ke frame tegak -> 0..1
                     fun back(x: Double, y: Double): Pt { val q = when (deg) { 90 -> Pt(y, uh - 1 - x); 270 -> Pt(uw - 1 - y, x); else -> Pt(x, y) }; return Pt(q.x / uw, q.y / uh) }
                     val pts = r.grid.flatten()

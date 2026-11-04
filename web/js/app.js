@@ -209,7 +209,7 @@
         S.scanMode = mode;
         S.exam = mode === 'exam' ? S.data.ujian[i] : null;
         const title = mode === 'key' ? 'Scan LJK kunci' : mode === 'markerless' ? 'LJK lama (tanpa marker)' : S.exam.nama;
-        const sub = mode === 'key' ? `Varian ${S.editing.opsi}` : mode === 'markerless' ? '20 soal · 4 kolom × 5 baris' : `${S.exam.mapel} · ${S.exam.jumlah} soal · ${S.exam.opsi}`;
+        const sub = mode === 'key' ? `Varian ${S.editing.opsi}` : mode === 'markerless' ? 'LJK lama 20 / 25 soal · 5 baris' : `${S.exam.mapel} · ${S.exam.jumlah} soal · ${S.exam.opsi}`;
         $('scanTitle').innerHTML = esc(title) + `<span class="sub">${esc(sub)}</span>`;
         $('scanHint').textContent = mode === 'markerless' ? 'Masukkan seluruh tabel pilihan ganda ke layar, lalu tekan tombol' : 'Arahkan ke seluruh LJK — 4 kotak hitam di sudut harus terlihat';
         $('chkAuto').checked = S.auto;
@@ -240,18 +240,22 @@
         };
         tick();
     }
-    // LJK lama boleh dideteksi: mode cek cepat, atau ujian <= 20 soal ABCD
-    function legacyAllowed() { return S.scanMode === 'markerless' || (S.scanMode === 'exam' && S.exam && S.exam.jumlah <= 20 && S.exam.opsi === 'ABCD'); }
+    // LJK lama boleh dideteksi: mode cek cepat, atau ujian <= 25 soal ABCD
+    function legacyAllowed() { return S.scanMode === 'markerless' || (S.scanMode === 'exam' && S.exam && S.exam.jumlah <= 25 && S.exam.opsi === 'ABCD'); }
+    // tata letak LJK lama yang mungkin: ujian 21-25 soal hanya LJK 25; selain itu 25 & 20 (25 dicoba dulu)
+    function legacyLayouts() { return S.scanMode === 'exam' && S.exam && S.exam.jumlah > 20 ? [LJKEngine.LEGACY_LAYOUTS[0]] : LJKEngine.LEGACY_LAYOUTS; }
     // kisi LJK lama di frame preview kecil: semua bulatan + mana yang terisi
     function detectLegacy(id) {
-        const w = id.width, h = id.height, cyc = [0, 90, 270];
-        // hemat CPU: arah terakhir yang berhasil dulu, lalu SATU arah lain bergiliran per frame
-        S.legTry = ((S.legTry || 0) + 1) % 3;
-        const order = [S.legDeg || 0, cyc[S.legTry]].filter((d, i, a) => a.indexOf(d) === i);
-        for (const deg of order) {        // LJK boleh tegak atau menyamping
-            const r = LJKEngine.processMarkerless(LJKEngine.rotateImg(id, deg), { maxSide: 720, layout: { questions: 20, blocks: 4, options: 4 } });
+        const w = id.width, h = id.height, lays = legacyLayouts(), combos = [];
+        [0, 90, 270].forEach(deg => lays.forEach((L, li) => combos.push({ deg, li })));
+        // hemat CPU: arah + tata letak terakhir yang berhasil dulu, lalu SATU kombinasi lain bergiliran per frame
+        S.legTry = ((S.legTry || 0) + 1) % combos.length;
+        const lastC = { deg: S.legDeg || 0, li: Math.min(S.legLay || 0, lays.length - 1) }, nextC = combos[S.legTry];
+        const order = nextC.deg === lastC.deg && nextC.li === lastC.li ? [lastC] : [lastC, nextC];
+        for (const { deg, li } of order) {        // LJK boleh tegak atau menyamping
+            const r = LJKEngine.processMarkerless(LJKEngine.rotateImg(id, deg), { maxSide: 720, layout: lays[li], minDet: 0.3 });
             if (!r.success) continue;
-            S.legDeg = deg;
+            S.legDeg = deg; S.legLay = li;
             const back = (p) => deg === 90 ? { x: p.y, y: h - 1 - p.x } : deg === 270 ? { x: w - 1 - p.y, y: p.x } : { x: p.x, y: p.y };
             const g = r.geo, pad = g.R0 * 2.2, u0 = g.colU[0] - pad, u1 = g.colU[g.colU.length - 1] + pad, v0 = g.rowV[0] - pad, v1 = g.rowV[g.rowV.length - 1] + pad;
             const pts = []; r.debug.grid.forEach(row => row.forEach(p => { const q = back(p); pts.push({ x: q.x, y: q.y, f: p.d >= r.thr }); }));
@@ -316,12 +320,12 @@
     // ------------------------------------------------------------ proses
     function runEngine(img) {
         const p = { sensitivity: S.params.sens, contrast: S.params.con };
-        if (S.scanMode === 'markerless') return LJKEngine.processMarkerlessAuto(img, Object.assign(p, { layout: { questions: 20, blocks: 4, options: 4 } }));
+        if (S.scanMode === 'markerless') return LJKEngine.processMarkerlessAuto(img, Object.assign(p, { layouts: legacyLayouts() }));
         const opsi = S.scanMode === 'key' ? S.editing.opsi : S.exam.opsi;
         const r = LJKEngine.processMarker(img, Object.assign({}, p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
-        // LJK lama (tanpa marker, 4 kolom x 5 baris) dikenali otomatis untuk ujian <= 20 soal ABCD
-        if (!r.success && S.scanMode === 'exam' && S.exam.jumlah <= 20 && S.exam.opsi === 'ABCD') {
-            const l = LJKEngine.processMarkerlessAuto(img, Object.assign({}, p, { layout: { questions: 20, blocks: 4, options: 4 } }));
+        // LJK lama (tanpa marker, 20 atau 25 soal) dikenali otomatis untuk ujian <= 25 soal ABCD
+        if (!r.success && legacyAllowed()) {
+            const l = LJKEngine.processMarkerlessAuto(img, Object.assign({}, p, { layouts: legacyLayouts() }));
             if (l.success) { l.warnings.push('LJK lama (tanpa marker) terdeteksi — dinilai dengan kunci ujian ini.'); return l; }
         }
         return r;
@@ -365,7 +369,7 @@
         stopLoopOnly();
         const r = S.res, u = S.exam;
         go('result');
-        $('resTitle').innerHTML = esc(u ? u.nama : 'LJK lama') + `<span class="sub">${esc(u ? u.mapel + ' · ' + u.jumlah + ' soal' : '20 soal · tanpa marker')}</span>`;
+        $('resTitle').innerHTML = esc(u ? u.nama : 'LJK lama') + `<span class="sub">${esc(u ? u.mapel + ' · ' + u.jumlah + ' soal' : lamaN() + ' soal · tanpa marker')}</span>`;
         renderAnswers();
         const q = r.quality || {};
         const g = q.grade || '-';
@@ -377,9 +381,11 @@
         $('idCard').style.display = u ? '' : 'none';
         if (u && !keepIdent) setupIdentity();
     }
+    // jumlah soal LJK lama yang terbaca (20 atau 25) dari tata letak hasil engine
+    function lamaN() { const r = S.res; return r && r.geo && r.geo.layout ? r.geo.layout.questions : 20; }
     function stopLoopOnly() { clearTimeout(S.loop); S.loop = null; }
     function renderAnswers() {
-        const u = S.exam, n = u ? u.jumlah : 20;
+        const u = S.exam, n = u ? u.jumlah : lamaN();
         const sc = score();
         if (sc) {
             $('resScore').textContent = sc.skor % 1 ? sc.skor.toFixed(1) : sc.skor;
@@ -387,7 +393,7 @@
             const ring = $('resRing'); ring.style.strokeDashoffset = 264 - 264 * sc.skor / 100; ring.style.stroke = sc.skor < (u.kktp || 75) ? '#ef4444' : '#22c55e';
         } else { $('resScore').textContent = S.answers.filter(Boolean).length; $('resBenar').textContent = 'jawaban terbaca (tanpa kunci)'; }
         const lama = S.res && S.res.mode === 'markerless';
-        renderLjk($('ljkGrid'), { n, total: lama ? 20 : 50, rows: lama ? 5 : 10, opsi: u ? u.opsi : 'ABCD', answers: S.answers, status: S.status, suggest: S.suggest, key: keyArr(), onTap: (q, L) => {
+        renderLjk($('ljkGrid'), { n, total: lama ? lamaN() : 50, rows: lama ? 5 : 10, opsi: u ? u.opsi : 'ABCD', answers: S.answers, status: S.status, suggest: S.suggest, key: keyArr(), onTap: (q, L) => {
             S.answers[q] = S.answers[q] === L ? null : L; S.status[q] = S.answers[q] ? 'ok' : 'blank'; S.confirm = false; renderAnswers(); drawEvidence();
         } });
         if (u) { const fl = flagged(); $('saveNote').innerHTML = fl.length ? `<div class="note n-warn">Perlu dicek: nomor ${fl.join(', ')} (kuning).</div>` : ''; }
@@ -418,7 +424,7 @@
     function drawEvidence() {
         const r = S.res, cv = $('evCanvas'); if (!r || !r.debug) return;
         const dbg = r.debug, ly = S.layers;
-        const n = S.exam ? S.exam.jumlah : 20, LET = (S.exam ? S.exam.opsi : 'ABCD').split('');
+        const n = S.exam ? S.exam.jumlah : lamaN(), LET = (S.exam ? S.exam.opsi : 'ABCD').split('');
         let ctx, toOut, R, ptsOf;
         if (r.mode === 'marker') {
             const P = SPEC.pg, geo = r.geo, mapper = LJKEngine.mmMapper(geo);
@@ -618,11 +624,11 @@
     }
 
     // ------------------------------------------------------------ cetak
-    function openPrint(i) { S.exam = S.data.ujian[i]; $('prTitle').innerHTML = 'Cetak LJK<span class="sub">' + esc(S.exam.nama) + '</span>'; $('prVar').value = S.exam.jumlah <= 20 && S.exam.opsi === 'ABCD' ? 'LAMA20' : S.exam.opsi; renderPrint(); go('print'); }
+    function openPrint(i) { S.exam = S.data.ujian[i]; $('prTitle').innerHTML = 'Cetak LJK<span class="sub">' + esc(S.exam.nama) + '</span>'; $('prVar').value = S.exam.opsi !== 'ABCD' ? S.exam.opsi : S.exam.jumlah <= 20 ? 'LAMA20' : S.exam.jumlah <= 25 ? 'LAMA25' : 'ABCD'; renderPrint(); go('print'); }
     function renderPrint() {
         const sk = (S.config && S.config.sekolah) || {}, u = S.exam;
         const v = $('prVar').value, ex = { judul: u ? u.nama.toUpperCase() : '', mapel: u ? u.mapel : '', tahun: sk.tahun };
-        const svg = v === 'LAMA20' ? LJKTemplate.renderLJKLama({ school: { nama: sk.nama, logo: sk.logo }, exam: ex })
+        const svg = v === 'LAMA20' || v === 'LAMA25' ? LJKTemplate.renderLJKLama({ questions: v === 'LAMA25' ? 25 : 20, school: { nama: sk.nama, logo: sk.logo }, exam: ex })
             : LJKTemplate.renderLJK({ variant: v, school: { nama: sk.nama, logo: sk.logo }, exam: ex });
         $('prPreview').innerHTML = svg.replace(/width="215mm" height="330mm"/, 'width="100%"');
         const n = Math.max(1, Math.min(60, Number($('prCopies').value) || 1));

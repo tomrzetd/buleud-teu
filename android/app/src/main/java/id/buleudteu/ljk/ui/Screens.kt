@@ -128,11 +128,12 @@ fun AppRoot(vm: AppViewModel) {
             list.forEach { u -> ExamCard(vm, u, ctx) }
             Card {
                 Text("Mode lain", color = TX2, fontSize = 12.sp)
-                OutlinedButton({ vm.startScan(null, ScanMode.LEGACY) }, Modifier.fillMaxWidth()) { Text("Scan LJK lama 20 soal (tanpa marker)") }
+                OutlinedButton({ vm.startScan(null, ScanMode.LEGACY) }, Modifier.fillMaxWidth()) { Text("Scan LJK lama 20 / 25 soal (tanpa marker)") }
                 OutlinedButton({ shareTemplate(ctx, "ABCD") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCD (PDF)") }
                 OutlinedButton({ shareTemplate(ctx, "ABCDE") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCDE (PDF)") }
                 OutlinedButton({ shareTemplate(ctx, "TANPA_MARKER_20_ABCD") }, Modifier.fillMaxWidth()) { Text("Template F4 tanpa marker · 20 soal (PDF)") }
-                Text("Untuk menilai & menyimpan LJK lama 20 soal: buat ujian 20 soal ABCD lalu tekan Scan pada kartu ujian (LJK lama dikenali otomatis). Tombol di atas hanya untuk cek cepat. LJK berkop sekolah: cetak dari web app.", color = TX2, fontSize = 12.sp)
+                OutlinedButton({ shareTemplate(ctx, "TANPA_MARKER_25_ABCD") }, Modifier.fillMaxWidth()) { Text("Template F4 tanpa marker · 25 soal (PDF)") }
+                Text("Untuk menilai & menyimpan LJK lama 20 / 25 soal: buat ujian 20 atau 25 soal ABCD lalu tekan Scan pada kartu ujian (LJK lama dikenali otomatis). Tombol di atas hanya untuk cek cepat. LJK berkop sekolah: cetak dari web app.", color = TX2, fontSize = 12.sp)
             }
             SchoolFooter(vm)
         }
@@ -193,8 +194,7 @@ fun shareTemplate(ctx: Context, v: String) {
 
 // ---------------------------------------------------------------- LJK digital
 @Composable
-fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status: List<String>?, suggest: List<String?>?, rows: Int, onTap: (Int, Char) -> Unit) {
-    val total = if (rows == 10) 50 else 20
+fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status: List<String>?, suggest: List<String?>?, rows: Int, total: Int = if (rows == 10) 50 else 20, onTap: (Int, Char) -> Unit) {
     Column(Modifier.padding(top = 8.dp)) {
         (0 until total / rows).chunked(2).forEach { pair -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             pair.forEach { b -> Column(Modifier.weight(1f).padding(bottom = 8.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF0A1222)).border(1.dp, LINE, RoundedCornerShape(10.dp)).padding(4.dp)) {
@@ -221,7 +221,7 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
     val r = vm.result ?: return; val u = vm.exam
     var layerFoto by remember { mutableStateOf(false) }; var layerDark by remember { mutableStateOf(false) }; var layerKisi by remember { mutableStateOf(true) }
     Column(Modifier.fillMaxSize()) {
-        Top(u?.nama ?: "LJK lama", u?.let { "${it.mapel} · ${it.jumlah} soal" } ?: "20 soal · tanpa marker", onBack = { vm.screen = Screen.SCAN })
+        Top(u?.nama ?: "LJK lama", u?.let { "${it.mapel} · ${it.jumlah} soal" } ?: "${vm.lamaN()} soal · tanpa marker", onBack = { vm.screen = Screen.SCAN })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
             Card {
                 val sc = vm.score()
@@ -269,7 +269,7 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
             }
             Card {
                 Text("LJK digital — ketuk bulatan untuk koreksi", color = TX2, fontSize = 12.sp)
-                LjkDigital(u?.jumlah ?: 20, u?.opsi ?: "ABCD", vm.answers, u?.kunci, vm.status, r.suggest, if (r.mode == "marker") 10 else 5) { q, l -> vm.tapAnswer(q, l) }
+                LjkDigital(u?.jumlah ?: vm.lamaN(), u?.opsi ?: "ABCD", vm.answers, u?.kunci, vm.status, r.suggest, if (r.mode == "marker") 10 else 5, if (r.mode == "marker") 50 else vm.lamaN()) { q, l -> vm.tapAnswer(q, l) }
             }
             if (r.mode == "marker") Card {
                 Text("Bukti deteksi", color = TX2, fontSize = 12.sp)

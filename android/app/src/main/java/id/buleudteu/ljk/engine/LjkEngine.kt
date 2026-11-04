@@ -579,7 +579,7 @@ object LjkEngine {
         return out
     }
 
-    fun processMarkerless(img: ArgbImage, questions: Int = 20, blocks: Int = 4, options: Int = 4, sensitivity: Double = 50.0, contrast: Double = 10.0, maxSide: Int = 1600): LjkResult {
+    fun processMarkerless(img: ArgbImage, questions: Int = 20, blocks: Int = 4, options: Int = 4, sensitivity: Double = 50.0, contrast: Double = 10.0, maxSide: Int = 1600, minDet: Double = 0.45): LjkResult {
         val ret = LjkResult(); ret.mode = "markerless"
         val ROWS = ceil(questions.toDouble() / blocks).toInt(); val NCOL = blocks * options
         val LET = LjkSpec.LETTERS.substring(0, options); val sens = clamp(sensitivity / 100, 0.2, 0.8)
@@ -615,6 +615,8 @@ object LjkEngine {
             val rowSel = rowsCl.subList(bestW, bestW + ROWS); val rowV = rowSel.map { it.c }.toDoubleArray()
             val inRows = ArrayList<LItem>(); rowSel.forEachIndexed { ri, rc -> rc.items.forEach { it.ri = ri; inRows.add(it) } }
             var colCl = cluster1D(inRows, { it.u }, R0 * 0.8).filter { it.size >= min(2, ROWS) }
+            // kolom bulatan yang jelas lebih banyak dari tata letak -> lembar lain (mis. LJK 25 dibaca sebagai 20)
+            if (colCl.count { it.size >= ROWS - 1 } >= NCOL + (options + 1) / 2) return "Kolom opsi lebih banyak dari tata letak $questions soal."
             if (colCl.size > NCOL) { val keep = colCl.sortedByDescending { it.size }.take(NCOL).toSet(); colCl = colCl.filter { it in keep } }
             var colU = colCl.map { it.c }
             if (colU.size != NCOL) { colU = rebuildColumns(colU, blocks, options) ?: return "Kolom opsi terdeteksi ${colU.size}/$NCOL. Foto ulang lebih lurus/dekat." }
@@ -640,6 +642,8 @@ object LjkEngine {
                 }
                 grid.add(row)
             }
+            // kisi yang sebagian besar sel-nya tebakan (tidak ada bulatan) = bukan tabel jawaban ini
+            if (nDet < ROWS * NCOL * minDet) return "Hanya ${jsRound(nDet.toDouble() / (ROWS * NCOL) * 100).toInt()}% bulatan cocok dengan kisi $questions soal."
             return TL(grid, R0, th, map, colU.toDoubleArray(), rowV, nDet.toDouble() / (ROWS * NCOL))
         }
 
@@ -703,25 +707,36 @@ object LjkEngine {
             return inn.count { it < paper * 0.7 }.toDouble() / inn.size
         }
         var left = 0.0; var right = 0.0
-        for (b in 0 until lat.blocks) for (v in lat.rowV) {
-            left += ink(lat.colU[b * lat.options] - 2.4 * R, v)
+        // diukur di CELAH antarkolom saja (D blok b | A blok b+1): bebas dari garis bingkai tabel
+        for (b in 0 until lat.blocks - 1) for (v in lat.rowV) {
+            left += ink(lat.colU[(b + 1) * lat.options] - 2.4 * R, v)
             right += ink(lat.colU[b * lat.options + lat.options - 1] + 2.4 * R, v)
         }
         return Cue(left, right, right > left * 1.15 && right - left > 0.15)
     }
+    /** tata letak LJK lama yang dikenal. 25 dicoba DULU: kisi 20 bisa "muat" di sebagian lembar 25, tidak sebaliknya. */
+    class LegacyLayout(val questions: Int, val blocks: Int, val options: Int = 4)
+    val LEGACY_LAYOUTS = listOf(LegacyLayout(25, 5), LegacyLayout(20, 4))
     /** LJK lama dari arah mana pun; r.image = gambar yang sudah diputar (dipakai potongan identitas & bukti) */
-    fun processMarkerlessAuto(img: ArgbImage, sensitivity: Double = 50.0, contrast: Double = 10.0): LjkResult {
-        // 1) salinan kecil: cari arah yang menghasilkan kisi (0/90/270)
+    fun processMarkerlessAuto(img: ArgbImage, sensitivity: Double = 50.0, contrast: Double = 10.0, layouts: List<LegacyLayout> = LEGACY_LAYOUTS): LjkResult {
+        fun run(im: ArgbImage, L: LegacyLayout, minDet: Double = 0.45) = processMarkerless(im, L.questions, L.blocks, L.options, sensitivity, contrast, minDet = minDet)
+        // 1) salinan kecil (longgar): kandidat arah 0/90/270 x tata letak; 2) resolusi penuh (ketat) memastikan
         val small = shrinkImg(img, 1000)
-        var rot: Int? = null
-        for (deg in intArrayOf(0, 90, 270)) { if (processMarkerless(rotateImg(small, deg), sensitivity = sensitivity, contrast = contrast).success) { rot = deg; break } }
-        if (rot == null) return processMarkerless(img, sensitivity = sensitivity, contrast = contrast)
-        // 2) resolusi penuh: proses, lalu cek terbalik 180 dari letak nomor soal
-        var im = rotateImg(img, rot)
-        var r = processMarkerless(im, sensitivity = sensitivity, contrast = contrast)
+        var rot: Int? = null; var im = img; var r: LjkResult? = null; var first: LjkResult? = null; var lay = layouts.last()
+        search@ for (deg in intArrayOf(0, 90, 270)) {
+            val s = rotateImg(small, deg)
+            for (L in layouts) {
+                if (!run(s, L, 0.3).success) continue
+                val imF = rotateImg(img, deg); val rF = run(imF, L)
+                if (rF.success) { rot = deg; im = imF; r = rF; lay = L; break@search }
+                if (first == null) first = rF
+            }
+        }
+        if (rot == null || r == null) return first ?: run(img, layouts.last())
+        // cek terbalik 180 dari letak nomor soal
         if (r.success && legacyCue(r).flipped) {
             val rot2 = (rot + 180) % 360; val im2 = rotateImg(img, rot2)
-            val r2 = processMarkerless(im2, sensitivity = sensitivity, contrast = contrast)
+            val r2 = run(im2, lay)
             if (r2.success) { rot = rot2; im = im2; r = r2 }
         }
         r.image = im; r.rotation = rot

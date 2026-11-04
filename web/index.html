@@ -233,7 +233,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
   <div class="top"><div class="icon" onclick="App.go('home')">←</div><h1 id="prTitle">Cetak LJK</h1></div>
   <div class="body">
     <div class="card"><p class="muted small">Kertas <b>F4 / Folio (215 × 330 mm)</b>, skala <b>100% / ukuran sebenarnya</b> (jangan "fit to page"). Keempat kotak hitam di sudut wajib tercetak utuh.</p>
-      <div class="row"><div><label class="l">Varian</label><select id="prVar" class="in" onchange="App.renderPrint()"><option value="ABCD">F4 bermarker · 50 soal ABCD</option><option value="ABCDE">F4 bermarker · 50 soal ABCDE</option><option value="LAMA20">F4 tanpa marker · 20 soal ABCD</option></select></div>
+      <div class="row"><div><label class="l">Varian</label><select id="prVar" class="in" onchange="App.renderPrint()"><option value="ABCD">F4 bermarker · 50 soal ABCD</option><option value="ABCDE">F4 bermarker · 50 soal ABCDE</option><option value="LAMA20">F4 tanpa marker · 20 soal ABCD</option><option value="LAMA25">F4 tanpa marker · 25 soal ABCD</option></select></div>
       <div><label class="l">Jumlah lembar</label><input id="prCopies" class="in" type="number" min="1" max="60" value="1" onchange="App.renderPrint()"></div></div>
       <button class="btn pri wide" style="margin-top:12px" onclick="window.print()">🖨 Cetak / simpan PDF</button></div>
     <div class="card" style="padding:6px;background:#fff"><div id="prPreview"></div></div>

@@ -83,16 +83,18 @@
     }
 
     /*
-     * LJK LAMA (tanpa marker) ukuran F4 — 20 soal, 4 kolom x 5 baris, opsi A-D, nomor turun per kolom.
-     * Proporsi diukur dari LJK PSAS sekolah (lebar tabel 185 mm), sehingga dibaca oleh engine mode tanpa marker
-     * dan potongan OCR identitas (identLattice) tanpa perubahan. Satuan mm.
+     * LJK LAMA (tanpa marker) ukuran F4 — 20 soal (4 kolom x 5 baris) atau 25 soal (5 kolom x 5 baris), opsi A-D,
+     * nomor turun per kolom. Proporsi diukur dari LJK PSAS sekolah (lebar tabel 185 mm), sehingga dibaca oleh engine
+     * mode tanpa marker dan potongan OCR identitas (identLattice) tanpa perubahan. Satuan mm.
      */
     const LAMA = {
         ax: 24.67, blockPitch: 50.52, optPitch: 6.51, y0: 86.3, rowPitch: 6.68, r: 2.75,
         frame: [15, 75.5, 200, 118.6], instrBottom: 81.3
     };
+    // 25 soal: 5 kolom @37 mm di tabel yang sama (bulatan, baris & tinggi tabel identik)
+    const LAMA25 = Object.assign({}, LAMA, { ax: 26.85, blockPitch: 37 });
     function renderLJKLama(opt = {}) {
-        const school = opt.school || {}, exam = opt.exam || {};
+        const school = opt.school || {}, exam = opt.exam || {}, N = opt.questions === 25 ? 25 : 20, G = N === 25 ? LAMA25 : LAMA;
         const BLUE = '#2f62b0', INK = '#1f2937', GRAY = '#4b5563', LIGHT = '#7b8db0';
         const out = [];
         const T = (x, y, s, size = 3, o = {}) => out.push(`<text x="${x}" y="${y}" font-size="${size}" font-family="DejaVu Sans, Arial, Helvetica, sans-serif"${o.anchor ? ` text-anchor="${o.anchor}"` : ''}${o.bold ? ' font-weight="bold"' : ''} fill="${o.fill || INK}">${esc(s)}</text>`);
@@ -105,34 +107,34 @@
         L(13, 34.9, 202, 34.9, { stroke: BLUE, sw: 0.55 }); L(13, 36.1, 202, 36.1, { stroke: BLUE, sw: 0.25 });
         // identitas (kiri: label : garis; kanan: label : garis)
         [['Nomor Peserta', 42.8], ['Nama Peserta', 48.4], ['Kelas', 53.9], ['Mata Pelajaran', 59.5]].forEach(([t, y]) => {
-            T(13.6, y, t, 3.5, { fill: GRAY }); T(45.1, y, ':', 3.5, { fill: GRAY }); L(46.3, y + 0.6, 100.8, y + 0.6, { stroke: GRAY, sw: 0.3 });
+            T(15, y, t, 3.5, { fill: GRAY }); T(45.1, y, ':', 3.5, { fill: GRAY }); L(46.3, y + 0.6, 100.8, y + 0.6, { stroke: GRAY, sw: 0.3 });
         });
         [['Sekolah Asal', 42.8], ['Hari / Tanggal', 48.4], ['Waktu', 53.9]].forEach(([t, y]) => {
             T(114.7, y, t, 3.5, { fill: GRAY }); T(143.6, y, ':', 3.5, { fill: GRAY }); L(144.8, y + 0.6, 195.8, y + 0.6, { stroke: GRAY, sw: 0.3 });
         });
         // pilihan ganda
         T(13.6, 73.6, 'I. PILIHAN GANDA', 3.7, { bold: true, fill: BLUE });
-        const [fx1, fy1, fx2, fy2] = LAMA.frame;
+        const [fx1, fy1, fx2, fy2] = G.frame;
         out.push(`<rect x="${fx1}" y="${fy1}" width="${fx2 - fx1}" height="${fy2 - fy1}" fill="none" stroke="${GRAY}" stroke-width="0.45"/>`);
-        L(fx1, LAMA.instrBottom, fx2, LAMA.instrBottom, { stroke: GRAY, sw: 0.35 });
+        L(fx1, G.instrBottom, fx2, G.instrBottom, { stroke: GRAY, sw: 0.35 });
         T(107.5, 79.3, 'Hitamkan penuh satu bulatan pada jawaban yang benar!', 2.6, { anchor: 'middle', bold: true, fill: INK });
-        for (let q = 0; q < 20; q++) {
-            const b = Math.floor(q / 5), r = q % 5, xa = LAMA.ax + b * LAMA.blockPitch, y = LAMA.y0 + r * LAMA.rowPitch;
+        for (let q = 0; q < N; q++) {
+            const b = Math.floor(q / 5), r = q % 5, xa = G.ax + b * G.blockPitch, y = G.y0 + r * G.rowPitch;
             T(xa - 4.4, y + 1.2, `${q + 1}.`, 3.3, { anchor: 'end', fill: GRAY });
             for (let o = 0; o < 4; o++) {
-                const x = xa + o * LAMA.optPitch;
-                out.push(`<circle cx="${x}" cy="${y}" r="${LAMA.r - 0.25}" fill="none" stroke="${GRAY}" stroke-width="0.45"/>`);
+                const x = xa + o * G.optPitch;
+                out.push(`<circle cx="${x}" cy="${y}" r="${G.r - 0.25}" fill="none" stroke="${GRAY}" stroke-width="0.45"/>`);
                 T(x, y + 0.95, 'ABCD'[o], 2.7, { anchor: 'middle', fill: LIGHT });
             }
         }
         // esai
         T(13.6, 126.5, 'II. ESSAY', 3.7, { bold: true, fill: BLUE });
         for (let y = 135; y <= 312; y += 8.5) L(15, y, 200, y, { stroke: '#9ca3af', sw: 0.22, dash: '0.7 0.9' });
-        T(200, 322, 'Buleud Teu • LJK 20 soal tanpa marker (F4)', 2, { anchor: 'end', fill: '#b6bfcc' });
+        T(200, 322, `Buleud Teu • LJK ${N} soal tanpa marker (F4)`, 2, { anchor: 'end', fill: '#b6bfcc' });
         return `<svg xmlns="http://www.w3.org/2000/svg" width="215mm" height="330mm" viewBox="0 0 215 330"><rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>`;
     }
 
-    const api = { renderLJK, renderLJKLama, LAMA };
+    const api = { renderLJK, renderLJKLama, LAMA, LAMA25 };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKTemplate = api;
 })(typeof self !== 'undefined' ? self : this);

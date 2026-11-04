@@ -8,7 +8,7 @@ for (const c of meta) {
     const res = [];
     for (const deg of [0, 90, 180, 270]) {
         tot++;
-        const r = E.processMarkerlessAuto(E.rotateImg(img, deg), { layout: { questions: 20, blocks: 4, options: 4 } });
+        const r = E.processMarkerlessAuto(E.rotateImg(img, deg), { layouts: E.LEGACY_LAYOUTS });
         const got = r.success ? r.answers.map(a => a || '-').join('') : 'GAGAL';
         const pass = got === c.key; if (pass) ok++;
         res.push(`${deg}°${pass ? '✓' : '✗(' + got + ')'}`);

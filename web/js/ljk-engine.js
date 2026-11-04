@@ -627,6 +627,8 @@
             const rowSel = rowsCl.slice(bestW, bestW + ROWS), rowV = rowSel.map(c => c.c);
             const inRows = []; rowSel.forEach((rc, ri) => rc.items.forEach(it => { it.ri = ri; inRows.push(it); }));
             let colCl = cluster1D(inRows, 'u', R0 * 0.8).filter(c => c.size >= Math.min(2, ROWS));
+            // kolom bulatan yang jelas (hampir penuh) lebih banyak dari tata letak -> lembar lain (mis. LJK 25 dibaca sebagai 20)
+            if (colCl.filter(c => c.size >= ROWS - 1).length >= NCOL + Math.ceil(L.options / 2)) return bad(`Kolom opsi lebih banyak dari tata letak ${L.questions} soal.`);
             if (colCl.length > NCOL) { const keep = colCl.slice().sort((a, b) => b.size - a.size).slice(0, NCOL); colCl = colCl.filter(c => keep.includes(c)); }
             let colU = colCl.map(c => c.c), rebuilt = false;
             if (colU.length !== NCOL) { const fixed = rebuildColumns(colU, L.blocks, L.options); if (!fixed) return bad(`Kolom opsi terdeteksi ${colU.length}/${NCOL}. Foto ulang lebih lurus/dekat.`); colU = fixed; rebuilt = true; }
@@ -650,6 +652,8 @@
                     grid[r].push({ x: p.x, y: p.y, r: R0, d: darkness(g, W, H, p.x, p.y, R0), detected: !!use });
                 }
             }
+            // kisi yang sebagian besar sel-nya tebakan (tidak ada bulatan) = bukan tabel jawaban ini
+            if (nDet < ROWS * NCOL * (opt.minDet ?? 0.45)) return bad(`Hanya ${Math.round(nDet / (ROWS * NCOL) * 100)}% bulatan cocok dengan kisi ${L.questions} soal.`);
             return { ok: true, grid, R0, th, cands, rebuilt, map, colU, rowV, quality: nDet / (ROWS * NCOL) };
         }
     }
@@ -693,22 +697,33 @@
             const paper = vals[Math.floor(vals.length * 0.9)] || 1;
             return inn.filter(x => x < paper * 0.7).length / inn.length;
         };
+        // diukur di CELAH antarkolom saja (D blok b | A blok b+1): bebas dari garis bingkai tabel di tepi kiri/kanan
         let left = 0, right = 0;
-        for (let b = 0; b < L.blocks; b++) for (const v of geo.rowV) {
-            left += ink(geo.colU[b * L.options] - 2.4 * R, v);
+        for (let b = 0; b + 1 < L.blocks; b++) for (const v of geo.rowV) {
+            left += ink(geo.colU[(b + 1) * L.options] - 2.4 * R, v);
             right += ink(geo.colU[b * L.options + L.options - 1] + 2.4 * R, v);
         }
         return { left, right, flipped: right > left * 1.15 && right - left > 0.15 };
     }
     // LJK lama dari arah mana pun: arah dipilih pada salinan kecil, lalu diproses penuh sekali
+    // tata letak LJK lama yang dikenal. 25 dicoba DULU: kisi 20 bisa "muat" di sebagian lembar 25, tidak sebaliknya.
+    const LEGACY_LAYOUTS = [{ questions: 25, blocks: 5, options: 4 }, { questions: 20, blocks: 4, options: 4 }];
     function processMarkerlessAuto(img, opt = {}) {
-        // 1) salinan kecil: cari arah yang menghasilkan kisi (0/90/270)
+        // 1) salinan kecil (longgar): kandidat arah 0/90/270 x tata letak; 2) resolusi penuh (ketat) memastikan
+        const layouts = opt.layouts || [opt.layout || null];
         const small = shrinkImg(img, 1000);
-        let rot = null;
-        for (const deg of [0, 90, 270]) { if (processMarkerless(rotateImg(small, deg), opt).success) { rot = deg; break; } }
-        if (rot == null) return processMarkerless(img, opt);
-        // 2) resolusi penuh: proses, lalu cek terbalik 180 dari letak nomor soal (butuh detail, jangan di salinan kecil)
-        let im = rotateImg(img, rot), r = processMarkerless(im, opt);
+        let rot = null, im = null, r = null, first = null;
+        search: for (const deg of [0, 90, 270]) {
+            const s = rotateImg(small, deg);
+            for (const L of layouts) {
+                if (!processMarkerless(s, Object.assign({}, opt, { layout: L, minDet: 0.3 })).success) continue;
+                const o = Object.assign({}, opt, { layout: L }), imF = rotateImg(img, deg), rF = processMarkerless(imF, o);
+                if (rF.success) { rot = deg; im = imF; r = rF; opt = o; break search; }
+                if (!first) first = rF;
+            }
+        }
+        if (rot == null) return first || processMarkerless(img, Object.assign({}, opt, { layout: layouts[layouts.length - 1] }));
+        // cek terbalik 180 dari letak nomor soal (butuh detail, jangan di salinan kecil)
         if (r.success && legacyCue(r).flipped) {
             const rot2 = (rot + 180) % 360, im2 = rotateImg(img, rot2), r2 = processMarkerless(im2, opt);
             if (r2.success) { rot = rot2; im = im2; r = r2; }
@@ -817,7 +832,7 @@
         return out;
     }
 
-    const api = { processMarker, processMarkerless, processMarkerlessAuto, legacyCue, rotateImg, shrinkImg, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
+    const api = { LEGACY_LAYOUTS, processMarker, processMarkerless, processMarkerlessAuto, legacyCue, rotateImg, shrinkImg, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKEngine = api;
 })(typeof self !== 'undefined' ? self : this);

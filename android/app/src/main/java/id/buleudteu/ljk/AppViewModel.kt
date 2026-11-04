@@ -147,14 +147,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val px = IntArray(bmp.width * bmp.height); bmp.getPixels(px, 0, bmp.width, 0, 0, bmp.width, bmp.height)
             val img = ArgbImage(bmp.width, bmp.height, px); image = img
             when (scanMode) {
-                ScanMode.LEGACY -> LjkEngine.processMarkerlessAuto(img, store.sensitivity.toDouble(), store.contrast.toDouble())
+                ScanMode.LEGACY -> LjkEngine.processMarkerlessAuto(img, store.sensitivity.toDouble(), store.contrast.toDouble(), legacyLayouts())
                 ScanMode.KEY -> LjkEngine.processMarker(img, draft.opsi.length, 50, store.sensitivity.toDouble(), store.contrast.toDouble())
                 ScanMode.EXAM -> {
                     val u = exam!!
                     val m = LjkEngine.processMarker(img, u.opsi.length, u.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble())
-                    // LJK lama (tanpa marker, 4 kolom x 5 baris) dikenali otomatis untuk ujian <= 20 soal ABCD
-                    if (!m.success && u.jumlah <= 20 && u.opsi == "ABCD") {
-                        val l = LjkEngine.processMarkerlessAuto(img, store.sensitivity.toDouble(), store.contrast.toDouble())
+                    // LJK lama (tanpa marker, 20 atau 25 soal) dikenali otomatis untuk ujian <= 25 soal ABCD
+                    val lays = legacyLayouts()
+                    if (!m.success && lays.isNotEmpty()) {
+                        val l = LjkEngine.processMarkerlessAuto(img, store.sensitivity.toDouble(), store.contrast.toDouble(), lays)
                         if (l.success) { l.warnings.add("LJK lama (tanpa marker) terdeteksi — dinilai dengan kunci ujian ini."); l } else m
                     } else m
                 }
@@ -239,7 +240,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun pickStudent(nama: String, kelas: String) { selSiswa = nama; selKelas = kelas }
 
     fun tapAnswer(q: Int, l: Char) { answers[q] = if (answers[q] == l) null else l; status[q] = if (answers[q] != null) "ok" else "blank"; confirmFlags = false }
-    fun flagged() = status.mapIndexedNotNull { i, s -> if ((s == "double" || s == "weak") && i < (exam?.jumlah ?: 20)) i + 1 else null }
+    fun flagged() = status.mapIndexedNotNull { i, s -> if ((s == "double" || s == "weak") && i < (exam?.jumlah ?: lamaN())) i + 1 else null }
+    /** jumlah soal LJK lama yang terbaca (20 atau 25) */
+    fun lamaN() = result?.lattice?.questions ?: 20
+    /** tata letak LJK lama yang boleh: cek cepat = semua; ujian <= 25 soal ABCD (21-25 soal hanya LJK 25); selain itu tidak ada */
+    fun legacyLayouts(): List<LjkEngine.LegacyLayout> = when (scanMode) {
+        ScanMode.LEGACY -> LjkEngine.LEGACY_LAYOUTS
+        ScanMode.EXAM -> exam?.let { if (it.opsi != "ABCD" || it.jumlah > 25) emptyList() else if (it.jumlah > 20) LjkEngine.LEGACY_LAYOUTS.take(1) else LjkEngine.LEGACY_LAYOUTS } ?: emptyList()
+        else -> emptyList()
+    }
     fun score(): Pair<Int, Double>? { val u = exam ?: return null; var b = 0; for (i in 0 until u.jumlah) if (answers.getOrNull(i) != null && answers[i] == u.kunci[i]) b++; return b to (b * 10000.0 / u.jumlah).roundToInt() / 100.0 }
 
     fun save() = viewModelScope.launch {

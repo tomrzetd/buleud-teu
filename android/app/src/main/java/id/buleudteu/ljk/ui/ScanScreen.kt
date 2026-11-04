@@ -54,8 +54,8 @@ fun ScanScreen(vm: AppViewModel) {
         .setResolutionSelector(ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY).build()).build() }
     val exec = remember { Executors.newSingleThreadExecutor() }
     var shooting by remember { mutableStateOf(false) }
-    // LJK lama dideteksi langsung di preview bila: mode cek cepat, atau ujian <= 20 soal ABCD
-    val analyzer = remember { MarkerAnalyzer({ vm.scanMode == ScanMode.LEGACY || (vm.scanMode == ScanMode.EXAM && (vm.exam?.let { it.jumlah <= 20 && it.opsi == "ABCD" } ?: false)) }) { d -> det = d } }
+    // LJK lama dideteksi langsung di preview bila: mode cek cepat, atau ujian <= 25 soal ABCD
+    val analyzer = remember { MarkerAnalyzer({ vm.legacyLayouts() }) { d -> det = d } }
 
     fun shoot() {
         if (shooting || vm.busy != null) return
