@@ -711,17 +711,19 @@ object LjkEngine {
     }
     /** LJK lama dari arah mana pun; r.image = gambar yang sudah diputar (dipakai potongan identitas & bukti) */
     fun processMarkerlessAuto(img: ArgbImage, sensitivity: Double = 50.0, contrast: Double = 10.0): LjkResult {
+        // 1) salinan kecil: cari arah yang menghasilkan kisi (0/90/270)
         val small = shrinkImg(img, 1000)
         var rot: Int? = null
-        for (deg in intArrayOf(0, 90, 270)) {
-            val r = processMarkerless(rotateImg(small, deg), sensitivity = sensitivity, contrast = contrast)
-            if (!r.success) continue
-            rot = if (legacyCue(r).flipped) (deg + 180) % 360 else deg
-            break
-        }
+        for (deg in intArrayOf(0, 90, 270)) { if (processMarkerless(rotateImg(small, deg), sensitivity = sensitivity, contrast = contrast).success) { rot = deg; break } }
         if (rot == null) return processMarkerless(img, sensitivity = sensitivity, contrast = contrast)
-        val im = rotateImg(img, rot)
-        val r = processMarkerless(im, sensitivity = sensitivity, contrast = contrast)
+        // 2) resolusi penuh: proses, lalu cek terbalik 180 dari letak nomor soal
+        var im = rotateImg(img, rot)
+        var r = processMarkerless(im, sensitivity = sensitivity, contrast = contrast)
+        if (r.success && legacyCue(r).flipped) {
+            val rot2 = (rot + 180) % 360; val im2 = rotateImg(img, rot2)
+            val r2 = processMarkerless(im2, sensitivity = sensitivity, contrast = contrast)
+            if (r2.success) { rot = rot2; im = im2; r = r2 }
+        }
         r.image = im; r.rotation = rot
         if (rot != 0 && r.success) r.warnings.add("LJK lama diputar $rot° secara otomatis.")
         return r

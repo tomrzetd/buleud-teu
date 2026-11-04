@@ -702,16 +702,17 @@
     }
     // LJK lama dari arah mana pun: arah dipilih pada salinan kecil, lalu diproses penuh sekali
     function processMarkerlessAuto(img, opt = {}) {
+        // 1) salinan kecil: cari arah yang menghasilkan kisi (0/90/270)
         const small = shrinkImg(img, 1000);
         let rot = null;
-        for (const deg of [0, 90, 270]) {
-            const r = processMarkerless(rotateImg(small, deg), opt);
-            if (!r.success) continue;
-            rot = legacyCue(r).flipped ? (deg + 180) % 360 : deg;
-            break;
-        }
+        for (const deg of [0, 90, 270]) { if (processMarkerless(rotateImg(small, deg), opt).success) { rot = deg; break; } }
         if (rot == null) return processMarkerless(img, opt);
-        const im = rotateImg(img, rot), r = processMarkerless(im, opt);
+        // 2) resolusi penuh: proses, lalu cek terbalik 180 dari letak nomor soal (butuh detail, jangan di salinan kecil)
+        let im = rotateImg(img, rot), r = processMarkerless(im, opt);
+        if (r.success && legacyCue(r).flipped) {
+            const rot2 = (rot + 180) % 360, im2 = rotateImg(img, rot2), r2 = processMarkerless(im2, opt);
+            if (r2.success) { rot = rot2; im = im2; r = r2; }
+        }
         r.image = im; r.rotation = rot;
         if (rot && r.success) r.warnings.push(`LJK lama diputar ${rot}° secara otomatis.`);
         return r;

@@ -131,6 +131,7 @@ fun AppRoot(vm: AppViewModel) {
                 OutlinedButton({ vm.startScan(null, ScanMode.LEGACY) }, Modifier.fillMaxWidth()) { Text("Scan LJK lama 20 soal (tanpa marker)") }
                 OutlinedButton({ shareTemplate(ctx, "ABCD") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCD (PDF)") }
                 OutlinedButton({ shareTemplate(ctx, "ABCDE") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCDE (PDF)") }
+                OutlinedButton({ shareTemplate(ctx, "TANPA_MARKER_20_ABCD") }, Modifier.fillMaxWidth()) { Text("Template F4 tanpa marker · 20 soal (PDF)") }
                 Text("Untuk menilai & menyimpan LJK lama 20 soal: buat ujian 20 soal ABCD lalu tekan Scan pada kartu ujian (LJK lama dikenali otomatis). Tombol di atas hanya untuk cek cepat. LJK berkop sekolah: cetak dari web app.", color = TX2, fontSize = 12.sp)
             }
             SchoolFooter(vm)
@@ -154,7 +155,7 @@ fun AppRoot(vm: AppViewModel) {
 fun shareTemplate(ctx: Context, v: String) {
     val f = File(ctx.cacheDir, "LJK_F4_$v.pdf"); ctx.assets.open("LJK_F4_$v.pdf").use { i -> f.outputStream().use { i.copyTo(it) } }
     val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
-    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Buka / cetak LJK F4 $v"))
+    ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Buka / cetak LJK ${v.replace('_', ' ')}"))
 }
 
 // ---------------------------------------------------------------- edit ujian

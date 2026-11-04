@@ -9,7 +9,7 @@ Buleud Teu memindai dan mengoreksi LJK pilihan ganda dengan kamera HP. Aplikasi 
 | `web/` | Aplikasi web (PWA) yang bisa dipasang di HP, berjalan offline, tanpa CDN maupun OpenCV |
 | `android/` | Aplikasi Android native (Kotlin, Jetpack Compose, CameraX, OpenCV, ML Kit) |
 | `apps-script/` | Backend Google Sheet: data sekolah, guru, siswa, ujian, hasil, analisis butir, dan bank soal |
-| `templates/` | Template LJK F4 siap cetak, **ABCD** (SD–SMP) dan **ABCDE** (SMA), masing-masing 50 soal |
+| `templates/` | Template LJK F4 siap cetak: bermarker 50 soal **ABCD** (SD–SMP) / **ABCDE** (SMA), dan **tanpa marker 20 soal ABCD** (tata letak LJK PSAS lama) |
 | `spec/` | Geometri LJK F4 (sumber tunggal untuk web, Android, dan template) |
 | `tools/` | Generator template, generator foto uji, dan semua pengujian |
 
@@ -55,7 +55,7 @@ Semua pengujian ada di `tools/test/` dan bisa dijalankan ulang.
 
 ### 3. Cetak LJK
 - Dari aplikasi: **Cetak LJK** pada kartu ujian. Kop sekolah, logo, nama ujian, dan mapel terisi otomatis.
-- Atau cetak `templates/LJK_F4_ABCD.pdf` / `templates/LJK_F4_ABCDE.pdf`.
+- Atau cetak `templates/LJK_F4_ABCD.pdf` / `templates/LJK_F4_ABCDE.pdf`, atau `templates/LJK_F4_TANPA_MARKER_20_ABCD.pdf` untuk ujian 20 soal (dibaca mode tanpa marker; buat ujian 20 soal ABCD lalu Scan dari kartu ujian).
 - **Kertas F4/Folio 215 × 330 mm, skala 100%** (jangan "fit to page"). Keempat kotak hitam harus tercetak utuh.
 - Kotak isian identitas dicetak **merah muda**, yaitu warna "dropout" yang dihapus engine sebelum OCR. Siswa boleh memakai pulpen biru/hitam atau pensil.
 
