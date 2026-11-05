@@ -124,6 +124,17 @@ const API = 'https://script.google.com/macros/s/UJI_BULEUD/exec';
     await page.screenshot({ path: path.join(SHOT, '8_analisis.png'), fullPage: false });
     await page.click('text=Simpan ke Bank Soal'); await page.waitForFunction(() => /Bank Soal/.test(document.getElementById('toast').textContent));
     assert.strictEqual(ss.getSheetByName('BankSoal').getLastRow(), 41);
+    // 6b) laporan: simpel PDF (unduhan otomatis), lalu lengkap Excel
+    await page.locator('#repCard').scrollIntoViewIfNeeded();
+    let dl = page.waitForEvent('download'); await page.click('text=Buat laporan'); let d = await dl;
+    assert.ok(d.suggestedFilename().endsWith('.pdf'), 'unduhan PDF'); const pdfBytes = fs.readFileSync(await d.path()); assert.ok(pdfBytes.toString().startsWith('%PDF'));
+    assert.deepStrictEqual(gas.created.at(-1).sheets.map(x => x.name), ['Nilai']);
+    await page.screenshot({ path: path.join(SHOT, '12_laporan.png') });
+    await page.click('#repMode [data-m="lengkap"]'); await page.selectOption('#repFormat', 'xlsx');
+    dl = page.waitForEvent('download'); await page.click('text=Buat laporan'); d = await dl;
+    assert.ok(d.suggestedFilename().endsWith('.xlsx'), 'unduhan Excel');
+    assert.deepStrictEqual(gas.created.at(-1).sheets.map(x => x.name), ['Nilai', 'Analisis Butir', 'Pengecoh', 'Matriks']);
+    console.log('Laporan web:', d.suggestedFilename());
     // 7) cetak
     await page.evaluate(() => App.go('home')); await page.click('text=Cetak LJK >> nth=0');
     await page.waitForSelector('#prPreview svg');

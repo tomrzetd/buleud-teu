@@ -130,6 +130,7 @@ function doPost(e) {
       case 'ocr': auth_(data.token); return json_({ result: 'success', text: ocrImage_(data.image) });
       case 'analyze': return json_(apiAnalyze_(data));
       case 'bank': return json_(withLock_(function () { return apiBank_(data); }));
+      case 'report': return json_(apiReport_(data));
       default: return json_({ error: 'Aksi tidak dikenal: ' + data.action });
     }
   } catch (err) { return json_({ error: String(err.message || err), auth: !!err.auth }); }
@@ -308,6 +309,7 @@ function onOpen() {
     .addItem('1. Setup / perbaiki sheet', 'setup')
     .addItem('2. Analisis butir soal…', 'menuAnalisis')
     .addItem('3. Simpan analisis ke Bank Soal…', 'menuBank')
+    .addItem('4. Buat laporan nilai / analisis (PDF, Excel)…', 'menuLaporan')
     .addSeparator()
     .addItem('Tes koneksi & izin', 'tesKoneksi')
     .addToUi();
@@ -371,4 +373,6 @@ function tesKoneksi() {
   Logger.log('Siswa: ' + rows_(SH.SISWA).length + ' | Ujian: ' + rows_(SH.UJIAN).length + ' | Drive API: ' + (typeof Drive !== 'undefined' ? 'aktif' : 'BELUM ditambahkan'));
   // memicu izin Google Docs + Drive (dibutuhkan OCR)
   try { var t = DocumentApp.create('buleudteu_tes_izin'); DriveApp.getFileById(t.getId()).setTrashed(true); Logger.log('Izin Docs/Drive: OK'); } catch (e) { Logger.log('Izin Docs/Drive: ' + e); }
+  // memicu izin ekspor laporan (PDF/Excel): akses URL eksternal + folder arsip laporan
+  try { UrlFetchApp.fetch('https://docs.google.com/', { muteHttpExceptions: true }); folderLaporan_(); Logger.log('Izin laporan (ekspor PDF/Excel): OK'); } catch (e) { Logger.log('Izin laporan: ' + e); }
 }

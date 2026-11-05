@@ -73,7 +73,7 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
     private val stripsPanel = JPanel(); private val ocrLbl = label("", 11.5f, false, C.TX2); private val recPanel = JPanel(FlowLayout(FlowLayout.LEFT, 4, 2))
     private val search = JTextField(); private val kelasBox = JComboBox<String>(); private val results = JList<Siswa>(); private val pickedLbl = label("Belum dipilih", 12.5f, true, C.BAD)
     private val progress = JProgressBar(); private val statusLbl = label("", 12f, false, C.TX2)
-    private val acceptBtn = JButton("Terima rekomendasi ≥ 90%"); private val saveBtn = JButton("Simpan semua yang siap"); private val csvBtn = JButton("Ekspor CSV"); private val clearBtn = JButton("Kosongkan batch")
+    private val acceptBtn = JButton("Terima rekomendasi ≥ 90%"); private val saveBtn = JButton("Simpan semua yang siap"); private val csvBtn = JButton("Ekspor CSV"); private val reportBtn = JButton("Laporan…"); private val clearBtn = JButton("Kosongkan batch")
     private val footLbl = label("", 11f, false, C.TX2)
 
     fun start() {
@@ -187,9 +187,9 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         progress.isStringPainted = true; progress.preferredSize = Dimension(260, 20); progress.isVisible = false
         bottom.add(JPanel(FlowLayout(FlowLayout.LEFT, 8, 0)).apply { isOpaque = false; add(progress); add(statusLbl) }, BorderLayout.WEST)
         saveBtn.font = saveBtn.font.deriveFont(Font.BOLD)
-        bottom.add(JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply { isOpaque = false; add(clearBtn); add(csvBtn); add(acceptBtn); add(saveBtn) }, BorderLayout.EAST)
+        bottom.add(JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply { isOpaque = false; add(clearBtn); add(csvBtn); add(reportBtn); add(acceptBtn); add(saveBtn) }, BorderLayout.EAST)
         bottom.add(footLbl.apply { horizontalAlignment = SwingConstants.CENTER; border = EmptyBorder(6, 0, 0, 0) }, BorderLayout.SOUTH)
-        acceptBtn.addActionListener { acceptAll() }; saveBtn.addActionListener { saveAll() }; csvBtn.addActionListener { exportCsv() }; clearBtn.addActionListener { clearBatch() }
+        acceptBtn.addActionListener { acceptAll() }; saveBtn.addActionListener { saveAll() }; csvBtn.addActionListener { exportCsv() }; reportBtn.addActionListener { reportDialog() }; clearBtn.addActionListener { clearBatch() }
         root.add(bottom, BorderLayout.SOUTH)
         updateSummary(); renderFooter()
         return root
@@ -484,7 +484,7 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         val pending = sheets.count { it.state == SheetState.QUEUED || it.state == SheetState.PROCESSING }
         saveBtn.text = "Simpan semua yang siap ($ready)"; saveBtn.isEnabled = ready > 0 && u != null
         acceptBtn.isEnabled = sheets.any { it.state == SheetState.READY && it.siswa == null && (it.best?.skor ?: 0.0) >= 0.9 }
-        csvBtn.isEnabled = sheets.isNotEmpty(); clearBtn.isEnabled = sheets.isNotEmpty()
+        csvBtn.isEnabled = sheets.isNotEmpty(); clearBtn.isEnabled = sheets.isNotEmpty(); reportBtn.isEnabled = u != null
         if (running == null && !progress.isIndeterminate) {
             progress.isVisible = pending > 0; progress.maximum = maxOf(1, sheets.size); progress.value = sheets.size - pending; progress.string = "Memproses ${sheets.size - pending}/${sheets.size}"
         }
@@ -535,6 +535,52 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         store.setQueue(rest)
         ui { status("${q.size - rest.size} hasil antrean offline terkirim" + if (rest.isNotEmpty()) " (${rest.size} masih menunggu)" else "") }
     }
+
+    // ================================================================ laporan (dibuat Apps Script: PDF F4 / Excel / Google Sheet)
+    private val repBagian = listOf("identitas" to "Identitas ujian & kop sekolah", "nilai" to "Daftar nilai (benar & skor)", "jawaban" to "Pilihan jawaban siswa per nomor",
+        "rekap" to "Rekap nilai & ketuntasan", "statistik" to "Ringkasan statistik tes (KR-20, SEM)", "butir" to "Analisis butir soal + rekomendasi",
+        "pengecoh" to "Sebaran jawaban & pengecoh", "matriks" to "Matriks benar/salah (0/1)", "ttd" to "Tanda tangan guru & kepala sekolah")
+    private val repMode = mapOf("simpel" to setOf("identitas", "nilai", "jawaban", "rekap", "ttd"), "lengkap" to repBagian.map { it.first }.toSet())
+    private fun reportDialog() {
+        val u = exam ?: return
+        if (sheets.any { it.state == SheetState.READY && it.siswa != null }) JOptionPane.showMessageDialog(this, "Laporan dibuat dari data yang SUDAH tersimpan di spreadsheet.\nLembar siap di batch ini belum ikut sampai disimpan.", "Laporan", JOptionPane.INFORMATION_MESSAGE)
+        val simpel = JRadioButton("Simpel — pilihan jawaban, jumlah benar, skor", true); val lengkap = JRadioButton("Lengkap — + statistik tes & analisis butir")
+        ButtonGroup().apply { add(simpel); add(lengkap) }
+        val checks = repBagian.map { (k, t) -> k to JCheckBox(t, k in repMode.getValue("simpel")) }
+        simpel.addActionListener { checks.forEach { (k, c) -> c.isSelected = k in repMode.getValue("simpel") } }
+        lengkap.addActionListener { checks.forEach { (k, c) -> c.isSelected = k in repMode.getValue("lengkap") } }
+        val scope = JComboBox((listOf("Seluruh peserta ujian") + u.kelas.filter { it != "SEMUA" }.map { "Kelas $it" }).toTypedArray())
+        val format = JComboBox(arrayOf("PDF (kertas F4)", "Excel (.xlsx)", "Google Sheet (tautan)"))
+        val urut = JComboBox(arrayOf("Kelas, lalu nama", "Nama", "Skor tertinggi"))
+        val p = JPanel(GridBagLayout()); val gc = GridBagConstraints().apply { gridx = 0; fill = GridBagConstraints.HORIZONTAL; anchor = GridBagConstraints.WEST; insets = Insets(2, 4, 2, 4); weightx = 1.0 }
+        var y = 0
+        fun add(c: JComponent) { gc.gridy = y++; p.add(c, gc) }
+        add(label("Ujian: ${u.nama} · ${u.mapel}", 13f, true)); add(label("Lingkup:")); add(scope)
+        add(label("Mode:", 12f, true)); add(simpel); add(lengkap); add(label("Bagian yang dimuat:", 12f, true)); checks.forEach { add(it.second) }
+        add(label("Format:", 12f, true)); add(format); add(label("Urutan siswa:")); add(urut)
+        if (JOptionPane.showConfirmDialog(this, p, "Buat laporan", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return
+        val bagian = checks.filter { it.second.isSelected }.map { it.first }
+        if (bagian.isEmpty()) { JOptionPane.showMessageDialog(this, "Pilih minimal satu bagian laporan."); return }
+        val fmt = listOf("pdf", "xlsx", "sheet")[format.selectedIndex]
+        val kelas = if (scope.selectedIndex == 0) "" else u.kelas.filter { it != "SEMUA" }[scope.selectedIndex - 1]
+        var res: Map<String, Any?>? = null
+        val err = busy("Membuat laporan ${if (fmt == "xlsx") "Excel" else if (fmt == "pdf") "PDF" else ""}…") {
+            res = api.post(mapOf("action" to "report", "examId" to u.id, "lingkup" to if (kelas.isEmpty()) "tingkat" else "kelas", "kelas" to kelas,
+                "mode" to if (lengkap.isSelected) "lengkap" else "simpel", "bagian" to bagian, "format" to fmt, "urut" to listOf("kelas", "nama", "skor")[urut.selectedIndex]))
+        }
+        if (err != null) { JOptionPane.showMessageDialog(this, err, "Gagal membuat laporan", JOptionPane.ERROR_MESSAGE); return }
+        val r = res ?: return
+        val url = r.s("url")
+        if (r.s("base64").isEmpty()) { openUrl(url); status("Laporan Google Sheet: ${r.s("nama")}"); return }
+        val fc = JFileChooser().apply { selectedFile = File(System.getProperty("user.home"), r.s("fileName")); dialogTitle = "Simpan laporan" }
+        if (fc.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) return
+        fc.selectedFile.writeBytes(Base64.getDecoder().decode(r.s("base64")))
+        status("Laporan disimpan: ${fc.selectedFile.name}")
+        val pilih = JOptionPane.showOptionDialog(this, "Laporan disimpan:\n${fc.selectedFile.absolutePath}\n\nArsip Google Sheet ada di folder \"Buleud Teu — Laporan\" (Drive pemilik spreadsheet).",
+            "Laporan siap", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, arrayOf("Buka berkas", "Buka Google Sheet", "Tutup"), "Buka berkas")
+        when (pilih) { 0 -> runCatching { Desktop.getDesktop().open(fc.selectedFile) }; 1 -> openUrl(url) }
+    }
+    private fun openUrl(u: String) { if (u.isNotEmpty()) runCatching { Desktop.getDesktop().browse(java.net.URI(u)) } }
 
     private fun exportCsv() {
         val u = exam ?: return

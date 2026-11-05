@@ -319,11 +319,39 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
     return bmp
 }
 
+// ---------------------------------------------------------------- laporan
+@Composable fun ReportCard(vm: AppViewModel) {
+    val ctx = LocalContext.current
+    Card {
+        Text("Laporan", color = Color.White, fontWeight = FontWeight.Bold)
+        Text("Lingkup mengikuti pilihan di atas. Simpel: pilihan jawaban, jumlah benar, skor. Lengkap: ditambah statistik tes dan analisis butir.", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
+        Row { listOf("simpel" to "Simpel", "lengkap" to "Lengkap").forEach { (k, t) -> FilterChip(vm.reportMode == k, { vm.setReportModeTo(k) }, { Text(t) }, Modifier.padding(end = 6.dp)) } }
+        AppViewModel.Laporan.BAGIAN.forEach { (k, t) ->
+            Row(Modifier.fillMaxWidth().clickable { vm.toggleBagian(k) }, verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(k in vm.reportBagian, { vm.toggleBagian(k) }); Text(t, color = Color.White, fontSize = 14.sp) }
+        }
+        Text("Format", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState())) { listOf("pdf" to "PDF (F4)", "xlsx" to "Excel", "sheet" to "Google Sheet").forEach { (k, t) -> FilterChip(vm.reportFormat == k, { vm.reportFormat = k }, { Text(t) }, Modifier.padding(end = 6.dp)) } }
+        Text("Urutan siswa", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+        Row(Modifier.horizontalScroll(rememberScrollState())) { listOf("kelas" to "Kelas, nama", "nama" to "Nama", "skor" to "Skor tertinggi").forEach { (k, t) -> FilterChip(vm.reportUrut == k, { vm.reportUrut = k }, { Text(t) }, Modifier.padding(end = 6.dp)) } }
+        Button({ vm.makeReport() }, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Buat laporan") }
+        if (vm.reportInfo.isNotEmpty()) Note("Laporan siap: ${vm.reportInfo}", OK)
+        vm.reportFile?.let { f ->
+            val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button({ runCatching { ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_VIEW).setDataAndType(uri, vm.reportMime).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Buka laporan")) } }, Modifier.weight(1f)) { Text("Buka") }
+                OutlinedButton({ ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType(vm.reportMime).putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Bagikan laporan")) }, Modifier.weight(1f)) { Text("Bagikan / simpan") }
+            }
+        }
+        if (vm.reportUrl.isNotEmpty()) TextButton({ runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(vm.reportUrl))) } }) { Text("Buka arsip Google Sheet") }
+    }
+}
+
 // ---------------------------------------------------------------- analisis
 @Composable fun AnalysisScreen(vm: AppViewModel) {
     val u = vm.exam ?: return
     Column(Modifier.fillMaxSize()) {
-        Top("Analisis butir", "${u.nama} · ${u.mapel}", onBack = { vm.screen = Screen.HOME })
+        Top("Analisis & laporan", "${u.nama} · ${u.mapel}", onBack = { vm.screen = Screen.HOME })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
             Card {
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
@@ -332,6 +360,7 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
                 }
                 Button({ vm.runAnalysis() }, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Hitung analisis") }
             }
+            ReportCard(vm)
             vm.analysis?.let { a ->
                 val R = a.optJSONObject("ringkasan")
                 Card {

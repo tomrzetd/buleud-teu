@@ -95,6 +95,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
   .screen,#toast,#busy{display:none!important}
   #printArea{display:block}#printArea svg{width:215mm;height:330mm;display:block;page-break-after:always}
 }
+  .repb{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin:6px 0 4px}.repb label{display:flex;gap:6px;align-items:flex-start;font-size:13px;padding:3px 0}
 </style>
 </head>
 <body>
@@ -220,10 +221,18 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
 
 <!-- 6. ANALISIS -->
 <section class="screen" id="scr-analysis">
-  <div class="top"><div class="icon" onclick="App.go('home')">←</div><h1 id="anTitle">Analisis butir</h1></div>
+  <div class="top"><div class="icon" onclick="App.go('home')">←</div><h1 id="anTitle">Analisis & laporan</h1></div>
   <div class="body">
     <div class="card"><h3>Lingkup</h3><div id="anScope"></div>
       <button class="btn pri wide" style="margin-top:10px" onclick="App.runAnalysis()">Hitung analisis</button></div>
+    <div class="card" id="repCard"><h3>Laporan</h3>
+      <p class="muted small">Lingkup mengikuti pilihan di atas. <b>Simpel</b>: pilihan jawaban, jumlah benar, skor. <b>Lengkap</b>: ditambah statistik tes dan analisis butir.</p>
+      <div id="repMode" style="margin:6px 0"><span class="chip on" data-m="simpel">Simpel</span><span class="chip" data-m="lengkap">Lengkap</span></div>
+      <div id="repBagian" class="repb"></div>
+      <div class="row"><div><label class="l">Format</label><select id="repFormat" class="in"><option value="pdf">PDF (kertas F4)</option><option value="xlsx">Excel (.xlsx)</option><option value="sheet">Google Sheet (tautan)</option></select></div>
+        <div><label class="l">Urutan siswa</label><select id="repUrut" class="in"><option value="kelas">Kelas, lalu nama</option><option value="nama">Nama</option><option value="skor">Skor tertinggi</option></select></div></div>
+      <button class="btn pri wide" style="margin-top:12px" onclick="App.makeReport()">Buat laporan</button>
+      <div id="repOut" class="small" style="margin-top:8px"></div></div>
     <div id="anOut"></div>
   </div>
 </section>

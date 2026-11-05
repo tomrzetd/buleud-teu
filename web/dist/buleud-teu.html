@@ -95,6 +95,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
   .screen,#toast,#busy{display:none!important}
   #printArea{display:block}#printArea svg{width:215mm;height:330mm;display:block;page-break-after:always}
 }
+  .repb{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin:6px 0 4px}.repb label{display:flex;gap:6px;align-items:flex-start;font-size:13px;padding:3px 0}
 </style>
 </head>
 <body>
@@ -220,10 +221,18 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
 
 <!-- 6. ANALISIS -->
 <section class="screen" id="scr-analysis">
-  <div class="top"><div class="icon" onclick="App.go('home')">←</div><h1 id="anTitle">Analisis butir</h1></div>
+  <div class="top"><div class="icon" onclick="App.go('home')">←</div><h1 id="anTitle">Analisis & laporan</h1></div>
   <div class="body">
     <div class="card"><h3>Lingkup</h3><div id="anScope"></div>
       <button class="btn pri wide" style="margin-top:10px" onclick="App.runAnalysis()">Hitung analisis</button></div>
+    <div class="card" id="repCard"><h3>Laporan</h3>
+      <p class="muted small">Lingkup mengikuti pilihan di atas. <b>Simpel</b>: pilihan jawaban, jumlah benar, skor. <b>Lengkap</b>: ditambah statistik tes dan analisis butir.</p>
+      <div id="repMode" style="margin:6px 0"><span class="chip on" data-m="simpel">Simpel</span><span class="chip" data-m="lengkap">Lengkap</span></div>
+      <div id="repBagian" class="repb"></div>
+      <div class="row"><div><label class="l">Format</label><select id="repFormat" class="in"><option value="pdf">PDF (kertas F4)</option><option value="xlsx">Excel (.xlsx)</option><option value="sheet">Google Sheet (tautan)</option></select></div>
+        <div><label class="l">Urutan siswa</label><select id="repUrut" class="in"><option value="kelas">Kelas, lalu nama</option><option value="nama">Nama</option><option value="skor">Skor tertinggi</option></select></div></div>
+      <button class="btn pri wide" style="margin-top:12px" onclick="App.makeReport()">Buat laporan</button>
+      <div id="repOut" class="small" style="margin-top:8px"></div></div>
     <div id="anOut"></div>
   </div>
 </section>
@@ -2017,7 +2026,38 @@ else root.LJKIdent = LJKIdent;
         const kls = S.exam.kelas.filter(k => k !== 'SEMUA');
         $('anScope').innerHTML = `<span class="chip on" data-s="tingkat">Seluruh tingkat ${esc(S.exam.tingkat || '')}</span>` + kls.map(k => `<span class="chip" data-s="kelas" data-k="${esc(k)}">Kelas ${esc(k)}</span>`).join('');
         $('anScope').onclick = (e) => { const d = e.target.dataset; if (!d || !d.s) return; S.anScope = { lingkup: d.s, kelas: d.k || '' }; [...$('anScope').children].forEach(c => c.classList.toggle('on', c === e.target)); };
-        $('anOut').innerHTML = ''; go('analysis');
+        $('anOut').innerHTML = ''; $('repOut').innerHTML = ''; renderReportOptions(); go('analysis');
+    }
+    // ------------------------------------------------------------ laporan (dibuat di Apps Script: PDF F4 / Excel / Google Sheet)
+    const REP_BAGIAN = [['identitas', 'Identitas ujian & kop'], ['nilai', 'Daftar nilai (benar & skor)'], ['jawaban', 'Pilihan jawaban per nomor'], ['rekap', 'Rekap & ketuntasan'],
+        ['statistik', 'Statistik tes (KR-20, SEM)'], ['butir', 'Analisis butir + rekomendasi'], ['pengecoh', 'Sebaran & pengecoh'], ['matriks', 'Matriks benar/salah'], ['ttd', 'Tanda tangan']];
+    const REP_MODE = { simpel: ['identitas', 'nilai', 'jawaban', 'rekap', 'ttd'], lengkap: REP_BAGIAN.map(b => b[0]) };
+    function renderReportOptions(mode) {
+        mode = mode || store.get('repMode') || 'simpel';
+        [...$('repMode').children].forEach(c => c.classList.toggle('on', c.dataset.m === mode));
+        $('repMode').onclick = (e) => { const m = e.target.dataset && e.target.dataset.m; if (m) { store.set('repMode', m); renderReportOptions(m); } };
+        $('repBagian').innerHTML = REP_BAGIAN.map(([k, t]) => `<label><input type="checkbox" data-b="${k}" ${REP_MODE[mode].includes(k) ? 'checked' : ''}> ${t}</label>`).join('');
+        $('repFormat').value = store.get('repFormat') || 'pdf';
+    }
+    function b64Blob(b64, mime) { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: mime }); }
+    async function makeReport() {
+        const bagian = [...$('repBagian').querySelectorAll('input:checked')].map(x => x.dataset.b);
+        if (!bagian.length) { toast('Pilih minimal satu bagian laporan'); return; }
+        const mode = [...$('repMode').children].find(c => c.classList.contains('on')).dataset.m, format = $('repFormat').value;
+        store.set('repFormat', format);
+        busy(true, 'Membuat laporan ' + (format === 'xlsx' ? 'Excel' : format === 'pdf' ? 'PDF' : '') + '…');
+        try {
+            const r = await apiPost({ action: 'report', examId: S.exam.id, lingkup: S.anScope.lingkup, kelas: S.anScope.kelas, mode, bagian, format, urut: $('repUrut').value });
+            let h = `<div class="note n-ok">Laporan siap: <b>${esc(r.nama)}</b> · ${r.ringkas.siswa} siswa · rata-rata ${r.ringkas.rataRata}</div>`;
+            if (r.base64) {
+                const url = URL.createObjectURL(b64Blob(r.base64, r.mime));
+                h += `<a class="btn pri wide" style="display:block;text-align:center;margin-top:6px" id="repDl" href="${url}" download="${esc(r.fileName)}">Unduh ${format.toUpperCase()} (${Math.max(1, Math.round(r.ukuran / 1024))} KB)</a>`;
+                setTimeout(() => { const a = $('repDl'); if (a) a.click(); }, 50);
+            }
+            h += `<p class="muted small" style="margin-top:6px">Arsip Google Sheet tersimpan di folder <b>Buleud Teu — Laporan</b> (Drive pemilik spreadsheet sekolah)${r.url ? ` · <a href="${r.url}" target="_blank" rel="noopener">buka</a>` : ''}.</p>`;
+            $('repOut').innerHTML = h;
+        } catch (e) { $('repOut').innerHTML = `<div class="note n-warn">Gagal membuat laporan: ${esc(e.message)}</div>`; }
+        busy(false);
     }
     async function runAnalysis() {
         busy(true, 'Menghitung analisis butir…');
@@ -2072,7 +2112,7 @@ else root.LJKIdent = LJKIdent;
         $('cariHasil').addEventListener('click', (e) => { const d = e.target.closest('.hit'); if (d) pickStudent(d.dataset.n, d.dataset.k); });
         $('selSiswa').addEventListener('change', showPicked); $('selKelas').addEventListener('change', showPicked);
     });
-    window.App = { go, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
+    window.App = { go, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, makeReport, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
     document.addEventListener('DOMContentLoaded', init);
 })();
 

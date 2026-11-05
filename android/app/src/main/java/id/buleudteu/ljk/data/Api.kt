@@ -25,7 +25,7 @@ data class Ujian(
 data class ExamsData(val guru: Guru, val ujian: List<Ujian>, val siswa: List<Siswa>, val kelasSemua: List<String>, val opsiDefault: String)
 
 class Api(private val store: Store) {
-    private val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).followRedirects(true).build()
+    private val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(150, TimeUnit.SECONDS).followRedirects(true).build()
     private val textPlain = "text/plain;charset=utf-8".toMediaType()
 
     suspend fun get(action: String, url: String = store.api): JSONObject = withContext(Dispatchers.IO) {

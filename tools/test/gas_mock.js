@@ -27,18 +27,24 @@ class Range {
     setValues(v) { v.forEach((row, i) => row.forEach((x, j) => { const R = this.r - 1 + i; this.sh.cells[R] = this.sh.cells[R] || []; this.sh.cells[R][this.c - 1 + j] = x; })); return this; }
     setValue(x) { return this.setValues([[x]]); }
 }
-['setFontWeight', 'setFontSize', 'setBackground', 'setBackgrounds', 'setNumberFormat', 'setDataValidation', 'setFontColor', 'setFontStyle'].forEach(m => Range.prototype[m] = function () { return this; });
+['setFontWeight', 'setFontSize', 'setBackground', 'setBackgrounds', 'setNumberFormat', 'setDataValidation', 'setFontColor', 'setFontStyle', 'merge', 'setHorizontalAlignment', 'setVerticalAlignment', 'setWrap', 'setBorder'].forEach(m => Range.prototype[m] = function () { return this; });
+['setRowHeight', 'setHiddenGridlines'].forEach(m => Sheet.prototype[m] = function () { return this; });
+Sheet.prototype.setName = function (n) { this.name = n; return this; };
 class SS {
     constructor() { this.sheets = []; }
     getSheetByName(n) { return this.sheets.find(s => s.name === n) || null; }
     insertSheet(n, i) { const s = new Sheet(n); if (i === 0) this.sheets.unshift(s); else this.sheets.push(s); return s; }
-    getSheets() { return this.sheets; } getId() { return 'SHEET123'; } getName() { return 'Uji Sekolah'; } setActiveSheet() { }
+    getSheets() { return this.sheets; } getId() { return this.id || 'SHEET123'; } getName() { return this.name || 'Uji Sekolah'; } setActiveSheet() { }
+    getUrl() { return 'https://docs.google.com/spreadsheets/d/' + this.getId() + '/edit'; }
 }
 function createGas(opt = {}) {
-const ss = new SS(), cache = new Map(), props = new Map();
+const ss = new SS(), cache = new Map(), props = new Map(), created = [], fetched = [], drive = { folders: [], moved: [], viewers: [] };
 const dv = () => { const o = { requireValueInList: () => o, build: () => ({}) }; return o; };
 const ctx = {
-    SpreadsheetApp: { getActiveSpreadsheet: () => ss, openById: () => ss, newDataValidation: dv, getUi: () => { throw new Error('no ui'); } },
+    SpreadsheetApp: { getActiveSpreadsheet: () => ss, openById: () => ss, newDataValidation: dv, getUi: () => { throw new Error('no ui'); }, flush: () => { },
+        BorderStyle: { SOLID: 'solid' }, create: (name) => { const n = new SS(); n.id = 'LAP' + created.length; n.name = name; n.insertSheet('Sheet1'); created.push(n); return n; } },
+    UrlFetchApp: { fetch: (url) => { fetched.push(url); const b = Buffer.from((/format=xlsx/.test(url) ? 'PK\x03\x04 xlsx tiruan ' : '%PDF-1.4 tiruan ') + url); return { getResponseCode: () => 200, getBlob: () => ({ getBytes: () => [...b] }) }; } },
+    ScriptApp: { getOAuthToken: () => 'tok' },
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props.get(k) || null, setProperty: (k, v) => props.set(k, v) }) },
     CacheService: { getScriptCache: () => ({ get: k => cache.get(k) || null, put: (k, v) => cache.set(k, v), remove: k => cache.delete(k) }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => { } }) },
@@ -55,12 +61,16 @@ ctx.Drive = { Files: { create: (meta, blob) => { const id = 'f' + files.size; fi
 ctx.DocumentApp = { openById: (id) => ({ getBody: () => ({ getText: () => {
     const f = path.join(os.tmpdir(), 'ocr_' + id + '_' + Date.now() + '.jpg'); fs.writeFileSync(f, files.get(id));
     try { return cp.execFileSync('tesseract', [f, '-', '--psm', '6'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString(); } catch (e) { return ''; } } }) }) };
-ctx.DriveApp = { getFileById: () => ({ setTrashed: () => { } }) };
+ctx.DriveApp = { getFileById: (id) => ({ setTrashed: () => { }, moveTo: (f) => drive.moved.push([id, f.name]), addViewer: (e) => drive.viewers.push([id, e]) }),
+    getFoldersByName: (n) => { const f = drive.folders.filter(x => x.name === n); let i = 0; return { hasNext: () => i < f.length, next: () => f[i++] }; },
+    createFolder: (n) => { const f = { name: n }; drive.folders.push(f); return f; } };
+ctx.Utilities.base64Encode = (bytes) => Buffer.from(bytes).toString('base64');
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Statistik.gs'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Code.gs'), 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Laporan.gs'), 'utf8'), ctx);
 const GET = (action) => JSON.parse(ctx.doGet({ parameter: { action } }).getContent());
 const POST = (o) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(o) } }).getContent());
-return { ctx, ss, GET, POST, doGet: (p) => ctx.doGet({ parameter: p }).getContent(), doPost: (body) => ctx.doPost({ postData: { contents: body } }).getContent() };
+return { ctx, ss, created, fetched, drive, GET, POST, doGet: (p) => ctx.doGet({ parameter: p }).getContent(), doPost: (body) => ctx.doPost({ postData: { contents: body } }).getContent() };
 }
 module.exports = { createGas };

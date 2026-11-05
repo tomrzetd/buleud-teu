@@ -80,19 +80,22 @@ function analisisButir(respons, kunci, opsi, kktp) {
   var r20 = kr20_(X, k);
   var M = statMean_(total);
   var r21 = (varTot > 0 && k > 1) ? (k / (k - 1)) * (1 - M * (k - M) / (k * varTot)) : null;
+  // skor total semua siswa sama -> korelasi, daya pembeda, dan reliabilitas tidak terdefinisi (bukan -1 / negatif)
+  var seragam = varTot === 0;
+  if (seragam) hasil.peringatan.push('Semua siswa memperoleh skor total sama (' + total[0] + '): validitas, daya pembeda, dan reliabilitas tidak dapat dihitung.');
 
   for (var j = 0; j < k; j++) {
     var col = X.map(function (r) { return r[j]; });
     var benar = col.reduce(function (s, v) { return s + v; }, 0), p = benar / n;
     var pU = atas.reduce(function (s, i) { return s + X[i][j]; }, 0) / g;
     var pL = bawah.reduce(function (s, i) { return s + X[i][j]; }, 0) / g;
-    var D = g ? pU - pL : null;
+    var D = g && !seragam ? pU - pL : null;
     var rest = total.map(function (t, i) { return t - X[i][j]; });
-    var rpb = statPearson_(col, rest);
+    var rpb = seragam ? null : statPearson_(col, rest);
     var valid = rpb != null && rTab != null && rpb >= rTab;
     // KR-20 jika butir dihapus
     var Xd = X.map(function (r) { return r.filter(function (_, jj) { return jj !== j; }); });
-    var r20del = kr20_(Xd, k - 1);
+    var r20del = seragam ? null : kr20_(Xd, k - 1);
     // pengecoh
     var dist = {}, berfungsi = [], mati = [];
     var letters = (opsi + '-').split('');
@@ -109,7 +112,8 @@ function analisisButir(respons, kunci, opsi, kktp) {
     var nDis = opsi.length - 1;
     // rekomendasi
     var alasan = [], rek;
-    if ((D != null && D < 0) || (rpb != null && rpb < 0)) {
+    if (seragam) { rek = '-'; alasan.push('skor total seragam: belum bisa dinilai'); }
+    else if ((D != null && D < 0) || (rpb != null && rpb < 0)) {
       rek = 'Dibuang';
       if (D != null && D < 0) alasan.push('daya pembeda negatif (kelompok bawah lebih banyak benar)');
       if (rpb != null && rpb < 0) alasan.push('korelasi butir-total negatif');

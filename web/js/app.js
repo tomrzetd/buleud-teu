@@ -600,7 +600,38 @@
         const kls = S.exam.kelas.filter(k => k !== 'SEMUA');
         $('anScope').innerHTML = `<span class="chip on" data-s="tingkat">Seluruh tingkat ${esc(S.exam.tingkat || '')}</span>` + kls.map(k => `<span class="chip" data-s="kelas" data-k="${esc(k)}">Kelas ${esc(k)}</span>`).join('');
         $('anScope').onclick = (e) => { const d = e.target.dataset; if (!d || !d.s) return; S.anScope = { lingkup: d.s, kelas: d.k || '' }; [...$('anScope').children].forEach(c => c.classList.toggle('on', c === e.target)); };
-        $('anOut').innerHTML = ''; go('analysis');
+        $('anOut').innerHTML = ''; $('repOut').innerHTML = ''; renderReportOptions(); go('analysis');
+    }
+    // ------------------------------------------------------------ laporan (dibuat di Apps Script: PDF F4 / Excel / Google Sheet)
+    const REP_BAGIAN = [['identitas', 'Identitas ujian & kop'], ['nilai', 'Daftar nilai (benar & skor)'], ['jawaban', 'Pilihan jawaban per nomor'], ['rekap', 'Rekap & ketuntasan'],
+        ['statistik', 'Statistik tes (KR-20, SEM)'], ['butir', 'Analisis butir + rekomendasi'], ['pengecoh', 'Sebaran & pengecoh'], ['matriks', 'Matriks benar/salah'], ['ttd', 'Tanda tangan']];
+    const REP_MODE = { simpel: ['identitas', 'nilai', 'jawaban', 'rekap', 'ttd'], lengkap: REP_BAGIAN.map(b => b[0]) };
+    function renderReportOptions(mode) {
+        mode = mode || store.get('repMode') || 'simpel';
+        [...$('repMode').children].forEach(c => c.classList.toggle('on', c.dataset.m === mode));
+        $('repMode').onclick = (e) => { const m = e.target.dataset && e.target.dataset.m; if (m) { store.set('repMode', m); renderReportOptions(m); } };
+        $('repBagian').innerHTML = REP_BAGIAN.map(([k, t]) => `<label><input type="checkbox" data-b="${k}" ${REP_MODE[mode].includes(k) ? 'checked' : ''}> ${t}</label>`).join('');
+        $('repFormat').value = store.get('repFormat') || 'pdf';
+    }
+    function b64Blob(b64, mime) { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: mime }); }
+    async function makeReport() {
+        const bagian = [...$('repBagian').querySelectorAll('input:checked')].map(x => x.dataset.b);
+        if (!bagian.length) { toast('Pilih minimal satu bagian laporan'); return; }
+        const mode = [...$('repMode').children].find(c => c.classList.contains('on')).dataset.m, format = $('repFormat').value;
+        store.set('repFormat', format);
+        busy(true, 'Membuat laporan ' + (format === 'xlsx' ? 'Excel' : format === 'pdf' ? 'PDF' : '') + '…');
+        try {
+            const r = await apiPost({ action: 'report', examId: S.exam.id, lingkup: S.anScope.lingkup, kelas: S.anScope.kelas, mode, bagian, format, urut: $('repUrut').value });
+            let h = `<div class="note n-ok">Laporan siap: <b>${esc(r.nama)}</b> · ${r.ringkas.siswa} siswa · rata-rata ${r.ringkas.rataRata}</div>`;
+            if (r.base64) {
+                const url = URL.createObjectURL(b64Blob(r.base64, r.mime));
+                h += `<a class="btn pri wide" style="display:block;text-align:center;margin-top:6px" id="repDl" href="${url}" download="${esc(r.fileName)}">Unduh ${format.toUpperCase()} (${Math.max(1, Math.round(r.ukuran / 1024))} KB)</a>`;
+                setTimeout(() => { const a = $('repDl'); if (a) a.click(); }, 50);
+            }
+            h += `<p class="muted small" style="margin-top:6px">Arsip Google Sheet tersimpan di folder <b>Buleud Teu — Laporan</b> (Drive pemilik spreadsheet sekolah)${r.url ? ` · <a href="${r.url}" target="_blank" rel="noopener">buka</a>` : ''}.</p>`;
+            $('repOut').innerHTML = h;
+        } catch (e) { $('repOut').innerHTML = `<div class="note n-warn">Gagal membuat laporan: ${esc(e.message)}</div>`; }
+        busy(false);
     }
     async function runAnalysis() {
         busy(true, 'Menghitung analisis butir…');
@@ -655,6 +686,6 @@
         $('cariHasil').addEventListener('click', (e) => { const d = e.target.closest('.hit'); if (d) pickStudent(d.dataset.n, d.dataset.k); });
         $('selSiswa').addEventListener('change', showPicked); $('selKelas').addEventListener('change', showPicked);
     });
-    window.App = { go, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
+    window.App = { go, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, makeReport, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
     document.addEventListener('DOMContentLoaded', init);
 })();

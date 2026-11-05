@@ -289,6 +289,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         analysis = call { api.post(JSONObject().put("action", "analyze").put("examId", exam!!.id).put("lingkup", analysisScope.first).put("kelas", analysisScope.second)) }
         busy = null
     }
+    // ---------------- laporan (dibuat Apps Script: PDF F4 / Excel / Google Sheet)
+    object Laporan {
+        val BAGIAN = listOf("identitas" to "Identitas ujian & kop", "nilai" to "Daftar nilai (benar & skor)", "jawaban" to "Pilihan jawaban per nomor", "rekap" to "Rekap & ketuntasan",
+            "statistik" to "Statistik tes (KR-20, SEM)", "butir" to "Analisis butir + rekomendasi", "pengecoh" to "Sebaran & pengecoh", "matriks" to "Matriks benar/salah", "ttd" to "Tanda tangan")
+        val MODE = mapOf("simpel" to listOf("identitas", "nilai", "jawaban", "rekap", "ttd"), "lengkap" to BAGIAN.map { it.first })
+    }
+    var reportMode by mutableStateOf("simpel")
+    val reportBagian = mutableStateListOf<String>().apply { addAll(Laporan.MODE.getValue("simpel")) }
+    var reportFormat by mutableStateOf("pdf")
+    var reportUrut by mutableStateOf("kelas")
+    var reportFile by mutableStateOf<java.io.File?>(null)
+    var reportMime = ""
+    var reportUrl by mutableStateOf("")
+    var reportInfo by mutableStateOf("")
+    fun setReportModeTo(m: String) { reportMode = m; reportBagian.clear(); reportBagian.addAll(Laporan.MODE.getValue(m)) }
+    fun toggleBagian(k: String) { if (k in reportBagian) reportBagian.remove(k) else reportBagian.add(k) }
+    fun makeReport() = viewModelScope.launch {
+        val u = exam ?: return@launch
+        if (reportBagian.isEmpty()) { say("Pilih minimal satu bagian laporan"); return@launch }
+        reportFile = null; reportUrl = ""; reportInfo = ""
+        busy = "Membuat laporan ${if (reportFormat == "xlsx") "Excel" else if (reportFormat == "pdf") "PDF" else ""}…"
+        val r = call { api.post(JSONObject().put("action", "report").put("examId", u.id).put("lingkup", analysisScope.first).put("kelas", analysisScope.second)
+            .put("mode", reportMode).put("bagian", JSONArray(Laporan.BAGIAN.map { it.first }.filter { it in reportBagian })).put("format", reportFormat).put("urut", reportUrut)) }
+        if (r != null) {
+            reportUrl = r.optString("url"); val rk = r.optJSONObject("ringkas")
+            reportInfo = "${r.optString("nama")} · ${rk?.optInt("siswa") ?: 0} siswa · rata-rata ${rk?.opt("rataRata") ?: "-"}"
+            val b64 = r.optString("base64")
+            if (b64.isNotEmpty()) withContext(Dispatchers.IO) {
+                val dir = java.io.File(getApplication<Application>().cacheDir, "laporan").apply { mkdirs() }
+                val f = java.io.File(dir, r.optString("fileName").replace(Regex("[\\/:*?\"<>|]"), "-"))
+                f.writeBytes(android.util.Base64.decode(b64, android.util.Base64.DEFAULT)); reportMime = r.optString("mime"); reportFile = f
+            }
+            say("Laporan siap")
+        }
+        busy = null
+    }
+
     fun saveBank() = viewModelScope.launch {
         busy = "Menyimpan ke Bank Soal…"
         call { api.post(JSONObject().put("action", "bank").put("examId", exam!!.id).put("lingkup", analysisScope.first).put("kelas", analysisScope.second)) }?.let { say("Bank Soal: ${it.optInt("baru")} baru, ${it.optInt("diperbarui")} diperbarui") }

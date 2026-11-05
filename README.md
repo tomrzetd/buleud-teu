@@ -11,6 +11,7 @@ Buleud Teu memindai dan mengoreksi LJK pilihan ganda dengan kamera HP. Aplikasi 
 | `desktop/` | Aplikasi PC **Windows 10/11 x64 & Linux x64** untuk scanner **ADF** (pindai massal satu tumpukan LJK) |
 | `apps-script/` | Backend Google Sheet: data sekolah, guru, siswa, ujian, hasil, analisis butir, dan bank soal |
 | `templates/` | Template LJK F4 siap cetak: bermarker 50 soal **ABCD** (SD–SMP) / **ABCDE** (SMA), dan **tanpa marker 20 / 25 soal ABCD** (tata letak LJK PSAS lama) |
+| `docs/` | **[Panduan lengkap](docs/PANDUAN.md)**: persiapan database, penamaan kelas & mapel SMP, template LJK, scan, laporan, pemecahan masalah |
 | `spec/` | Geometri LJK F4 (sumber tunggal untuk web, Android, dan template) |
 | `tools/` | Generator template, generator foto uji, dan semua pengujian |
 
@@ -66,6 +67,7 @@ Semua pengujian ada di `tools/test/` dan bisa dijalankan ulang.
 3. Identitas dibaca OCR dan dicocokkan ke daftar siswa. Periksa hasilnya, lalu **Simpan**.
 4. **Analisis**, per kelas atau per tingkat, menghitung tingkat kesukaran, daya pembeda 27%, validitas r point-biserial terkoreksi vs r tabel, KR-20/KR-21/SEM, KR-20 jika butir dihapus, efektivitas pengecoh, dan rekomendasi *Diterima/Direvisi/Dibuang*. Hasilnya ditulis ke sheet `AN_<ujian>_<lingkup>`.
 5. **Simpan ke Bank Soal** untuk memilah soal. Kolom *Status Guru* (Pakai/Revisi/Arsip) bisa diubah.
+6. **Laporan** (kartu Laporan di layar analisis, atau menu spreadsheet **Buleud Teu → 4. Buat laporan…**): mode **Simpel** (pilihan jawaban, jumlah benar, skor) atau **Lengkap** (+ statistik tes, analisis butir, pengecoh, matriks); setiap bagian bisa dipilih; format **PDF F4**, **Excel**, atau **Google Sheet**. Setelah memperbarui kode, jalankan **Tes koneksi & izin** sekali untuk menyetujui izin ekspor. Contoh: [simpel](docs/contoh/contoh_laporan_simpel.pdf), [lengkap](docs/contoh/contoh_laporan_lengkap.pdf).
 
 ## Android
 - APK debug dibuat otomatis oleh GitHub Actions (`android.yml`) setiap kali ada push. Unduh dari tab **Actions → artifact `buleud-teu-apk`**.

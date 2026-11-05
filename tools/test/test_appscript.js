@@ -2,7 +2,7 @@
 const assert = require('assert');
 
 const { createGas } = require('./gas_mock.js');
-const { ctx, ss, GET, POST } = createGas();
+const { ctx, ss, GET, POST, created, fetched, drive } = createGas();
 // ---------------- skenario
 ctx.setup();
 assert.deepStrictEqual(ss.sheets.map(s => s.name), ['Sekolah', 'Guru', 'Siswa', 'Ujian', 'HasilScan', 'BankSoal']);
@@ -54,5 +54,47 @@ assert.strictEqual(POST({ action: 'exams', token: tok2 }).ujian.length, 0);
 // kunci PIN setelah 5x salah
 for (let i = 0; i < 5; i++) POST({ action: 'login', guru: 'BUDI', pin: '1' });
 assert.ok(/Terlalu banyak/.test(POST({ action: 'login', guru: 'BUDI', pin: '9999' }).error));
+// ---------------- laporan
+const tokN = POST({ action: 'login', guru: 'NURHAYATI', pin: '1234' }).token;
+const cells = (sh) => Array.from(sh.cells, r => Array.from(r || [], v => v == null ? '' : String(v)));
+const findRow = (sh, first) => cells(sh).findIndex(r => r[0] === first || r[1] === first);
+// 1) simpel PDF: satu tab Nilai, kunci + pilihan + benar/skor, ekspor PDF F4
+let L = POST({ action: 'report', token: tokN, examId, mode: 'simpel', format: 'pdf', lingkup: 'tingkat' });
+assert.strictEqual(L.result, 'success', L.error); assert.strictEqual(L.mime, 'application/pdf'); assert.ok(L.fileName.endsWith('.pdf'));
+assert.ok(Buffer.from(L.base64, 'base64').toString().startsWith('%PDF'), 'isi PDF');
+assert.deepStrictEqual(L.bagian, ['identitas', 'nilai', 'jawaban', 'rekap', 'ttd']);
+let S = created.at(-1); assert.deepStrictEqual(S.sheets.map(x => x.name), ['Nilai']);
+assert.ok(/size=folio/.test(fetched.at(-1)) && /portrait=false/.test(fetched.at(-1)), 'F4, mendatar karena 40 soal');
+let nilai = S.getSheetByName('Nilai'), hr = findRow(nilai, 'No');
+const head = cells(nilai)[hr]; assert.deepStrictEqual(head.slice(0, 4), ['No', 'Nama', 'Kelas', 'No. Peserta']); assert.strictEqual(head.length, 4 + 40 + 4); assert.deepStrictEqual(head.slice(-4), ['Benar', 'Skor', 'Tuntas', 'Peringkat']);
+assert.strictEqual(cells(nilai)[hr + 1].slice(4, 44).join(''), KEY, 'baris KUNCI');
+const rowsN = cells(nilai).slice(hr + 2).filter(r => /^\d+$/.test(r[0]) && /^SISWA/.test(r[1]));
+assert.strictEqual(rowsN.length, 50, '50 siswa (scan ulang tidak dobel)');
+const s01 = rowsN.find(r => r[1] === 'SISWA 7A 01'); assert.strictEqual(s01[44], '40'); assert.strictEqual(s01[45], '100'); assert.strictEqual(s01[47], '1', 'peringkat 1');
+assert.ok(cells(nilai).some(r => r.some(v => /Kepala Sekolah/.test(v))), 'tanda tangan');
+assert.ok(drive.moved.at(-1)[1] === 'Buleud Teu — Laporan', 'arsip di folder laporan'); assert.deepStrictEqual(drive.viewers.at(-1).slice(1), ['n@x.id'], 'dibagikan ke email guru');
+// 2) lengkap XLSX: Nilai + Analisis Butir + Pengecoh + Matriks
+L = POST({ action: 'report', token: tokN, examId, mode: 'lengkap', format: 'xlsx', urut: 'skor' });
+assert.strictEqual(L.result, 'success', L.error); assert.ok(L.fileName.endsWith('.xlsx')); assert.ok(/format=xlsx/.test(fetched.at(-1)));
+S = created.at(-1); assert.deepStrictEqual(S.sheets.map(x => x.name), ['Nilai', 'Analisis Butir', 'Pengecoh', 'Matriks']);
+const an = S.getSheetByName('Analisis Butir'), ah = findRow(an, 'No');
+assert.strictEqual(cells(an).slice(ah + 1).filter(r => /^\d+$/.test(r[0])).length, 40, '40 butir');
+assert.ok(cells(an).some(r => r[0] === 'Reliabilitas KR-20'), 'ringkasan statistik');
+const urut = cells(S.getSheetByName('Nilai')).filter(r => /^SISWA/.test(r[1])).map(r => Number(r[r.length - 3]));
+assert.ok(urut.every((v, i) => i === 0 || urut[i - 1] >= v), 'urut skor menurun');
+// 3) pilihan bebas: hanya analisis butir (tanpa halaman nilai kosong), per kelas, Google Sheet saja
+L = POST({ action: 'report', token: tokN, examId, bagian: ['butir'], format: 'sheet', lingkup: 'kelas', kelas: '7B' });
+assert.strictEqual(L.result, 'success', L.error); assert.ok(!L.base64 && /spreadsheets\/d\//.test(L.url)); assert.strictEqual(L.ringkas.siswa, 25);
+assert.deepStrictEqual(created.at(-1).sheets.map(x => x.name), ['Analisis Butir']);
+// 4) galat yang jelas
+assert.ok(/Belum ada hasil scan/.test(POST({ action: 'report', token: tokN, examId, lingkup: 'kelas', kelas: '8A' }).error));
+assert.ok(POST({ action: 'report', token: 'palsu', examId }).auth);
+// 5) skor seragam (screenshot pengguna): r pbis / KR-20 jika dihapus tidak boleh -1 / negatif palsu
+const kU = POST({ action: 'saveExam', token: tokN, exam: { nama: 'UH SERAGAM', mapel: 'IPA', kelas: ['8A'], opsi: 'ABCD', kunci: 'ABAB' } }).id;
+for (const [nm, a] of [['S1', 'ABCC'], ['S2', 'CBAC'], ['S3', 'CCAB'], ['S4', 'AAAA']]) POST({ action: 'save', token: tokN, examId: kU, siswa: { nama: nm, kelas: '8A' }, answers: [...a] });
+const tU = POST({ action: 'analyze', token: tokN, examId: kU, lingkup: 'tingkat' });
+assert.ok(tU.butir.every(b => b.rpbis == null && b.d == null && b.rekomendasi === '-'), 'butir tidak terdefinisi saat skor seragam');
+assert.ok(tU.peringatan.some(p => /skor total sama/.test(p)));
+console.log(`Laporan OK — simpel PDF (1 tab), lengkap XLSX (4 tab), pilihan bebas per kelas (Google Sheet), skor seragam aman`);
 const R = t.ringkasan;
 console.log(`Apps Script OK — ujian ${examId}: n=${R.n}, k=${R.k}, rata ${R.rataRata}, KR-20 ${R.kr20} (${R.kategoriKr20}), SEM ${R.sem}, tuntas ${R.persenTuntas}%, diterima ${R.diterima}/direvisi ${R.direvisi}/dibuang ${R.dibuang}; sheet ${t.sheet} (${anSheet.getLastRow()} baris x ${anSheet.getLastColumn()} kolom)`);
