@@ -1,0 +1,92 @@
+name: Desktop (Windows & Linux)
+on:
+  push:
+    paths: ['desktop/**', 'android/app/src/main/java/id/buleudteu/ljk/engine/**', 'android/app/src/main/java/id/buleudteu/ljk/ident/**', 'tools/test/*desktop*', 'tools/test/gen_scans.py', '.github/workflows/desktop.yml']
+  workflow_dispatch: {}
+env:
+  APP_VERSION: '4.1.0'
+  PYTHONIOENCODING: utf-8
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.11.1' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: sudo apt-get update && sudo apt-get install -y xvfb tesseract-ocr fakeroot
+      - run: pip install numpy opencv-python-headless pillow
+      - run: npm i --no-save playwright@1 && npx playwright install --with-deps chromium
+      - name: Build
+        run: gradle -p desktop installDist --stacktrace
+      - name: Buat hasil scan ADF sintetis (PDF/TIFF multi-halaman, terbalik, abu-abu, 150-300 dpi)
+        run: node tools/render_templates.js 200 && python3 tools/test/gen_scans.py
+      - name: Uji batch (CLI, PDFBox)
+        run: BT_DESKTOP=desktop/build/install/buleud-teu-desktop/bin/buleud-teu-desktop python3 tools/test/test_desktop_batch.py
+      - name: Uji E2E UI (Xvfb + server tiruan Apps Script)
+        run: BT_DESKTOP=desktop/build/install/buleud-teu-desktop/bin/buleud-teu-desktop node tools/test/e2e_desktop.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: desktop-screenshots, path: tools/test/shots/desktop }
+      - uses: actions/upload-artifact@v4
+        with: { name: scans-sintetis, path: tools/test/scans, retention-days: 3 }
+      - name: Paket Linux (.deb + .tar.gz, Java sudah termasuk)
+        run: |
+          L=desktop/build/install/buleud-teu-desktop/lib
+          mkdir -p dist
+          jpackage --type app-image --name BuleudTeu --app-version $APP_VERSION --input $L --main-jar buleud-teu-desktop.jar \
+            --main-class id.buleudteu.desktop.MainKt --icon desktop/packaging/icon.png --java-options "-XX:MaxRAMPercentage=60 -Dfile.encoding=UTF-8" --dest build-img
+          tar -czf dist/BuleudTeu-Desktop-$APP_VERSION-linux-x64.tar.gz -C build-img BuleudTeu
+          jpackage --type deb --name buleud-teu --app-version $APP_VERSION --input $L --main-jar buleud-teu-desktop.jar \
+            --main-class id.buleudteu.desktop.MainKt --icon desktop/packaging/icon.png --java-options "-XX:MaxRAMPercentage=60 -Dfile.encoding=UTF-8" \
+            --linux-shortcut --linux-menu-group Education --linux-package-deps "sane-utils" --description "Buleud Teu - pemindai LJK massal (ADF)" --vendor "Buleud Teu" --dest dist
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with: { name: buleud-teu-desktop-linux, path: dist/* }
+
+  windows:
+    runs-on: windows-latest
+    needs: linux
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.11.1' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Cek sintaks skrip WIA (PowerShell)
+        shell: powershell
+        run: |
+          $e = $null; [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD\desktop\src\main\resources\wia_scan.ps1", [ref]$null, [ref]$e)
+          if ($e.Count) { $e | ForEach-Object { Write-Host $_ }; exit 1 }; "sintaks OK"
+      - name: Build
+        run: gradle -p desktop installDist --stacktrace
+      - name: Daftar scanner WIA (runner tanpa scanner -> harus tetap rapi)
+        shell: cmd
+        run: desktop\build\install\buleud-teu-desktop\bin\buleud-teu-desktop.bat --list-scanners
+      - uses: actions/download-artifact@v4
+        with: { name: scans-sintetis, path: tools/test/scans }
+      - name: Uji batch di Windows (PDFBox, TIFF, JPG, PNG)
+        shell: bash
+        run: BT_DESKTOP=desktop/build/install/buleud-teu-desktop/bin/buleud-teu-desktop.bat python tools/test/test_desktop_batch.py
+      - name: Paket Windows (portable .zip + installer .exe, Java sudah termasuk)
+        shell: pwsh
+        run: |
+          $L = "desktop/build/install/buleud-teu-desktop/lib"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $common = @('--app-version', $env:APP_VERSION, '--input', $L, '--main-jar', 'buleud-teu-desktop.jar', '--main-class', 'id.buleudteu.desktop.MainKt',
+                      '--icon', 'desktop/packaging/icon.ico', '--java-options', '-XX:MaxRAMPercentage=60 -Dfile.encoding=UTF-8', '--vendor', 'Buleud Teu', '--description', 'Buleud Teu - pemindai LJK massal (ADF)')
+          jpackage --type app-image --name BuleudTeu @common --dest build-img
+          if ($LASTEXITCODE) { exit 1 }
+          Compress-Archive -Path build-img/BuleudTeu -DestinationPath "dist/BuleudTeu-Desktop-$($env:APP_VERSION)-windows-x64-portable.zip"
+          jpackage --type exe --name "Buleud Teu" @common --win-menu --win-menu-group "Buleud Teu" --win-shortcut --win-dir-chooser --win-per-user-install --win-upgrade-uuid 6f1c6a52-6b0e-4b6a-9d55-2f6a1f0b7e11 --dest dist
+          if ($LASTEXITCODE) { Write-Host "::warning::Installer .exe gagal dibuat (WiX). Versi portable .zip tetap tersedia." }
+          Get-ChildItem dist
+      - uses: actions/upload-artifact@v4
+        with: { name: buleud-teu-desktop-windows, path: dist/* }

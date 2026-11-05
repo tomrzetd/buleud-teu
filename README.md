@@ -8,6 +8,7 @@ Buleud Teu memindai dan mengoreksi LJK pilihan ganda dengan kamera HP. Aplikasi 
 |---|---|
 | `web/` | Aplikasi web (PWA) yang bisa dipasang di HP, berjalan offline, tanpa CDN maupun OpenCV |
 | `android/` | Aplikasi Android native (Kotlin, Jetpack Compose, CameraX, OpenCV, ML Kit) |
+| `desktop/` | Aplikasi PC **Windows 10/11 x64 & Linux x64** untuk scanner **ADF** (pindai massal satu tumpukan LJK) |
 | `apps-script/` | Backend Google Sheet: data sekolah, guru, siswa, ujian, hasil, analisis butir, dan bank soal |
 | `templates/` | Template LJK F4 siap cetak: bermarker 50 soal **ABCD** (SD–SMP) / **ABCDE** (SMA), dan **tanpa marker 20 / 25 soal ABCD** (tata letak LJK PSAS lama) |
 | `spec/` | Geometri LJK F4 (sumber tunggal untuk web, Android, dan template) |
@@ -74,6 +75,18 @@ Semua pengujian ada di `tools/test/` dan bisa dijalankan ulang.
 - ML Kit menangani OCR identitas di perangkat. Kalau hasilnya belum yakin, aplikasi beralih ke OCR Google Drive.
 - Target: HP kelas menengah ke atas (Android 7+, kamera ≥ 8 MP).
 
+## Desktop (PC + scanner ADF)
+Untuk menilai satu tumpukan LJK sekaligus dengan scanner ber-ADF (Automatic Document Feeder).
+- **Unduh:** tab **Actions → Desktop (Windows & Linux)** → artifact `buleud-teu-desktop-windows` (installer `.exe` + versi portabel `.zip`) atau `buleud-teu-desktop-linux` (`.deb` + `.tar.gz`). Java sudah termasuk; tidak perlu memasang apa pun lagi.
+- **Jalur scanner:**
+  - **WIA** (Windows): driver resmi Canon / Epson / Brother. Feeder dipakai otomatis sampai kertas habis; panjang pindai diatur F4 (330 mm); duplex bila didukung.
+  - **TWAIN lewat NAPS2** (Windows, opsional): untuk driver yang ADF-nya hanya lewat TWAIN. Pasang NAPS2 gratis.
+  - **SANE** (Linux): `sudo apt install sane-utils` + backend scanner (Brother brscan4/5, Epson epsonscan2/epson2, Canon pixma, jaringan sane-airscan).
+  - **Folder pantau** (semua OS): software bawaan scanner (Epson Scan 2, Canon IJ Scan Utility, Brother ControlCenter, scan-to-folder) menyimpan ke satu folder; tiap berkas baru (JPG/PNG/TIFF/PDF multi-halaman) langsung diproses.
+- **Alur:** masuk (nama guru + PIN) → pilih ujian → **Mulai scan ADF** → tiap lembar dibaca (LJK bermarker F4, atau LJK lama 20/25 soal untuk ujian ≤ 25 soal ABCD) → OCR identitas menjadi **rekomendasi** → guru memilih/mencari siswa (Enter = pilih, lanjut ke lembar berikutnya) atau **Terima rekomendasi ≥ 90%** → **Simpan semua**. Lembar ganda, nomor kuning, dan siswa yang sudah pernah discan diberi peringatan sebelum disimpan. Offline → antrean, dikirim otomatis.
+- **Saran pindai:** kertas F4, 200 dpi, berwarna (kotak identitas merah muda dihapus otomatis untuk OCR). Lembar boleh terbalik.
+- Engine yang dipakai adalah kode Kotlin yang sama dengan Android (sudah diuji identik dengan web).
+
 ## Pengujian
 ```bash
 node tools/render_templates.js 200        # template PDF + PNG uji (butuh Playwright/Chromium)
@@ -83,6 +96,9 @@ python3 tools/test/test_stats.py          # statistik vs numpy/scipy
 node tools/test/test_appscript.js         # Apps Script (tiruan layanan Google)
 node tools/test/e2e_web.js                # end-to-end web + Apps Script + OCR (butuh tesseract)
 bash tools/test/run_kotlin.sh             # engine Kotlin vs JS (compiler Kotlin dari Gradle)
+python3 tools/test/gen_scans.py           # hasil scan ADF sintetis (PDF/TIFF multi-halaman, terbalik, abu-abu)
+python3 tools/test/test_desktop_batch.py  # desktop: baca batch (BT_DESKTOP=perintah aplikasi)
+node tools/test/e2e_desktop.js            # desktop: UI di Xvfb + server tiruan Apps Script
 node tools/build.js                       # build web/dist + apps-script/dist + spec JSON
 ```
 

@@ -10,3 +10,8 @@ android/.idea/
 *.iml
 .DS_Store
 tools/test/cases_lama*/
+tools/test/scans/
+desktop/.gradle/
+desktop/build/
+build-img/
+dist/
