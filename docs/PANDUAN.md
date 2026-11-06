@@ -345,6 +345,10 @@ Pesan penolakan dari server:
 ## Distribusi aplikasi Android ke guru
 
 - **Link unduhan tetap** (selalu versi terbaru): https://github.com/tomrzetd/buleud-teu/releases/latest/download/BuleudTeu.apk — bagikan lewat grup WhatsApp guru atau QR code.
+
+  ![QR unduh aplikasi Android](img/qr_unduh_apk.png)
+
+  Poster QR di atas siap dicetak atau dikirim ke grup WhatsApp; isinya selalu mengarah ke versi terbaru.
 - Saat memasang pertama kali, Android meminta izin **Instal aplikasi tidak dikenal** untuk WhatsApp/Chrome/File. Bila Play Protect memberi peringatan, pilih **Detail lainnya → Tetap instal**.
 - APK ditandatangani **kunci rilis Buleud Teu** yang tetap, sehingga versi baru **langsung menimpa** versi lama tanpa menghapus login, pengaturan, dan antrean hasil.
 - Aplikasi memberi tahu bila ada versi baru di beranda (**Versi baru tersedia → Unduh pembaruan**). Tombol hanya aktif bila antrean hasil offline sudah terkirim.
