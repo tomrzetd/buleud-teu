@@ -15,3 +15,6 @@ desktop/.gradle/
 desktop/build/
 build-img/
 dist/
+*.jks
+*.keystore
+keystore.b64

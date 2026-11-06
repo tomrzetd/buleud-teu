@@ -11,6 +11,7 @@ Buleud Teu memindai dan mengoreksi LJK pilihan ganda dengan kamera HP. Aplikasi 
 | `desktop/` | Aplikasi PC **Windows 10/11 x64 & Linux x64** untuk scanner **ADF** (pindai massal satu tumpukan LJK) |
 | `apps-script/` | Backend Google Sheet: data sekolah, guru, siswa, ujian, hasil, analisis butir, dan bank soal |
 | `templates/` | Template LJK F4 siap cetak: bermarker 50 soal **ABCD** (SD–SMP) / **ABCDE** (SMA), dan **tanpa marker 20 / 25 soal ABCD** (tata letak LJK PSAS lama) |
+| (unduh) | **APK Android untuk guru:** https://github.com/tomrzetd/buleud-teu/releases/latest/download/BuleudTeu.apk |
 | `docs/` | **[Panduan lengkap](docs/PANDUAN.md)**: persiapan database, penamaan kelas & mapel SMP, template LJK, scan, laporan, pemecahan masalah |
 | `spec/` | Geometri LJK F4 (sumber tunggal untuk web, Android, dan template) |
 | `tools/` | Generator template, generator foto uji, dan semua pengujian |

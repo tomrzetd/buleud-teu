@@ -342,6 +342,15 @@ Pesan penolakan dari server:
 | Kunci tidak sah: nomor … | Ada karakter selain A–D/A–E | Perbaiki huruf di nomor yang disebut |
 | Akun guru tidak aktif | Kolom Aktif guru = Tidak | Operator mengaktifkan kembali bila perlu |
 
+## Distribusi aplikasi Android ke guru
+
+- **Link unduhan tetap** (selalu versi terbaru): https://github.com/tomrzetd/buleud-teu/releases/latest/download/BuleudTeu.apk — bagikan lewat grup WhatsApp guru atau QR code.
+- Saat memasang pertama kali, Android meminta izin **Instal aplikasi tidak dikenal** untuk WhatsApp/Chrome/File. Bila Play Protect memberi peringatan, pilih **Detail lainnya → Tetap instal**.
+- APK ditandatangani **kunci rilis Buleud Teu** yang tetap, sehingga versi baru **langsung menimpa** versi lama tanpa menghapus login, pengaturan, dan antrean hasil.
+- Aplikasi memberi tahu bila ada versi baru di beranda (**Versi baru tersedia → Unduh pembaruan**). Tombol hanya aktif bila antrean hasil offline sudah terkirim.
+- **Pindah dari APK debug (versi uji lama):** satu kali saja, kirim dulu antrean hasil, lalu **hapus aplikasi lama** dan pasang APK rilis. Setelah itu tidak perlu lagi.
+- Operator menerbitkan versi baru: GitHub → **Actions → Android APK → Run workflow** (centang *Terbitkan*). Rilis muncul di halaman **Releases** dengan nomor versi `4.1.N`.
+
 ## 9. Daftar periksa operator
 
 - [ ] Apps Script V40 terpasang, Drive API aktif, `setup` dijalankan

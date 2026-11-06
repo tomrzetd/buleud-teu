@@ -2,20 +2,66 @@ name: Android APK
 on:
   push:
     paths: ['android/**', '.github/workflows/android.yml']
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      rilis:
+        description: 'Terbitkan ke GitHub Releases (link unduhan guru)?'
+        type: boolean
+        default: true
+permissions:
+  contents: write
+env:
+  # sidik jari SHA-256 kunci rilis Buleud Teu (bukan rahasia; dipakai memastikan APK ditandatangani kunci yang benar)
+  BT_CERT_SHA256: '28:E6:5A:A1:5F:DC:5C:7D:F9:62:B2:A4:11:29:7A:C5:F0:D7:70:FD:3A:62:9D:2F:7C:91:46:20:98:F8:6F:06'
 jobs:
   build:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: android } }
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: '8.11.1' }
-      - name: Build APK debug
-        run: gradle assembleDebug --stacktrace
+      - name: Siapkan kunci rilis
+        id: kunci
+        env: { KS: '${{ secrets.ANDROID_KEYSTORE_B64 }}' }
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/rilis.jks"
+            echo "BT_KEYSTORE=$RUNNER_TEMP/rilis.jks" >> "$GITHUB_ENV"; echo "ada=1" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Secret ANDROID_KEYSTORE_B64 belum diisi — APK ditandatangani kunci DEBUG (hanya uji, tidak bisa update menimpa)."
+            echo "ada=0" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build APK rilis
+        env:
+          BT_BUILD: ${{ github.run_number }}
+          BT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          BT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          BT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle assembleRelease --stacktrace
+      - name: Verifikasi tanda tangan & beri nama
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          SIGNER=$(ls -d $ANDROID_HOME/build-tools/*/ | sort -V | tail -1)apksigner
+          CERT=$($SIGNER verify --print-certs "$APK" | grep -m1 'SHA-256 digest' | awk '{print toupper($NF)}' | sed 's/../&:/g;s/:$//')
+          echo "Sertifikat: $CERT"
+          if [ "${{ steps.kunci.outputs.ada }}" = "1" ] && [ "$CERT" != "$BT_CERT_SHA256" ]; then echo "::error::APK tidak ditandatangani kunci rilis Buleud Teu"; exit 1; fi
+          V=4.1.${{ github.run_number }}
+          mkdir -p ../dist && cp "$APK" ../dist/BuleudTeu.apk && cp "$APK" ../dist/BuleudTeu-$V.apk
+          echo "VERSI=$V" >> "$GITHUB_ENV"; ls -la ../dist
       - uses: actions/upload-artifact@v4
         with:
           name: buleud-teu-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: dist/*.apk
+      - name: Terbitkan GitHub Release (link unduhan tetap)
+        if: github.event_name == 'workflow_dispatch' && inputs.rilis && steps.kunci.outputs.ada == '1'
+        working-directory: .
+        env: { GH_TOKEN: '${{ github.token }}' }
+        run: |
+          PREV=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          LOG=$(git log --pretty='- %s' ${PREV:+$PREV..}HEAD -- android apps-script web/js | head -15)
+          printf 'Buleud Teu Android %s\n\nUnduh: https://github.com/%s/releases/latest/download/BuleudTeu.apk\n\nPerubahan:\n%s\n' "$VERSI" "$GITHUB_REPOSITORY" "$LOG" > notes.md
+          gh release create "v$VERSI" dist/BuleudTeu.apk "dist/BuleudTeu-$VERSI.apk" --title "Buleud Teu $VERSI" --notes-file notes.md --target "$GITHUB_SHA"

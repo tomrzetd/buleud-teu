@@ -33,6 +33,7 @@ import id.buleudteu.ljk.AppViewModel
 import id.buleudteu.ljk.ScanMode
 import id.buleudteu.ljk.Screen
 import id.buleudteu.ljk.data.Ujian
+import id.buleudteu.ljk.data.Updater
 import id.buleudteu.ljk.engine.LjkEngine
 import id.buleudteu.ljk.engine.LjkSpec
 import java.io.File
@@ -121,7 +122,15 @@ fun AppRoot(vm: AppViewModel) {
             LinearProgressIndicator(Modifier.fillMaxWidth(), color = PRI)
             Text(msg, color = TX2, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
         }
+        LaunchedEffect(Unit) { vm.checkUpdate() }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
+            vm.update?.let { up -> Card {
+                Text("Versi baru tersedia: ${up.versi}", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Terpasang: ${Updater.versionName(ctx)}. Kirim dulu antrean hasil (bila ada), lalu unduh & pasang — data dan login tetap tersimpan.", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
+                if (up.catatan.isNotEmpty()) Text(up.catatan, color = TX2, fontSize = 12.sp)
+                Button({ runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Updater.DOWNLOAD))) } }, Modifier.fillMaxWidth().padding(top = 6.dp), enabled = vm.queueSize == 0) {
+                    Text(if (vm.queueSize == 0) "Unduh pembaruan" else "Kirim antrean dulu (${vm.queueSize})") }
+            } }
             if (vm.queueSize > 0) Note("${vm.queueSize} hasil scan menunggu dikirim (offline). Ketuk ↻ untuk mengirim.")
             val list = vm.data?.ujian ?: emptyList()
             if (list.isEmpty()) Card { Text("Belum ada ujian aktif. Buat ujian baru, isi kunci, lalu cetak LJK.", color = TX2) }

@@ -103,6 +103,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     } catch (e: Exception) { say(if (isNetwork(e)) "Offline / server tidak terjangkau" else (e.message ?: "Gagal")); null }
 
     // ---------------- ujian
+    // ---------------- pembaruan aplikasi (GitHub Releases)
+    var update by mutableStateOf<Updater.Info?>(null)
+    private var updateChecked = false
+    fun checkUpdate() { if (updateChecked) return; updateChecked = true
+        viewModelScope.launch { update = withContext(Dispatchers.IO) { Updater.cek(getApplication()) } } }
+
     fun loadExams() = viewModelScope.launch {
         loading = "Memuat data ujian & siswa dari spreadsheet…"
         call { api.post(JSONObject().put("action", "exams")) }?.let { store.examsJson = it.toString(); data = Api.exams(it); flushQueue() }

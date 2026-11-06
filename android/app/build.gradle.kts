@@ -4,6 +4,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// nomor build dari CI (github.run_number); lokal = 0. versionCode harus selalu naik agar update bisa menimpa versi lama.
+val btBuild = (System.getenv("BT_BUILD") ?: "0").toIntOrNull() ?: 0
+// kunci rilis (dari GitHub Secrets, didekode CI ke berkas sementara). Tanpa kunci: APK rilis memakai kunci debug (hanya uji).
+val btKeystore = System.getenv("BT_KEYSTORE")?.let { file(it) }?.takeIf { it.exists() }
+
 android {
     namespace = "id.buleudteu.ljk"
     compileSdk = 35
@@ -11,15 +16,23 @@ android {
         applicationId = "id.buleudteu.ljk"
         minSdk = 24
         targetSdk = 35
-        versionCode = 40
-        versionName = "4.0"
+        versionCode = 1000 + btBuild
+        versionName = "4.1.$btBuild"
         // HP Android kelas menengah ke atas = ARM; buang x86 agar APK jauh lebih kecil (hemat kuota guru)
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
+    signingConfigs {
+        if (btKeystore != null) create("rilis") {
+            storeFile = btKeystore
+            storePassword = System.getenv("BT_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("BT_KEY_ALIAS") ?: "buleudteu"
+            keyPassword = System.getenv("BT_KEY_PASSWORD") ?: System.getenv("BT_KEYSTORE_PASSWORD")
+        }
+    }
     buildTypes {
         release {
-            isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")   // ganti dengan kunci rilis sendiri sebelum ke Play Store
+            isMinifyEnabled = false   // OpenCV/ML Kit/CameraX: tanpa R8 agar aman
+            signingConfig = if (btKeystore != null) signingConfigs.getByName("rilis") else signingConfigs.getByName("debug")
         }
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
