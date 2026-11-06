@@ -311,6 +311,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val reportBagian = mutableStateListOf<String>().apply { addAll(Laporan.MODE.getValue("simpel")) }
     var reportFormat by mutableStateOf("pdf")
     var reportUrut by mutableStateOf("kelas")
+    var reportAnonim by mutableStateOf(false)
     var reportFile by mutableStateOf<java.io.File?>(null)
     var reportMime = ""
     var reportUrl by mutableStateOf("")
@@ -323,7 +324,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         reportFile = null; reportUrl = ""; reportInfo = ""
         busy = "Membuat laporan ${if (reportFormat == "xlsx") "Excel" else if (reportFormat == "pdf") "PDF" else ""}…"
         val r = call { api.post(JSONObject().put("action", "report").put("examId", u.id).put("lingkup", analysisScope.first).put("kelas", analysisScope.second)
-            .put("mode", reportMode).put("bagian", JSONArray(Laporan.BAGIAN.map { it.first }.filter { it in reportBagian })).put("format", reportFormat).put("urut", reportUrut)) }
+            .put("mode", reportMode).put("bagian", JSONArray(Laporan.BAGIAN.map { it.first }.filter { it in reportBagian })).put("format", reportFormat).put("urut", reportUrut).put("anonim", reportAnonim)) }
         if (r != null) {
             reportUrl = r.optString("url"); val rk = r.optJSONObject("ringkas")
             reportInfo = "${r.optString("nama")} · ${rk?.optInt("siswa") ?: 0} siswa · rata-rata ${rk?.opt("rataRata") ?: "-"}"

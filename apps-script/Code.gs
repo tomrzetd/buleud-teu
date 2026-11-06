@@ -312,7 +312,8 @@ function apiAnalyze_(d) {
   var r = analisisUjian(d.examId, d.lingkup, d.kelas);
   var A = r.hasil;
   return { result: 'success', sheet: r.sheet, ringkasan: A.ringkasan, peringatan: A.peringatan,
-    butir: A.butir.map(function (b) { return { no: b.no, kunci: b.kunci, p: b.p, tk: b.tk, d: b.d, dp: b.dp, rpbis: b.rpbis, valid: b.valid, korelasi: b.korelasi, rekomendasi: b.rekomendasi, alasan: b.alasan, sebaran: b.sebaran }; }) };
+    butir: A.butir.map(function (b) { return { no: b.no, kunci: b.kunci, p: b.p, tk: b.tk, d: b.d, dp: b.dp, rpbis: b.rpbis, rTabel: b.rTabel, valid: b.valid, korelasi: b.korelasi, rekomendasi: b.rekomendasi, alasan: b.alasan, sebaran: b.sebaran,
+      benar: b.benar, kr20JikaDihapus: b.kr20JikaDihapus, pengecohBerfungsi: b.pengecohBerfungsi, pengecohMati: b.pengecohMati }; }), n: A.n, opsi: A.opsi, sampelKecil: A.sampelKecil };
 }
 
 // simpan hasil analisis ke Bank Soal (upsert per Kode Soal + Lingkup)

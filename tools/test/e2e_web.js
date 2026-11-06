@@ -120,8 +120,20 @@ const API = 'https://script.google.com/macros/s/UJI_BULEUD/exec';
     ['IBNU SINA', 'INDAH LESTARI', 'BUDI SANTOSO', 'LADENA PUTRI'].forEach((n, i) => gas.POST({ action: 'save', token: tok, examId: exam, siswa: { nama: n, kelas: i < 2 ? '9A' : '9B' }, answers: [...KEY].map((ch, j) => (j + i) % (i + 2) ? ch : 'D') }));
     await page.evaluate(() => App.go('home'));
     await page.evaluate(() => App.openAnalysis(App._S.data.ujian.findIndex(u => u.nama === 'PSAS GANJIL IPA'))); await page.click('text=Hitung analisis');
-    await page.waitForSelector('#anOut table', { timeout: 15000 });
+    await page.waitForSelector('#anOut .hmap .tile', { timeout: 15000 });
     await page.screenshot({ path: path.join(SHOT, '8_analisis.png'), fullPage: false });
+    // dashboard diagnostik: peta butir, filter, detail butir
+    assert.ok(await page.locator('.hmap .tile').count() > 0, 'peta butir tampil');
+    await page.locator('#anOut > .card').nth(0).screenshot({ path: path.join(SHOT, '13_dashboard_ringkasan.png') });
+    await page.locator('#anOut > .card').nth(1).screenshot({ path: path.join(SHOT, '13_dashboard_peta.png') });
+    await page.locator('.hmap .tile').nth(1).click();
+    await page.waitForSelector('#anDetail .opts .opt');
+    assert.ok(await page.locator('#anDetail .opt.key').count() === 1, 'kunci disorot');
+    await page.locator('#anDetail').screenshot({ path: path.join(SHOT, '14_detail_butir.png') });
+    await page.click('.anf button:has-text("Perlu ditinjau")');
+    const nTinjau = await page.locator('.hmap .tile').count(), nSemua = await page.evaluate(() => App._S.an.r.butir.length);
+    assert.ok(nTinjau <= nSemua, 'filter mengurangi butir');
+    await page.click('.anf button:has-text("Semua")');
     await page.click('text=Simpan ke Bank Soal'); await page.waitForFunction(() => /Bank Soal/.test(document.getElementById('toast').textContent));
     assert.strictEqual(ss.getSheetByName('BankSoal').getLastRow(), 41);
     // 6b) laporan: simpel PDF (unduhan otomatis), lalu lengkap Excel

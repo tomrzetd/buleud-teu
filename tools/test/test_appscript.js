@@ -86,6 +86,11 @@ assert.ok(urut.every((v, i) => i === 0 || urut[i - 1] >= v), 'urut skor menurun'
 L = POST({ action: 'report', token: tokN, examId, bagian: ['butir'], format: 'sheet', lingkup: 'kelas', kelas: '7B' });
 assert.strictEqual(L.result, 'success', L.error); assert.ok(!L.base64 && /spreadsheets\/d\//.test(L.url)); assert.strictEqual(L.ringkas.siswa, 25);
 assert.deepStrictEqual(created.at(-1).sheets.map(x => x.name), ['Analisis Butir']);
+// 3b) anonim: tidak ada nama siswa di laporan
+L = POST({ action: 'report', token: tokN, examId, mode: 'lengkap', format: 'pdf', anonim: true });
+assert.strictEqual(L.result, 'success', L.error); assert.ok(/Anonim/.test(L.fileName));
+const isi = created.at(-1).sheets.flatMap(x => cells(x)).flat().join(' ');
+assert.ok(!/SISWA 7A/.test(isi), 'nama siswa tidak boleh muncul'); assert.ok(/Peserta 01/.test(isi));
 // 4) galat yang jelas
 assert.ok(/Belum ada hasil scan/.test(POST({ action: 'report', token: tokN, examId, lingkup: 'kelas', kelas: '8A' }).error));
 assert.ok(POST({ action: 'report', token: 'palsu', examId }).auth);

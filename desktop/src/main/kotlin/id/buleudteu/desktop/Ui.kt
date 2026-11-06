@@ -560,13 +560,13 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         lengkap.addActionListener { checks.forEach { (k, c) -> c.isSelected = k in repMode.getValue("lengkap") } }
         val scope = JComboBox((listOf("Seluruh peserta ujian") + u.kelas.filter { it != "SEMUA" }.map { "Kelas $it" }).toTypedArray())
         val format = JComboBox(arrayOf("PDF (kertas F4)", "Excel (.xlsx)", "Google Sheet (tautan)"))
-        val urut = JComboBox(arrayOf("Kelas, lalu nama", "Nama", "Skor tertinggi"))
+        val urut = JComboBox(arrayOf("Kelas, lalu nama", "Nama", "Skor tertinggi")); val anon = JCheckBox("Mode anonim — nama diganti \"Peserta 01…\" (rapat MGMP)")
         val p = JPanel(GridBagLayout()); val gc = GridBagConstraints().apply { gridx = 0; fill = GridBagConstraints.HORIZONTAL; anchor = GridBagConstraints.WEST; insets = Insets(2, 4, 2, 4); weightx = 1.0 }
         var y = 0
         fun add(c: JComponent) { gc.gridy = y++; p.add(c, gc) }
         add(label("Ujian: ${u.nama} · ${u.mapel}", 13f, true)); add(label("Lingkup:")); add(scope)
         add(label("Mode:", 12f, true)); add(simpel); add(lengkap); add(label("Bagian yang dimuat:", 12f, true)); checks.forEach { add(it.second) }
-        add(label("Format:", 12f, true)); add(format); add(label("Urutan siswa:")); add(urut)
+        add(label("Format:", 12f, true)); add(format); add(label("Urutan siswa:")); add(urut); add(anon)
         if (JOptionPane.showConfirmDialog(this, p, "Buat laporan", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE) != JOptionPane.OK_OPTION) return
         val bagian = checks.filter { it.second.isSelected }.map { it.first }
         if (bagian.isEmpty()) { JOptionPane.showMessageDialog(this, "Pilih minimal satu bagian laporan."); return }
@@ -575,7 +575,7 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         var res: Map<String, Any?>? = null
         val err = busy("Membuat laporan ${if (fmt == "xlsx") "Excel" else if (fmt == "pdf") "PDF" else ""}…") {
             res = api.post(mapOf("action" to "report", "examId" to u.id, "lingkup" to if (kelas.isEmpty()) "tingkat" else "kelas", "kelas" to kelas,
-                "mode" to if (lengkap.isSelected) "lengkap" else "simpel", "bagian" to bagian, "format" to fmt, "urut" to listOf("kelas", "nama", "skor")[urut.selectedIndex]))
+                "mode" to if (lengkap.isSelected) "lengkap" else "simpel", "bagian" to bagian, "format" to fmt, "urut" to listOf("kelas", "nama", "skor")[urut.selectedIndex], "anonim" to anon.isSelected))
         }
         if (err != null) { JOptionPane.showMessageDialog(this, err, "Gagal membuat laporan", JOptionPane.ERROR_MESSAGE); return }
         val r = res ?: return

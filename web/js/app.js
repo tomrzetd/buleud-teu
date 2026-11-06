@@ -638,7 +638,7 @@
         store.set('repFormat', format);
         busy(true, 'Membuat laporan ' + (format === 'xlsx' ? 'Excel' : format === 'pdf' ? 'PDF' : '') + '…');
         try {
-            const r = await apiPost({ action: 'report', examId: S.exam.id, lingkup: S.anScope.lingkup, kelas: S.anScope.kelas, mode, bagian, format, urut: $('repUrut').value });
+            const r = await apiPost({ action: 'report', examId: S.exam.id, lingkup: S.anScope.lingkup, kelas: S.anScope.kelas, mode, bagian, format, urut: $('repUrut').value, anonim: $('repAnon').checked });
             let h = `<div class="note n-ok">Laporan siap: <b>${esc(r.nama)}</b> · ${r.ringkas.siswa} siswa · rata-rata ${r.ringkas.rataRata}</div>`;
             if (r.base64) {
                 const url = URL.createObjectURL(b64Blob(r.base64, r.mime));
@@ -654,17 +654,88 @@
         busy(true, 'Menghitung analisis butir…');
         try {
             const r = await apiPost({ action: 'analyze', examId: S.exam.id, lingkup: S.anScope.lingkup, kelas: S.anScope.kelas });
-            const R = r.ringkasan || {};
-            const box = (a, b) => `<div><span class="muted">${a}</span><b>${esc(b == null ? '-' : b)}</b></div>`;
-            let h = `<div class="card"><h3>Ringkasan</h3>${(r.peringatan || []).map(p => `<div class="note n-warn">${esc(p)}</div>`).join('')}<div class="qgrid">` +
-                box('Siswa', R.n) + box('Soal', R.k) + box('Rata-rata', R.rataRata) + box('Simpangan baku', R.sd) + box('KR-20', R.kr20 != null ? R.kr20 + ' ' + R.kategoriKr20 : '-') + box('SEM (butir benar)', R.sem) +
-                box('Tuntas', (R.tuntas || 0) + ' (' + (R.persenTuntas || 0) + '%)') + box('Diterima / Direvisi', (R.diterima || 0) + ' / ' + (R.direvisi || 0)) + box('Audit kritis', R.auditKritis != null ? R.auditKritis : R.dibuang) + (R.dataKurang ? box('Data kurang', R.dataKurang) : '') +
-                `</div><p class="muted small">Lembar lengkap: sheet <b>${esc(r.sheet)}</b> di spreadsheet sekolah.</p><button class="btn pri wide" onclick="App.saveBank()">Simpan ke Bank Soal</button></div>`;
-            h += `<div class="card" style="overflow-x:auto"><h3>Butir soal</h3><p class="muted small">r = korelasi butir dengan skor total (bukti konsistensi internal, <b>bukan</b> validitas isi). <b>Audit kritis</b>: periksa kunci, naskah soal, dan bukti scan sebelum memutuskan; keputusan akhir oleh guru.</p><table class="t"><tr><th>No</th><th>Kunci</th><th>P</th><th>D</th><th>r</th><th>Rekomendasi</th></tr>` +
-                (r.butir || []).map(b => `<tr class="${b.rekomendasi === 'Diterima' ? 'tr-ok' : (b.rekomendasi === 'Audit kritis' || b.rekomendasi === 'Dibuang') ? 'tr-bad' : b.rekomendasi === 'Direvisi' ? 'tr-rev' : ''}"><td>${b.no}</td><td>${b.kunci}</td><td>${b.p}<br><span class="muted">${b.tk}</span></td><td>${b.d == null ? '-' : b.d}<br><span class="muted">${b.dp}</span></td><td>${b.rpbis == null ? '-' : b.rpbis}<br><span class="muted">${esc(b.korelasi || (b.valid === true ? 'Memadai' : b.valid === false ? 'Rendah' : '-'))}</span></td><td><b>${b.rekomendasi}</b><br><span class="muted">${esc(b.alasan)}</span></td></tr>`).join('') + '</table></div>';
-            $('anOut').innerHTML = h;
+            S.an = { r, filter: S.an && S.an.filter || 'semua', urut: S.an && S.an.urut || 'no', sel: null };
+            const first = (r.butir || []).find(b => b.rekomendasi === 'Audit kritis') || (r.butir || []).find(b => b.rekomendasi !== 'Diterima') || (r.butir || [])[0];
+            S.an.sel = first ? first.no : null;
+            renderDashboard();
+            setTimeout(() => { const c = $('anOut').firstElementChild; if (c) c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50);
         } catch (e) { $('anOut').innerHTML = `<div class="note n-bad">${esc(e.message)}</div>`; } finally { busy(false); }
     }
+    // ------------------------------------------------------------ dashboard diagnostik analisis
+    // status butir: warna + KODE TEKS (tidak hanya warna, ramah buta warna & pembaca layar)
+    const AN_ST = {
+        'Diterima': { c: 'st-ok', k: '✓', t: 'Diterima' }, 'Direvisi': { c: 'st-rev', k: 'R', t: 'Direvisi' },
+        'Audit kritis': { c: 'st-bad', k: '!', t: 'Audit kritis' }, 'Dibuang': { c: 'st-bad', k: '!', t: 'Audit kritis' },
+        'Data kurang': { c: 'st-na', k: '?', t: 'Data kurang' }, '-': { c: 'st-na', k: '–', t: 'Tidak dapat dinilai' }
+    };
+    const anSt = (b) => AN_ST[b.rekomendasi] || AN_ST['-'];
+    const AN_FILTER = [['semua', 'Semua', () => true], ['tinjau', 'Perlu ditinjau', b => b.rekomendasi === 'Direvisi' || anSt(b).c === 'st-bad'], ['audit', 'Audit kritis', b => anSt(b).c === 'st-bad'],
+        ['rev', 'Direvisi', b => b.rekomendasi === 'Direvisi'], ['ok', 'Diterima', b => b.rekomendasi === 'Diterima'], ['na', 'Data kurang', b => anSt(b).c === 'st-na']];
+    const AN_URUT = { no: ['Nomor', (a, b) => a.no - b.no], p: ['Tersukar dulu (P)', (a, b) => a.p - b.p || a.no - b.no], d: ['Daya beda terendah (D)', (a, b) => (a.d == null ? 9 : a.d) - (b.d == null ? 9 : b.d) || a.no - b.no],
+        r: ['Korelasi terendah (r)', (a, b) => (a.rpbis == null ? 9 : a.rpbis) - (b.rpbis == null ? 9 : b.rpbis) || a.no - b.no] };
+    const fmt = (v, d = 2) => v == null || v === '' ? '–' : (typeof v === 'number' ? v.toFixed(d).replace(/\.?0+$/, m => m.startsWith('.') ? '' : m).replace('.', ',') : esc(v));
+    function renderDashboard() {
+        const { r } = S.an, R = r.ringkasan || {}, B = r.butir || [];
+        const tinjau = B.filter(AN_FILTER[1][2]).length, audit = B.filter(b => anSt(b).c === 'st-bad').length;
+        const kpi = (lbl, val, sub, cls) => `<div class="kpi ${cls || ''}"><span>${lbl}</span><b>${val}</b>${sub ? `<small>${sub}</small>` : ''}</div>`;
+        let h = `<div class="card"><h3>Ringkasan ${S.anScope.lingkup === 'kelas' ? 'kelas ' + esc(S.anScope.kelas) : 'tingkat'}</h3>` +
+            (r.peringatan || []).map(p => `<div class="note n-warn">${esc(p)}</div>`).join('') +
+            `<div class="kpis">` + kpi('Siswa', R.n || 0, (R.k || 0) + ' soal') + kpi('Rata-rata', fmt(R.rataRata, 1), 'SD ' + fmt(R.sd, 1)) +
+            kpi('Tuntas', (R.persenTuntas || 0) + '%', (R.tuntas || 0) + ' siswa') + kpi('KR-20', fmt(R.kr20, 2), R.kr20 != null ? esc(R.kategoriKr20) : 'tidak dapat dihitung', R.kr20 != null && R.kr20 < 0.6 ? 'warn' : '') +
+            kpi('SEM', fmt(R.sem, 2), 'butir benar') + kpi('Perlu ditinjau', tinjau, (R.dataKurang ? R.dataKurang + ' data kurang · ' : '') + 'dari ' + B.length + ' butir', tinjau ? 'warn' : 'ok') +
+            kpi('Audit kritis', audit, audit ? 'periksa kunci dulu' : 'tidak ada', audit ? 'bad' : 'ok') + kpi('Diterima', R.diterima || 0, 'Direvisi ' + (R.direvisi || 0)) + `</div>` +
+            `<p class="muted small">Lembar lengkap: sheet <b>${esc(r.sheet)}</b>. Angka statistik menunjukkan perilaku butir pada data siswa; kesesuaian dengan CP/TP & kisi-kisi tetap ditelaah guru.</p>` +
+            `<button class="btn pri wide" onclick="App.saveBank()">Simpan ke Bank Soal</button></div>`;
+        // peta butir
+        const f = AN_FILTER.find(x => x[0] === S.an.filter) || AN_FILTER[0];
+        const list = B.filter(f[2]).sort(AN_URUT[S.an.urut][1]);
+        h += `<div class="card"><h3>Peta butir</h3><div class="anf" role="toolbar" aria-label="Saring butir">` +
+            AN_FILTER.map(([k, t, fn]) => { const n = B.filter(fn).length; return n || k === 'semua' ? `<button class="chip ${S.an.filter === k ? 'on' : ''}" aria-pressed="${S.an.filter === k}" onclick="App.anFilter('${k}')">${t} <b>${n}</b></button>` : ''; }).join('') +
+            `</div><label class="l" for="anUrut">Urutkan</label><select id="anUrut" class="in" onchange="App.anSort(this.value)">${Object.entries(AN_URUT).map(([k, v]) => `<option value="${k}" ${S.an.urut === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select>` +
+            `<div class="hmap" role="list">` + (list.length ? list.map(b => { const st = anSt(b);
+                return `<button role="listitem" class="tile ${st.c} ${S.an.sel === b.no ? 'sel' : ''}" onclick="App.anPick(${b.no})" aria-label="Butir ${b.no}: ${st.t}, P ${fmt(b.p)}, D ${fmt(b.d)}" title="Butir ${b.no} · ${st.t}"><b>${b.no}</b><i>${st.k}</i></button>`; }).join('') : '<p class="muted small">Tidak ada butir pada saringan ini.</p>') + `</div>` +
+            `<div class="legend small">${['Diterima', 'Direvisi', 'Audit kritis', 'Data kurang'].map(k => `<span><i class="tile mini ${AN_ST[k].c}">${AN_ST[k].k}</i>${AN_ST[k].t}</span>`).join('')}</div></div>`;
+        h += `<div class="card" id="anDetail" tabindex="-1">${detailButir(B.find(b => b.no === S.an.sel), list)}</div>`;
+        // tabel lengkap (dilipat)
+        h += `<details class="card"><summary><b>Tabel semua butir</b></summary><div style="overflow-x:auto;margin-top:8px"><table class="t"><tr><th>No</th><th>Kunci</th><th>P</th><th>D</th><th>r</th><th>Status</th></tr>` +
+            B.map(b => `<tr><td>${b.no}</td><td>${b.kunci}</td><td>${fmt(b.p)}<br><span class="muted">${b.tk}</span></td><td>${fmt(b.d)}<br><span class="muted">${b.dp}</span></td><td>${fmt(b.rpbis)}<br><span class="muted">${esc(b.korelasi || '-')}</span></td><td><b>${anSt(b).t}</b><br><span class="muted">${esc(b.alasan)}</span></td></tr>`).join('') + '</table></div></details>';
+        $('anOut').innerHTML = h;
+    }
+    /** saran tindakan konkret dari alasan statistik */
+    function saranButir(b) {
+        const s = [], mati = (b.pengecohMati || []);
+        if (/kunci nomor ini tidak sah/.test(b.alasan)) s.push('Kunci nomor ini rusak di sheet Ujian — perbaiki lewat <b>Ubah kunci</b>.');
+        if (anSt(b).c === 'st-bad') { s.push(`Cocokkan kunci <b>${b.kunci}</b> dengan naskah soal nomor ${b.no}. Salah kunci adalah penyebab paling umum.`); s.push('Bila kunci benar: cek apakah soal ambigu (dua jawaban benar) atau stimulus menyesatkan.'); s.push('Lihat lembar yang ditandai kuning untuk nomor ini; isian samar bisa salah terbaca.'); }
+        const ekstrem = b.p >= 0.95 || b.p <= 0.05;   // hampir semua benar/salah: D & r memang kecil, bukan cacat butir
+        if (!ekstrem && b.d != null && b.d >= 0 && b.d <= 0.2 && anSt(b).c !== 'st-bad') s.push('Daya pembeda rendah: siswa pandai dan kurang sama-sama benar/salah. Pertajam pengecoh atau perjelas indikator.');
+        if (mati.length && !ekstrem) s.push(`Pengecoh <b>${mati.join(', ')}</b> hampir tidak dipilih / lebih dipilih kelompok atas: ganti dengan miskonsepsi yang umum.`);
+        if (b.p > 0.9) s.push('Hampir semua benar: boleh dipertahankan bila memang mengukur kompetensi dasar.');
+        if (b.p < 0.1) s.push('Hampir semua salah: cek kunci, kesesuaian dengan materi yang sudah diajarkan, dan tingkat bahasa.');
+        if (b.rekomendasi === 'Data kurang') s.push('Peserta kurang dari 20: tunggu data kelas lain (lingkup tingkat) sebelum memutuskan.');
+        if (!s.length) s.push('Butir berperilaku baik pada data ini. Tetap cek kesesuaian dengan kisi-kisi.');
+        return s;
+    }
+    function detailButir(b, list) {
+        if (!b) return '<h3>Detail butir</h3><p class="muted small">Pilih nomor pada peta butir.</p>';
+        const st = anSt(b), L = ((S.an.r.opsi || S.exam.opsi || 'ABCD') + '-').split(''), mati = b.pengecohMati || [], ok = b.pengecohBerfungsi || [];
+        const idx = list.findIndex(x => x.no === b.no), prev = list[idx - 1], next = list[idx + 1];
+        const bar = (v, cls) => `<span class="bar ${cls}" style="width:${Math.round((v || 0) * 100)}%"></span>`;
+        const rows = L.map(x => { const d = b.sebaran && b.sebaran[x] || { p: 0, atas: 0, bawah: 0 }, key = x === b.kunci;
+            const tag = key ? '<em class="tg ok">kunci</em>' : x === '-' ? '<em class="tg">kosong</em>' : mati.includes(x) ? '<em class="tg bad">pengecoh tidak berfungsi</em>' : ok.includes(x) ? '<em class="tg">berfungsi</em>' : '';
+            return `<div class="opt ${key ? 'key' : ''}"><div class="ol"><b>${x === '-' ? '–' : x}</b> ${Math.round(d.p * 100)}% ${tag}</div><div class="ob"><div>${bar(d.atas, 'up')}<small>atas ${Math.round(d.atas * 100)}%</small></div><div>${bar(d.bawah, 'lo')}<small>bawah ${Math.round(d.bawah * 100)}%</small></div></div></div>`; }).join('');
+        const met = (lbl, val, cat) => `<div><span>${lbl}</span><b>${val}</b><small>${esc(cat || '')}</small></div>`;
+        return `<div class="dhead"><h3>Butir ${b.no} · kunci ${b.kunci}</h3><span class="badge ${st.c}">${st.k} ${st.t}</span></div>` +
+            `<div class="mets">${met('Tingkat kesukaran P', fmt(b.p), b.tk)}${met('Daya pembeda D', fmt(b.d), b.dp)}${met('Korelasi r', fmt(b.rpbis), b.rpbis == null ? 'tidak dapat dihitung' : (b.korelasi || '-') + (b.rTabel != null ? ' · r tabel ' + fmt(b.rTabel) : ''))}${met('KR-20 jika dihapus', fmt(b.kr20JikaDihapus), b.kr20JikaDihapus != null && S.an.r.ringkasan && b.kr20JikaDihapus > S.an.r.ringkasan.kr20 ? 'naik bila dihapus' : '')}</div>` +
+            `<h4>Sebaran jawaban: kelompok atas vs bawah</h4><div class="opts">${rows}</div>` +
+            `<p class="muted small">Butir yang baik: kunci lebih banyak dipilih kelompok <b>atas</b>, pengecoh lebih banyak dipilih kelompok <b>bawah</b>.</p>` +
+            (b.alasan ? `<p class="small"><b>Alasan statistik:</b> ${esc(b.alasan)}</p>` : '') +
+            `<h4>Yang perlu dicek</h4><ul class="small saran">${saranButir(b).map(x => `<li>${x}</li>`).join('')}</ul>` +
+            `<div class="row" style="margin-top:8px"><button class="btn sm" ${prev ? `onclick="App.anPick(${prev.no})"` : 'disabled'}>‹ Sebelumnya</button><button class="btn sm" onclick="App.anEditKey()">Ubah kunci</button><button class="btn sm" ${next ? `onclick="App.anPick(${next.no})"` : 'disabled'}>Berikutnya ›</button></div>`;
+    }
+    function anPick(no) { S.an.sel = no; renderDashboard(); const d = $('anDetail'); if (d) { d.scrollIntoView({ behavior: 'smooth', block: 'start' }); d.focus({ preventScroll: true }); } }
+    function anFilter(k) { S.an.filter = k; const B = S.an.r.butir || [], f = AN_FILTER.find(x => x[0] === k); const l = B.filter(f[2]); if (l.length && !l.some(b => b.no === S.an.sel)) S.an.sel = l.sort(AN_URUT[S.an.urut][1])[0].no; renderDashboard(); }
+    function anSort(k) { S.an.urut = k; renderDashboard(); }
+    function anEditKey() { const i = S.data.ujian.indexOf(S.exam); if (i >= 0) editExam(i); }
     async function saveBank() {
         busy(true, 'Menyimpan ke Bank Soal…');
         try { const r = await apiPost({ action: 'bank', examId: S.exam.id, lingkup: S.anScope.lingkup, kelas: S.anScope.kelas }); toast(`Bank Soal: ${r.baru} baru, ${r.diperbarui} diperbarui`); }
@@ -703,6 +774,6 @@
         $('cariHasil').addEventListener('click', (e) => { const d = e.target.closest('.hit'); if (d) pickStudent(d.dataset.n, d.dataset.k); });
         $('selSiswa').addEventListener('change', showPicked); $('selKelas').addEventListener('change', showPicked);
     });
-    window.App = { go, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, makeReport, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
+    window.App = { go, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, makeReport, anPick, anFilter, anSort, anEditKey, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
     document.addEventListener('DOMContentLoaded', init);
 })();

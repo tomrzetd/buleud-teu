@@ -334,6 +334,8 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
         Row(Modifier.horizontalScroll(rememberScrollState())) { listOf("pdf" to "PDF (F4)", "xlsx" to "Excel", "sheet" to "Google Sheet").forEach { (k, t) -> FilterChip(vm.reportFormat == k, { vm.reportFormat = k }, { Text(t) }, Modifier.padding(end = 6.dp)) } }
         Text("Urutan siswa", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
         Row(Modifier.horizontalScroll(rememberScrollState())) { listOf("kelas" to "Kelas, nama", "nama" to "Nama", "skor" to "Skor tertinggi").forEach { (k, t) -> FilterChip(vm.reportUrut == k, { vm.reportUrut = k }, { Text(t) }, Modifier.padding(end = 6.dp)) } }
+        Row(Modifier.fillMaxWidth().clickable { vm.reportAnonim = !vm.reportAnonim }, verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(vm.reportAnonim, { vm.reportAnonim = it }); Text("Mode anonim (untuk rapat MGMP)", color = Color.White, fontSize = 14.sp) }
         Button({ vm.makeReport() }, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Buat laporan") }
         if (vm.reportInfo.isNotEmpty()) Note("Laporan siap: ${vm.reportInfo}", OK)
         vm.reportFile?.let { f ->
@@ -360,27 +362,8 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
                 }
                 Button({ vm.runAnalysis() }, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Hitung analisis") }
             }
+            vm.analysis?.let { a -> AnalysisDashboard(vm, a) }
             ReportCard(vm)
-            vm.analysis?.let { a ->
-                val R = a.optJSONObject("ringkasan")
-                Card {
-                    val pw = a.optJSONArray("peringatan"); if (pw != null) for (i in 0 until pw.length()) Note(pw.getString(i))
-                    if (R != null) {
-                        Text("Siswa ${R.optInt("n")} · Soal ${R.optInt("k")} · Rata-rata ${R.optDouble("rataRata")} · SD ${R.optDouble("sd")}", color = Color.White)
-                        Text("KR-20 ${R.opt("kr20")} (${R.optString("kategoriKr20")}) · SEM ${R.opt("sem")} butir", color = Color.White)
-                        Text("Tuntas ${R.optInt("tuntas")} (${R.optDouble("persenTuntas")}%) · ${R.optString("teksRekomendasi").ifEmpty { "Diterima ${R.optInt("diterima")} · Direvisi ${R.optInt("direvisi")}" }}", color = TX2, fontSize = 13.sp)
-                        Text("r = korelasi butir-total (konsistensi internal, bukan validitas isi). Audit kritis: periksa kunci, naskah, dan bukti scan; keputusan akhir oleh guru.", color = TX2, fontSize = 11.sp)
-                    }
-                    Text("Lembar lengkap: sheet ${a.optString("sheet")}", color = TX2, fontSize = 12.sp)
-                    Button({ vm.saveBank() }, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Simpan ke Bank Soal") }
-                }
-                val b = a.optJSONArray("butir")
-                if (b != null) Card { for (i in 0 until b.length()) { val o = b.getJSONObject(i); val rek = o.optString("rekomendasi")
-                    Column(Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(8.dp)).background((if (rek == "Diterima") OK else if (rek == "Audit kritis" || rek == "Dibuang") BAD else if (rek == "Direvisi") WARN else TX2).copy(alpha = 0.12f)).padding(8.dp)) {
-                        Text("No ${o.optInt("no")} · kunci ${o.optString("kunci")} · P ${o.opt("p")} ${o.optString("tk")} · D ${o.opt("d")} ${o.optString("dp")} · r ${o.opt("rpbis")} ${o.optString("korelasi")}", color = Color.White, fontSize = 12.sp)
-                        Text("$rek — ${o.optString("alasan")}", color = TX2, fontSize = 12.sp)
-                    } } }
-            }
         }
     }
 }

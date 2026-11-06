@@ -35,7 +35,8 @@ function opsiLaporan_(o) {
   return {
     mode: mode, bagian: bagian, format: ['pdf', 'xlsx', 'sheet'].indexOf(o.format) >= 0 ? o.format : 'pdf',
     urut: ['nama', 'skor', 'kelas'].indexOf(o.urut) >= 0 ? o.urut : 'kelas',
-    lingkup: o.lingkup === 'kelas' ? 'kelas' : 'tingkat', kelas: String(o.kelas || '').toUpperCase(), orientasi: o.orientasi || 'auto'
+    lingkup: o.lingkup === 'kelas' ? 'kelas' : 'tingkat', kelas: String(o.kelas || '').toUpperCase(), orientasi: o.orientasi || 'auto',
+    anonim: o.anonim === true || o.anonim === 'true'
   };
 }
 
@@ -74,6 +75,8 @@ function dataLaporan_(examId, o) {
     if (o.urut === 'nama') return a.nama.localeCompare(b.nama);
     return a.kelas.localeCompare(b.kelas) || a.nama.localeCompare(b.nama);
   });
+  // mode anonim (rapat MGMP / presentasi): nama -> "Peserta 01", nomor & NISN dikosongkan; urutan tetap sesuai pilihan
+  if (o.anonim) siswa.forEach(function (s, i) { s.nama = 'Peserta ' + ('0' + (i + 1)).slice(-Math.max(2, String(siswa.length).length)); s.nomor = ''; s.nisn = ''; });
   // peringkat (skor sama = peringkat sama)
   var byScore = siswa.map(function (s) { return s.skor; }).sort(function (a, b) { return b - a; });
   siswa.forEach(function (s) { s.peringkat = byScore.indexOf(s.skor) + 1; });
@@ -81,7 +84,7 @@ function dataLaporan_(examId, o) {
   var sheets = [], utama = { nama: has('nilai') || has('jawaban') ? 'Nilai' : 'Ringkasan', blok: kop.slice() };
   if (has('identitas')) utama.blok.push({ jenis: 'kv', baris: [
     ['Mata pelajaran', u.mapel], ['Kelas / lingkup', lingkupTeks], ['Jumlah soal', u.jumlah + ' (opsi ' + u.opsi + ')'], ['KKTP', u.kktp],
-    ['Guru', u.guru || '-'], ['Tanggal ujian', u.tanggal || '-'], ['Jumlah siswa', siswa.length]] });
+    ['Guru', u.guru || '-'], ['Tanggal ujian', u.tanggal || '-'], ['Jumlah siswa', siswa.length + (o.anonim ? ' (anonim)' : '')]] });
   if (has('rekap')) utama.blok.push({ jenis: 'kv', judul: 'Rekap nilai', baris: [
     ['Rata-rata', R.rataRata], ['Tertinggi / terendah', R.max + ' / ' + R.min], ['Median', R.median], ['Simpangan baku', R.sd],
     ['Tuntas (≥ ' + u.kktp + ')', R.tuntas + ' siswa (' + R.persenTuntas + '%)'], ['Belum tuntas', (siswa.length - R.tuntas) + ' siswa']] });
@@ -140,10 +143,10 @@ function dataLaporan_(examId, o) {
     sheets.push({ nama: 'Matriks', blok: [{ jenis: 'judul', teks: 'MATRIKS JAWABAN BENAR (1) / SALAH (0)', besar: 12 }, { jenis: 'judul', teks: u.nama + ' · ' + lingkupTeks, besar: 10 },
       { jenis: 'tabel', kepala: mh, baris: mr, warna: mw, sempit: 3 }] });
   }
-  var nmFile = 'Laporan ' + (analisis ? 'Analisis ' : 'Nilai ') + u.nama + ' - ' + lingkupTeks + ' - ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var nmFile = 'Laporan ' + (analisis ? 'Analisis ' : 'Nilai ') + (o.anonim ? 'Anonim ' : '') + u.nama + ' - ' + lingkupTeks + ' - ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   var lebar = o.bagian.indexOf('jawaban') >= 0 && u.jumlah > 20 || o.bagian.indexOf('matriks') >= 0 || o.bagian.indexOf('butir') >= 0;
   return { ujian: u, sekolah: sk, judul: judul, file: nmFile.replace(/[\\/:*?"<>|]+/g, '-'), sheets: sheets, landscape: o.orientasi === 'landscape' || (o.orientasi === 'auto' && lebar),
-    ringkas: { siswa: siswa.length, rataRata: R.rataRata, tuntas: R.tuntas, kr20: R.kr20, bagian: o.bagian, mode: o.mode } };
+    ringkas: { siswa: siswa.length, rataRata: R.rataRata, tuntas: R.tuntas, kr20: R.kr20, bagian: o.bagian, mode: o.mode, anonim: o.anonim } };
 }
 
 function tanggalIndo_(d) {
@@ -286,7 +289,7 @@ function htmlDialogLaporan_() {
     '<label><input type="radio" name="mode" value="lengkap"> <b>Lengkap</b><br><small>+ statistik & analisis butir</small></label></div>' +
     '<h4>Bagian yang dimuat</h4><div id="bagian"></div>' +
     '<div class="row"><div><h4>Format</h4><select id="format"><option value="pdf">PDF (kertas F4)</option><option value="xlsx">Excel (.xlsx)</option><option value="sheet">Google Sheet saja</option></select></div>' +
-    '<div><h4>Orientasi PDF</h4><select id="orientasi"><option value="auto">Otomatis</option><option value="portrait">Tegak</option><option value="landscape">Mendatar</option></select></div></div>' +
+    '<div><h4>Privasi</h4><label><input type="checkbox" id="anonim"> Anonim (untuk rapat MGMP)</label></div><div><h4>Orientasi PDF</h4><select id="orientasi"><option value="auto">Otomatis</option><option value="portrait">Tegak</option><option value="landscape">Mendatar</option></select></div></div>' +
     '<button class="p" id="go">Buat laporan</button><div id="out"></div>' +
     '<script>var P;function $(i){return document.getElementById(i)}' +
     'function setMode(m){P.bagian.forEach(function(b){$("b_"+b[0]).checked=P.mode[m].indexOf(b[0])>=0})}' +
@@ -296,7 +299,7 @@ function htmlDialogLaporan_() {
     '$("ujian").onchange=kelas;document.querySelectorAll("input[name=mode]").forEach(function(r){r.onchange=function(){setMode(r.value)}});' +
     '$("go").onclick=function(){var u=P.ujian[$("ujian").selectedIndex];if(!u)return;var k=$("lingkup").value;' +
     'var o={examId:u.id,mode:document.querySelector("input[name=mode]:checked").value,bagian:P.bagian.map(function(b){return b[0]}).filter(function(b){return $("b_"+b).checked}),' +
-    'format:$("format").value,orientasi:$("orientasi").value,urut:$("urut").value,lingkup:k?"kelas":"tingkat",kelas:k};' +
+    'format:$("format").value,anonim:$("anonim").checked,orientasi:$("orientasi").value,urut:$("urut").value,lingkup:k?"kelas":"tingkat",kelas:k};' +
     '$("go").disabled=true;$("go").textContent="Membuat laporan…";$("out").style.display="none";' +
     'google.script.run.withSuccessHandler(function(r){$("go").disabled=false;$("go").textContent="Buat laporan";var h="<b>Selesai:</b> "+r.nama+"<br><a href=\\""+r.url+"\\" target=_blank>Buka Google Sheet laporan</a>";' +
     'if(r.base64)h+="<br><a download=\\""+r.fileName+"\\" href=\\"data:"+r.mime+";base64,"+r.base64+"\\">Unduh "+r.format.toUpperCase()+"</a>";$("out").innerHTML=h;$("out").style.display="block"})' +

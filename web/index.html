@@ -96,6 +96,28 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
   #printArea{display:block}#printArea svg{width:215mm;height:330mm;display:block;page-break-after:always}
 }
   .repb{display:grid;grid-template-columns:1fr 1fr;gap:2px 10px;margin:6px 0 4px}.repb label{display:flex;gap:6px;align-items:flex-start;font-size:13px;padding:3px 0}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:6px 0 8px}@media(max-width:520px){.kpis{grid-template-columns:repeat(2,1fr)}}
+  .kpi{background:#0a1222;border:1px solid var(--line);border-radius:12px;padding:8px 10px}.kpi span{display:block;font-size:11px;color:var(--tx2)}.kpi b{display:block;font-size:20px;line-height:1.2}.kpi small{color:var(--tx2);font-size:11px}
+  .kpi.warn{border-color:#f59e0b88}.kpi.bad{border-color:#ef4444aa;background:#450a0a40}.kpi.ok b{color:#86efac}
+  .anf{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}.anf .chip b{margin-left:3px;opacity:.8}
+  .hmap{display:grid;grid-template-columns:repeat(auto-fill,minmax(46px,1fr));gap:6px;margin:10px 0 8px}
+  .tile{position:relative;border:1px solid transparent;border-radius:10px;height:46px;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;font-size:15px;line-height:1.05}
+  .tile b{font-weight:700}.tile i{font-style:normal;font-size:11px;font-weight:700;opacity:.9}.tile.sel{outline:3px solid #fff;outline-offset:1px}
+  .tile:focus-visible,.chip:focus-visible,.btn:focus-visible{outline:3px solid var(--pri2);outline-offset:2px}
+  .st-ok{background:#166534;color:#dcfce7}.st-rev{background:#854d0e;color:#fef9c3}.st-bad{background:#991b1b;color:#fee2e2;border-color:#fca5a5}.st-na{background:#334155;color:#e2e8f0}
+  .tile.mini{display:inline-flex;width:20px;height:20px;border-radius:6px;font-size:11px;margin-right:4px;vertical-align:middle;font-weight:700;cursor:default}
+  .legend{display:flex;flex-wrap:wrap;gap:12px;color:var(--tx2)}
+  .dhead{display:flex;justify-content:space-between;align-items:center;gap:8px}.badge{border-radius:999px;padding:3px 10px;font-size:12px;font-weight:700;white-space:nowrap}
+  .mets{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0}@media(max-width:520px){.mets{grid-template-columns:repeat(2,1fr)}}
+  .mets div{background:#0a1222;border:1px solid var(--line);border-radius:10px;padding:6px 8px}.mets span{display:block;font-size:11px;color:var(--tx2)}.mets b{display:block;font-size:17px}.mets small{color:var(--tx2);font-size:11px}
+  h4{margin:12px 0 6px;font-size:13px;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em}
+  .opts{display:flex;flex-direction:column;gap:6px}.opt{display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:center;padding:5px 6px;border-radius:8px}.opt.key{background:#14532d40;outline:1px solid #22c55e66}
+  @media(max-width:520px){.opt{grid-template-columns:1fr}}
+  .ol{font-size:13px}.ol b{display:inline-block;width:16px}.tg{font-style:normal;font-size:10.5px;border-radius:6px;padding:1px 5px;margin-left:4px;background:#ffffff14;color:var(--tx2)}.tg.ok{background:#166534;color:#dcfce7}.tg.bad{background:#7f1d1d;color:#fecaca}
+  .ob div{display:flex;align-items:center;gap:6px;height:14px;margin:2px 0}.ob small{font-size:10.5px;color:var(--tx2);white-space:nowrap}
+  .bar{display:inline-block;height:10px;border-radius:5px;min-width:2px;max-width:calc(100% - 70px)}.bar.up{background:#60a5fa}.bar.lo{background:#f472b6}
+  .saran{margin:4px 0;padding-left:18px}.saran li{margin:3px 0}
+  details.card summary{cursor:pointer}
 </style>
 </head>
 <body>
@@ -225,15 +247,16 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
   <div class="body">
     <div class="card"><h3>Lingkup</h3><div id="anScope"></div>
       <button class="btn pri wide" style="margin-top:10px" onclick="App.runAnalysis()">Hitung analisis</button></div>
+    <div id="anOut"></div>
     <div class="card" id="repCard"><h3>Laporan</h3>
       <p class="muted small">Lingkup mengikuti pilihan di atas. <b>Simpel</b>: pilihan jawaban, jumlah benar, skor. <b>Lengkap</b>: ditambah statistik tes dan analisis butir.</p>
       <div id="repMode" style="margin:6px 0"><span class="chip on" data-m="simpel">Simpel</span><span class="chip" data-m="lengkap">Lengkap</span></div>
       <div id="repBagian" class="repb"></div>
       <div class="row"><div><label class="l">Format</label><select id="repFormat" class="in"><option value="pdf">PDF (kertas F4)</option><option value="xlsx">Excel (.xlsx)</option><option value="sheet">Google Sheet (tautan)</option></select></div>
         <div><label class="l">Urutan siswa</label><select id="repUrut" class="in"><option value="kelas">Kelas, lalu nama</option><option value="nama">Nama</option><option value="skor">Skor tertinggi</option></select></div></div>
+      <label style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px"><input type="checkbox" id="repAnon"> Mode anonim (nama diganti “Peserta 01…”, untuk rapat MGMP)</label>
       <button class="btn pri wide" style="margin-top:12px" onclick="App.makeReport()">Buat laporan</button>
       <div id="repOut" class="small" style="margin-top:8px"></div></div>
-    <div id="anOut"></div>
   </div>
 </section>
 
