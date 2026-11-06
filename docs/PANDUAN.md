@@ -236,6 +236,17 @@ Saran pindai: **kertas F4, 200 dpi, berwarna**, panjang pindai 330 mm (bukan A4:
 
 Kartu ujian → **Analisis**, lalu pilih lingkup: **seluruh tingkat** (misalnya semua kelas 8) atau **satu kelas** (8A). Lingkup per kelas hanya bisa dipakai bila sheet Siswa memakai nama rombel. Bila satu siswa dipindai lebih dari sekali, hasil terakhir yang dipakai.
 
+Hasil analisis tampil sebagai **dashboard** (web dan Android):
+
+1. **Ringkasan**: jumlah siswa dan soal, rata-rata (SD), ketuntasan, KR-20, SEM, jumlah butir **perlu ditinjau** dan **audit kritis**.
+2. **Peta butir**: semua nomor sebagai ubin berwarna dengan kode teks (✓ Diterima, R Direvisi, ! Audit kritis, ? Data kurang), jadi tetap terbaca tanpa membedakan warna. Saring ke “Perlu ditinjau” atau “Audit kritis”, urutkan menurut P, D, atau r.
+3. **Detail butir** (ketuk nomor): angka P, D, r, KR-20 jika dihapus; grafik setiap opsi untuk kelompok atas vs bawah (kunci disorot, pengecoh yang tidak berfungsi ditandai); alasan statistik; daftar **yang perlu dicek**; tombol **Ubah kunci** dan navigasi ke butir berikutnya.
+4. **Tabel semua butir** tetap ada (dilipat) untuk dicetak atau disalin.
+
+Alur yang disarankan: buka saringan **Audit kritis**, periksa kunci setiap nomor, lalu **Perlu ditinjau** untuk merevisi pengecoh. Untuk rapat MGMP, buat laporan dengan **mode anonim** (nama siswa diganti “Peserta 01…”).
+
+![Dashboard analisis: ringkasan, peta butir, detail butir](img/dashboard_analisis.png)
+
 | Ukuran | Arti singkat |
 | --- | --- |
 | Tingkat kesukaran (P) | Proporsi siswa yang menjawab benar: sukar / sedang / mudah |
@@ -285,6 +296,7 @@ Mode hanya mengisi centang bawaan. Setiap bagian bisa dicentang atau dilepas sen
 
 - **Lingkup**: seluruh peserta ujian atau satu kelas (mengikuti pilihan lingkup di layar analisis).
 - **Urutan siswa**: kelas lalu nama, nama, atau skor tertinggi.
+- **Mode anonim**: nama siswa diganti “Peserta 01…”, nomor peserta dikosongkan (untuk rapat MGMP atau presentasi).
 - **Format**: **PDF** kertas F4 (mendatar otomatis bila tabel lebar), **Excel (.xlsx)**, atau **Google Sheet** saja.
 - Setiap laporan juga diarsipkan sebagai Google Sheet di folder Drive **Buleud Teu — Laporan** milik pemilik spreadsheet sekolah. Bila kolom Email guru diisi, arsip itu otomatis dibagikan (hanya lihat) ke email tersebut.
 

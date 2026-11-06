@@ -23,7 +23,7 @@ Setiap temuan diverifikasi dulu terhadap kode lama dengan probe di layanan Googl
 | SEC-04 | Token & data lokal tanpa enkripsi | — | Berikutnya | Kebijakan retensi & hapus cache |
 | Formula | Teks diawali `=` masuk sheet | — | **Selesai** | `safe_()` menyimpan sebagai teks |
 | ENG-01 | Uji OMR lapangan | — | Berikutnya | Dataset foto LJK nyata berlabel |
-| UI-01 | Dashboard analisis | — | Berikutnya | Peta panas butir, detail pengecoh, mode anonim |
+| UI-01 | Dashboard analisis | — | **Selesai** | Ringkasan KPI, peta butir (warna + kode teks), filter/urutan, detail butir atas vs bawah + saran, mode anonim laporan |
 | CI-01 | Uji keamanan belum di CI | — | **Selesai** | `test_security.js` di workflow Tests; parity Kotlin: berikutnya |
 
 Batasan: verifikasi dilakukan pada layanan Google tiruan; belum menggantikan uji di spreadsheet produksi.
