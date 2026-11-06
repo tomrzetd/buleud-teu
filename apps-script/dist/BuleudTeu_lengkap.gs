@@ -21,10 +21,12 @@ var SEKOLAH_KEYS = ['Nama Sekolah', 'NPSN', 'Jenjang (SD/SMP/SMA/SMK)', 'Alamat'
 
 // ---------------------------------------------------------------- util
 function doc_() {
-  try { var d = SpreadsheetApp.getActiveSpreadsheet(); if (d) return d; } catch (e) {}
+  // SHEET_ID (Setelan proyek → Properti skrip) diutamakan, supaya skrip yang terikat ke spreadsheet lain
+  // (mis. sheet respons) tetap membaca database sekolah yang benar.
   var id = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
-  if (!id) throw new Error('Spreadsheet tidak ditemukan. Jalankan menu Buleud Teu → Setup dari spreadsheet sekolah.');
-  return SpreadsheetApp.openById(id);
+  if (id) { try { return SpreadsheetApp.openById(id); } catch (e) { throw new Error('SHEET_ID tidak bisa dibuka (' + id + '): ' + e.message); } }
+  try { var d = SpreadsheetApp.getActiveSpreadsheet(); if (d) return d; } catch (e) {}
+  throw new Error('Spreadsheet tidak ditemukan. Isi Properti skrip SHEET_ID atau jalankan menu Buleud Teu → Setup dari spreadsheet sekolah.');
 }
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 function sheet_(name) { var s = doc_().getSheetByName(name); if (!s) throw new Error('Sheet "' + name + '" belum ada. Jalankan menu Buleud Teu → Setup.'); return s; }
@@ -363,8 +365,17 @@ function onOpen() {
 }
 
 function setup() {
+  var P = PropertiesService.getScriptProperties(), lama = P.getProperty('SHEET_ID'), aktif = null;
+  try { aktif = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
+  if (!lama && aktif) P.setProperty('SHEET_ID', aktif.getId());
+  else if (lama && aktif && aktif.getId() !== lama) {
+    // jangan diam-diam memindahkan database: tanya dulu (dari editor tanpa UI → tetap pakai SHEET_ID lama)
+    var ganti = false;
+    try { var ui = SpreadsheetApp.getUi(); ganti = ui.alert('Ganti database?', 'Database saat ini: ' + SpreadsheetApp.openById(lama).getName() + '\nPakai spreadsheet ini (' + aktif.getName() + ') sebagai database?', ui.ButtonSet.YES_NO) === ui.Button.YES; } catch (e) {}
+    if (ganti) P.setProperty('SHEET_ID', aktif.getId());
+  }
   var d = doc_();
-  PropertiesService.getScriptProperties().setProperty('SHEET_ID', d.getId());
+  Logger.log('Setup pada spreadsheet: ' + d.getName() + ' (' + d.getId() + ')');
   var s = d.getSheetByName(SH.SEKOLAH);
   if (!s) { s = d.insertSheet(SH.SEKOLAH, 0); s.getRange(1, 1, SEKOLAH_KEYS.length, 2).setValues(SEKOLAH_KEYS.map(function (k) { return [k, '']; })); s.getRange(1, 1, SEKOLAH_KEYS.length, 1).setFontWeight('bold'); s.setColumnWidth(1, 230); s.setColumnWidth(2, 360); }
   Object.keys(HEAD).forEach(function (name) {
@@ -414,7 +425,7 @@ function menuBank() {
 
 function tesKoneksi() {
   var d = doc_();
-  Logger.log('Spreadsheet: ' + d.getName() + ' | Sheet: ' + d.getSheets().map(function (s) { return s.getName(); }).join(', '));
+  Logger.log('Spreadsheet: ' + d.getName() + ' [' + d.getId() + '] | Sheet: ' + d.getSheets().map(function (s) { return s.getName(); }).join(', '));
   var c = JSON.parse(doGet({ parameter: { action: 'config' } }).getContent());
   Logger.log('Sekolah: ' + (c.sekolah ? c.sekolah.nama : '-') + ' | Guru aktif: ' + (c.guru ? c.guru.length : 0) + (c.error ? ' | ERROR ' + c.error : ''));
   Logger.log('Siswa: ' + rows_(SH.SISWA).length + ' | Ujian: ' + rows_(SH.UJIAN).length + ' | Drive API: ' + (typeof Drive !== 'undefined' ? 'aktif' : 'BELUM ditambahkan'));
