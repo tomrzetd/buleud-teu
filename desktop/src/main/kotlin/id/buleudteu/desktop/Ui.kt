@@ -516,7 +516,10 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
                 val body = proc.body(s, u, students)
                 try { val r = api.post(body); s.state = SheetState.SAVED; s.saveMsg = "${r.d("benar").toInt()}/${r.d("jumlah").toInt()} = ${r.s("skor")}"; ok++; u.terscan += "${s.siswa!!.kelas}|${s.siswa!!.nama}" }
                 catch (e: Exception) {
-                    if (isNetwork(e)) { store.enqueue(LinkedHashMap(body).apply { remove("token") }); s.state = SheetState.OFFLINE; s.saveMsg = "dikirim otomatis saat online"; off++ }
+                    if (isNetwork(e)) {
+                        val ok = runCatching { store.enqueue(LinkedHashMap(body).apply { remove("token") }) }.isSuccess
+                        if (ok) { s.state = SheetState.OFFLINE; s.saveMsg = "dikirim otomatis saat online"; off++ } else { s.state = SheetState.SAVE_FAILED; s.saveMsg = "offline & antrean disk gagal ditulis"; bad++ }
+                    }
                     else { s.state = SheetState.SAVE_FAILED; s.saveMsg = e.message ?: "gagal"; bad++; if (e is ApiException && e.auth) store.token = "" }
                 }
                 ui { refreshRow(s); progress.value = i + 1; progress.string = "Menyimpan ${i + 1}/${todo.size}" }
@@ -530,10 +533,16 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
     }
     private fun flushQueue() {
         val q = store.queue(); if (q.isEmpty()) return
-        val rest = ArrayList<Map<String, Any?>>()
-        for (b in q) try { api.post(LinkedHashMap(b).apply { put("token", store.token) }) } catch (e: Exception) { rest += b }
+        val rest = ArrayList<Map<String, Any?>>(); val ditolak = ArrayList<String>()
+        for (b in q) try { api.post(LinkedHashMap(b).apply { put("token", store.token) }) } catch (e: Exception) {
+            // jaringan / sesi -> tetap di antrean; DITOLAK server -> keluarkan & laporkan (tidak dicoba ulang selamanya)
+            if (isNetwork(e) || (e is ApiException && e.auth)) rest += b else ditolak += "${b.o("siswa").s("nama")}: ${e.message}"
+        }
         store.setQueue(rest)
-        ui { status("${q.size - rest.size} hasil antrean offline terkirim" + if (rest.isNotEmpty()) " (${rest.size} masih menunggu)" else "") }
+        ui {
+            status("${q.size - rest.size - ditolak.size} hasil antrean offline terkirim" + (if (rest.isNotEmpty()) " (${rest.size} masih menunggu)" else "") + if (ditolak.isNotEmpty()) ", ${ditolak.size} ditolak server" else "")
+            if (ditolak.isNotEmpty()) JOptionPane.showMessageDialog(this, "Hasil antrean DITOLAK server (tidak disimpan):\n\n" + ditolak.joinToString("\n") + "\n\nScan ulang lembar tersebut setelah data diperbaiki.", "Antrean", JOptionPane.WARNING_MESSAGE)
+        }
     }
 
     // ================================================================ laporan (dibuat Apps Script: PDF F4 / Excel / Google Sheet)

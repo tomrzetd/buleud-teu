@@ -11,7 +11,7 @@ ss.getSheetByName('Guru').appendRow(['NURHAYATI', 'n@x.id', '1234', 'IPA, MTK', 
 ss.getSheetByName('Guru').appendRow(['BUDI', '', '9999', 'IPS', '8A', 'Ya']);
 const rnd = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
 const siswa = [];
-for (const k of ['7A', '7B', '8A']) for (let i = 1; i <= 25; i++) { const nm = `SISWA ${k} ${String(i).padStart(2, '0')}`; siswa.push([k, nm]); ss.getSheetByName('Siswa').appendRow(['00' + i, '', `${k}${i}`, nm, k, '', 'L']); }
+for (const k of ['7A', '7B', '8A']) for (let i = 1; i <= 25; i++) { const nm = `SISWA ${k} ${String(i).padStart(2, '0')}`; siswa.push([k, nm]); ss.getSheetByName('Siswa').appendRow(['00' + k.replace(/\D/g, '') + k.slice(-1).charCodeAt(0) + String(i).padStart(2, '0'), '', `${k}${i}`, nm, k, '', 'L']); }
 
 let c = GET('config');
 assert.strictEqual(c.version, 'V40'); assert.strictEqual(c.sekolah.nama, 'SMPN 2 JALAKSANA'); assert.strictEqual(c.sekolah.opsiDefault, 'ABCD'); assert.strictEqual(c.guru.length, 2);
@@ -91,6 +91,7 @@ assert.ok(/Belum ada hasil scan/.test(POST({ action: 'report', token: tokN, exam
 assert.ok(POST({ action: 'report', token: 'palsu', examId }).auth);
 // 5) skor seragam (screenshot pengguna): r pbis / KR-20 jika dihapus tidak boleh -1 / negatif palsu
 const kU = POST({ action: 'saveExam', token: tokN, exam: { nama: 'UH SERAGAM', mapel: 'IPA', kelas: ['8A'], opsi: 'ABCD', kunci: 'ABAB' } }).id;
+for (const nm of ['S1', 'S2', 'S3', 'S4']) ss.getSheetByName('Siswa').appendRow(['99' + nm, '', '', nm, '8A', '', 'L']);
 for (const [nm, a] of [['S1', 'ABCC'], ['S2', 'CBAC'], ['S3', 'CCAB'], ['S4', 'AAAA']]) POST({ action: 'save', token: tokN, examId: kU, siswa: { nama: nm, kelas: '8A' }, answers: [...a] });
 const tU = POST({ action: 'analyze', token: tokN, examId: kU, lingkup: 'tingkat' });
 assert.ok(tU.butir.every(b => b.rpbis == null && b.d == null && b.rekomendasi === '-'), 'butir tidak terdefinisi saat skor seragam');

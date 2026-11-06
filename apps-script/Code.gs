@@ -38,7 +38,30 @@ function rows_(name) {
 }
 function splitList_(s) { return String(s || '').split(/[,;]/).map(function (x) { return x.trim().toUpperCase(); }).filter(String); }
 function now_() { return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss'); }
-function cleanKey_(k) { return String(k || '').toUpperCase().replace(/[^A-E]/g, ''); }
+/** kunci tersimpan: hanya spasi yang dibuang; karakter tak sah dipertahankan sebagai '?' agar nomor soal tidak bergeser */
+function cleanKey_(k) { return String(k || '').toUpperCase().replace(/\s+/g, '').replace(/[^A-E]/g, '?'); }
+/** kunci baru dari guru: DITOLAK bila ada karakter tak sah (bukan dihapus diam-diam) */
+function parseKey_(k, opsi) {
+  var s = String(k || '').toUpperCase().replace(/\s+/g, ''), salah = [];
+  for (var i = 0; i < s.length; i++) if (opsi.indexOf(s.charAt(i)) < 0) salah.push('nomor ' + (i + 1) + ' "' + s.charAt(i) + '"');
+  if (salah.length) throw new Error('Kunci tidak sah (opsi ' + opsi + '): ' + salah.slice(0, 5).join(', ') + (salah.length > 5 ? ', …' : '') + '. Perbaiki di posisi tersebut.');
+  if (s.length < 1 || s.length > 50) throw new Error('Kunci harus 1–50 huruf (jumlah soal = panjang kunci).');
+  return s;
+}
+/** KKTP 0–100; kosong = 75; nilai tak sah ditolak (bukan diam-diam menjadi 75) */
+function parseKktp_(v) {
+  if (v === '' || v == null) return 75;
+  var n = Number(v);
+  if (!isFinite(n) || n < 0 || n > 100) throw new Error('KKTP harus angka 0–100.');
+  return n;
+}
+/** cegah formula injection: teks yang diawali = + - @ disimpan sebagai teks */
+function safe_(v) { v = String(v == null ? '' : v); return /^[=+\-@\t\r]/.test(v) ? "'" + v : v; }
+function normNama_(v) { return String(v || '').toUpperCase().replace(/\s+/g, ' ').trim(); }
+/** hanya pemilik ujian yang boleh menyimpan, menganalisis, mengirim ke bank, dan membuat laporan */
+function assertPemilik_(g, u) {
+  if (String(u.guru).toUpperCase() !== String(g.nama).toUpperCase()) { var e = new Error('Ujian ini milik guru lain (' + u.guru + '). Akses ditolak.'); e.forbidden = true; throw e; }
+}
 
 // ---------------------------------------------------------------- konfigurasi sekolah
 function sekolah_() {
@@ -78,7 +101,8 @@ function auth_(token) {
   var nama = token ? CacheService.getScriptCache().get('tok_' + token) : null;
   if (!nama) { var e = new Error('Sesi berakhir, silakan masuk lagi.'); e.auth = true; throw e; }
   var g = rows_(SH.GURU).filter(function (r) { return r['Nama'] === nama; })[0];
-  if (!g) { var e2 = new Error('Guru tidak ditemukan.'); e2.auth = true; throw e2; }
+  // diperiksa setiap permintaan: guru yang dihapus / dinonaktifkan langsung kehilangan akses walau token masih berlaku
+  if (!g || /^(TIDAK|NO|N)$/i.test(g['Aktif'])) { CacheService.getScriptCache().remove('tok_' + token); var e2 = new Error('Akun guru tidak aktif. Hubungi operator sekolah.'); e2.auth = true; throw e2; }
   return guruInfo_(g);
 }
 
@@ -87,7 +111,7 @@ function ujianRow_(r) {
   var kunci = cleanKey_(r['Kunci']);
   return { id: r['ID'], nama: r['Nama Ujian'], mapel: r['Mapel'].toUpperCase(), tingkat: r['Tingkat'], kelas: splitList_(r['Kelas']),
     guru: r['Guru'], tanggal: r['Tanggal'], opsi: r['Opsi'] === 'ABCDE' ? 'ABCDE' : 'ABCD', kunci: kunci, jumlah: kunci.length,
-    kktp: Number(r['KKTP']) || 75, status: r['Status'] || 'Aktif', _row: r._row };
+    kktp: (r['KKTP'] === '' || !isFinite(Number(r['KKTP']))) ? 75 : Number(r['KKTP']), status: r['Status'] || 'Aktif', _row: r._row };
 }
 function getUjian_(id) {
   var r = rows_(SH.UJIAN).filter(function (x) { return x['ID'] === id; })[0];
@@ -133,7 +157,7 @@ function doPost(e) {
       case 'report': return json_(apiReport_(data));
       default: return json_({ error: 'Aksi tidak dikenal: ' + data.action });
     }
-  } catch (err) { return json_({ error: String(err.message || err), auth: !!err.auth }); }
+  } catch (err) { return json_({ error: String(err.message || err), auth: !!err.auth, forbidden: !!err.forbidden }); }
 }
 function withLock_(fn) {
   var lock = LockService.getScriptLock();
@@ -159,14 +183,12 @@ function apiExams_(d) {
 
 function apiSaveExam_(d) {
   var g = auth_(d.token), x = d.exam || {}, sh = sheet_(SH.UJIAN);
-  var kunci = cleanKey_(x.kunci);
   if (!x.nama || !x.mapel) throw new Error('Nama ujian dan mapel wajib diisi.');
-  if (kunci.length < 1 || kunci.length > 50) throw new Error('Kunci harus 1–50 huruf (jumlah soal = panjang kunci).');
   var opsi = x.opsi === 'ABCDE' ? 'ABCDE' : 'ABCD';
-  if (opsi === 'ABCD' && /E/.test(kunci)) throw new Error('Kunci berisi E padahal opsi ABCD.');
+  var kunci = parseKey_(x.kunci, opsi), kktp = parseKktp_(x.kktp);
   var kelas = (x.kelas || []).map(function (k) { return String(k).toUpperCase(); });
   var tingkat = x.tingkat || (kelas.length ? tingkatDariKelas(kelas[0]) : '') || '';
-  var row = [x.id || '', x.nama, String(x.mapel).toUpperCase(), tingkat, kelas.join(', ') || 'SEMUA', g.nama, x.tanggal || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), opsi, kunci, kunci.length, Number(x.kktp) || 75, 'Aktif', now_()];
+  var row = [x.id || '', safe_(x.nama), safe_(String(x.mapel).toUpperCase()), tingkat, safe_(kelas.join(', ') || 'SEMUA'), g.nama, x.tanggal || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), opsi, kunci, kunci.length, kktp, 'Aktif', now_()];
   if (x.id) {
     var ex = rows_(SH.UJIAN).filter(function (r) { return r['ID'] === x.id; })[0];
     if (!ex) throw new Error('Ujian tidak ditemukan.');
@@ -190,16 +212,38 @@ function apiArchiveExam_(d) {
 
 function apiSave_(d) {
   var g = auth_(d.token), u = getUjian_(d.examId), s = d.siswa || {};
+  assertPemilik_(g, u);
+  if (u.status === 'Arsip') throw new Error('Ujian sudah diarsipkan; hasil tidak dapat ditambahkan.');
   if (!s.nama) throw new Error('Nama siswa kosong.');
+  // siswa harus ada di sheet Siswa DAN termasuk peserta ujian ini (identitas diambil dari roster, bukan dari aplikasi)
+  var nm = normNama_(s.nama), kls = String(s.kelas || '').toUpperCase().trim();
+  var peserta = siswaUntuk_(u.kelas, u.tingkat).filter(function (x) { return normNama_(x.nama) === nm && (!kls || x.kelas === kls); });
+  if (!peserta.length) {
+    var diRoster = rows_(SH.SISWA).some(function (x) { return normNama_(x['Nama']) === nm; });
+    throw new Error(diRoster ? 'Siswa ' + nm + (kls ? ' (' + kls + ')' : '') + ' bukan peserta ujian ini (kelas ujian: ' + (u.kelas.join(', ') || 'SEMUA') + ').' : 'Siswa ' + nm + ' tidak ada di sheet Siswa.');
+  }
+  if (peserta.length > 1) peserta = peserta.filter(function (x) { return !s.nisn || String(x.nisn) === String(s.nisn); });
+  if (peserta.length !== 1) throw new Error('Ada lebih dari satu siswa bernama ' + nm + ' di kelas ' + kls + '. Isi NISN di sheet Siswa agar bisa dibedakan.');
+  var ps = peserta[0];
   var jw = (d.answers || []).slice(0, u.jumlah).map(function (a) { a = String(a || '-').toUpperCase(); return u.opsi.indexOf(a) >= 0 ? a : '-'; });
   while (jw.length < u.jumlah) jw.push('-');
   var benar = 0; for (var i = 0; i < u.jumlah; i++) if (jw[i] === u.kunci.charAt(i)) benar++;
   var skor = Math.round(benar / u.jumlah * 10000) / 100;
-  var kls = String(s.kelas || '').toUpperCase();
-  sheet_(SH.HASIL).appendRow([now_(), u.id, u.mapel, u.tingkat || tingkatDariKelas(kls) || '', kls, String(s.nama).toUpperCase(), s.nisn ? "'" + s.nisn : '', s.nomor ? "'" + s.nomor : '',
-    "'" + jw.join(''), benar, u.jumlah, skor, (d.flags || []).join(','), d.mode || '', d.quality || '', g.nama, d.scanId || '']);
-  return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor };
+  var nomor = ps.nomor || String(s.nomor || '').replace(/\D/g, '');
+  var scanId = String(d.scanId || '').replace(/[^\w-]/g, '').slice(0, 40);
+  var row = [now_(), u.id, u.mapel, u.tingkat || tingkatDariKelas(ps.kelas) || '', ps.kelas, ps.nama, ps.nisn ? "'" + ps.nisn : '', nomor ? "'" + nomor : '',
+    "'" + jw.join(''), benar, u.jumlah, skor, (d.flags || []).map(Number).filter(isFinite).join(','), safe_(String(d.mode || '').slice(0, 30)), safe_(String(d.quality || '').slice(0, 20)), g.nama, scanId];
+  var sh = sheet_(SH.HASIL);
+  // idempoten: kiriman ulang dengan ScanID yang sama (mis. respons jaringan hilang lalu dicoba lagi) memperbarui baris, tidak menambah
+  if (scanId) {
+    var ada = rows_(SH.HASIL).filter(function (h) { return h['ScanID'] === scanId && h['ID Ujian'] === u.id; })[0];
+    if (ada) { sh.getRange(ada._row, 1, 1, row.length).setValues([row]); return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor, siswa: ps.nama, kelas: ps.kelas, duplikat: true }; }
+  }
+  sh.appendRow(row);
+  return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor, siswa: ps.nama, kelas: ps.kelas };
 }
+/** kunci identitas siswa untuk "scan terakhir menang": NISN bila ada, selain itu kelas|nama */
+function kunciSiswa_(h) { var nisn = String(h['NISN'] || '').replace(/^'/, ''); return nisn ? 'NISN:' + nisn : h['Kelas'] + '|' + h['Nama']; }
 
 // ---------------------------------------------------------------- analisis
 function responsUjian_(u, lingkup, kelas) {
@@ -207,9 +251,9 @@ function responsUjian_(u, lingkup, kelas) {
   rows_(SH.HASIL).forEach(function (h) {
     if (h['ID Ujian'] !== u.id) return;
     if (lingkup === 'kelas' && h['Kelas'].toUpperCase() !== String(kelas).toUpperCase()) return;
-    latest[h['Kelas'] + '|' + h['Nama']] = { nama: h['Nama'], kelas: h['Kelas'], jawaban: h['Jawaban'].replace(/^'/, '') };   // scan terakhir menang
+    latest[kunciSiswa_(h)] = { nama: h['Nama'], kelas: h['Kelas'], jawaban: h['Jawaban'].replace(/^'/, '') };   // scan terakhir menang
   });
-  return Object.keys(latest).sort().map(function (k) { return latest[k]; });
+  return Object.keys(latest).map(function (k) { return latest[k]; }).sort(function (a, b) { return (a.kelas + '|' + a.nama).localeCompare(b.kelas + '|' + b.nama); });
 }
 
 function analisisUjian(id, lingkup, kelas) {
@@ -230,9 +274,9 @@ function tulisAnalisis_(nama, u, lingkup, kelas, A) {
   var info = [
     ['Ujian', u.nama + ' (' + u.id + ')'], ['Mapel', u.mapel], ['Lingkup', lingkup === 'kelas' ? 'Kelas ' + kelas : 'Tingkat ' + (u.tingkat || '-')],
     ['Jumlah siswa', A.n], ['Jumlah soal', A.k], ['Rata-rata skor', R.rataRata], ['Simpangan baku', R.sd], ['Median / Min / Maks', [R.median, R.min, R.max].join(' / ')],
-    ['Reliabilitas KR-20', R.kr20 == null ? '-' : R.kr20 + ' (' + R.kategoriKr20 + ')'], ['KR-21', R.kr21], ['SEM (skor mentah)', R.sem],
+    ['Reliabilitas KR-20', R.kr20 == null ? '-' : R.kr20 + ' (' + R.kategoriKr20 + ')' + (R.kr20 < 0 ? ' — negatif: butir tidak konsisten, periksa kunci' : '')], ['KR-21', R.kr21 == null ? '-' : R.kr21], ['SEM (dalam jumlah butir benar)', R.sem == null ? '-' : R.sem],
     ['r tabel (α 0,05)', R.rTabel], ['Tuntas (KKTP ' + A.kktp + ')', (R.tuntas || 0) + ' siswa (' + (R.persenTuntas || 0) + '%)'],
-    ['Rekomendasi butir', 'Diterima ' + (R.diterima || 0) + ' · Direvisi ' + (R.direvisi || 0) + ' · Dibuang ' + (R.dibuang || 0)],
+    ['Rekomendasi butir', R.teksRekomendasi || '-'],
     ['Dianalisis', now_()]
   ];
   sh.getRange(row, 1, info.length, 2).setValues(info.map(function (r) { return [r[0], r[1] == null ? '-' : r[1]]; }));
@@ -242,17 +286,17 @@ function tulisAnalisis_(nama, u, lingkup, kelas, A) {
   row++;
   if (!A.butir.length) return;
   var letters = A.opsi.split('');
-  var head = ['No', 'Kunci', 'Benar', 'P', 'TK', 'D', 'DP', 'r pbis', 'r tabel', 'Valid', 'KR20 jika dihapus']
+  var head = ['No', 'Kunci', 'Benar', 'P', 'TK', 'D', 'DP', 'r pbis', 'r tabel', 'Korelasi (r ≥ r tabel)', 'KR20 jika dihapus']
     .concat(letters.map(function (L) { return '% ' + L; })).concat(['% Kosong', 'Pengecoh Berfungsi', 'Rekomendasi', 'Alasan']);
   sh.getRange(row, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#e5e7eb');
   var body = A.butir.map(function (b) {
-    return [b.no, b.kunci, b.benar, b.p, b.tk, b.d, b.dp, b.rpbis == null ? '-' : b.rpbis, b.rTabel == null ? '-' : b.rTabel, b.valid ? 'Valid' : 'Tidak',
+    return [b.no, b.kunci, b.benar, b.p, b.tk, b.d, b.dp, b.rpbis == null ? '-' : b.rpbis, b.rTabel == null ? '-' : b.rTabel, labelKorelasi(b.valid),
       b.kr20JikaDihapus == null ? '-' : b.kr20JikaDihapus]
       .concat(letters.map(function (L) { return Math.round(b.sebaran[L].p * 1000) / 10; }))
       .concat([Math.round(b.sebaran['-'].p * 1000) / 10, b.pengecohBerfungsi.join(', ') || '-', b.rekomendasi, b.alasan]);
   });
   sh.getRange(row + 1, 1, body.length, head.length).setValues(body);
-  var warna = A.butir.map(function (b) { var c = b.rekomendasi === 'Diterima' ? '#dcfce7' : (b.rekomendasi === 'Dibuang' ? '#fee2e2' : '#fef9c3'); return head.map(function () { return c; }); });
+  var warna = A.butir.map(function (b) { var c = b.rekomendasi === 'Diterima' ? '#dcfce7' : (b.rekomendasi === 'Audit kritis' ? '#fee2e2' : (b.rekomendasi === 'Direvisi' ? '#fef9c3' : '#f3f4f6')); return head.map(function () { return c; }); });
   sh.getRange(row + 1, 1, body.length, head.length).setBackgrounds(warna);
   row += body.length + 3;
   // tabel siswa + matriks benar/salah
@@ -264,11 +308,11 @@ function tulisAnalisis_(nama, u, lingkup, kelas, A) {
 }
 
 function apiAnalyze_(d) {
-  auth_(d.token);
+  assertPemilik_(auth_(d.token), getUjian_(d.examId));
   var r = analisisUjian(d.examId, d.lingkup, d.kelas);
   var A = r.hasil;
   return { result: 'success', sheet: r.sheet, ringkasan: A.ringkasan, peringatan: A.peringatan,
-    butir: A.butir.map(function (b) { return { no: b.no, kunci: b.kunci, p: b.p, tk: b.tk, d: b.d, dp: b.dp, rpbis: b.rpbis, valid: b.valid, rekomendasi: b.rekomendasi, alasan: b.alasan, sebaran: b.sebaran }; }) };
+    butir: A.butir.map(function (b) { return { no: b.no, kunci: b.kunci, p: b.p, tk: b.tk, d: b.d, dp: b.dp, rpbis: b.rpbis, valid: b.valid, korelasi: b.korelasi, rekomendasi: b.rekomendasi, alasan: b.alasan, sebaran: b.sebaran }; }) };
 }
 
 // simpan hasil analisis ke Bank Soal (upsert per Kode Soal + Lingkup)
@@ -281,15 +325,15 @@ function bankSoal(id, lingkup, kelas) {
   var tgl = now_(), baru = 0, ubah = 0;
   A.butir.forEach(function (b) {
     var kode = u.id + '-' + ('0' + b.no).slice(-2);
-    var row = [kode, u.mapel, u.tingkat, lk, u.id, u.nama, b.no, b.kunci, A.n, b.p, b.tk, b.d, b.dp, b.rpbis, b.rTabel, b.valid ? 'Valid' : 'Tidak', b.kr20JikaDihapus,
+    var row = [kode, u.mapel, u.tingkat, lk, u.id, u.nama, b.no, b.kunci, A.n, b.p, b.tk, b.d, b.dp, b.rpbis, b.rTabel, labelKorelasi(b.valid), b.kr20JikaDihapus,
       b.pengecohBerfungsi.join(', '), b.pengecohMati.join(', '), b.rekomendasi, b.alasan, tgl];
     var r0 = idx[kode + '|' + lk];
     if (r0) { sh.getRange(r0, 1, 1, row.length).setValues([row]); ubah++; }
-    else { sh.appendRow(row.concat([b.rekomendasi === 'Diterima' ? 'Pakai' : (b.rekomendasi === 'Dibuang' ? 'Arsip' : 'Revisi'), ''])); baru++; }
+    else { sh.appendRow(row.concat([b.rekomendasi === 'Diterima' ? 'Pakai' : 'Telaah', ''])); baru++; }   // keputusan akhir oleh guru
   });
   return { result: 'success', baru: baru, diperbarui: ubah, sheet: r.sheet };
 }
-function apiBank_(d) { auth_(d.token); return bankSoal(d.examId, d.lingkup, d.kelas); }
+function apiBank_(d) { assertPemilik_(auth_(d.token), getUjian_(d.examId)); return bankSoal(d.examId, d.lingkup, d.kelas); }
 
 // ---------------------------------------------------------------- OCR (Google Drive)
 // Wajib: editor Apps Script → Layanan (+) → Drive API → Tambahkan.
@@ -334,7 +378,7 @@ function setup() {
   var opsiRule = SpreadsheetApp.newDataValidation().requireValueInList(['ABCD', 'ABCDE'], true).build();
   sheet_(SH.UJIAN).getRange('H2:H').setDataValidation(opsiRule);
   sheet_(SH.UJIAN).getRange('L2:L').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Aktif', 'Arsip'], true).build());
-  sheet_(SH.BANK).getRange('W2:W').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Pakai', 'Revisi', 'Arsip'], true).build());
+  sheet_(SH.BANK).getRange('W2:W').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Pakai', 'Telaah', 'Revisi', 'Arsip'], true).build());
   sheet_(SH.GURU).getRange('F2:F').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['Ya', 'Tidak'], true).build());
   try {
     SpreadsheetApp.getUi().alert('Setup selesai.\n\n1) Isi sheet Sekolah, Guru (dengan PIN 4 digit), dan Siswa (bisa tempel dari Dapodik).\n2) Ekstensi → Apps Script → Layanan + → Drive API.\n3) Terapkan → Deployment baru → Aplikasi web → Jalankan sebagai: Saya → Akses: Siapa saja.\n4) Tempel URL /exec di aplikasi Buleud Teu.');
@@ -357,7 +401,7 @@ function menuAnalisis() {
   var p = pilihUjianDialog_('Analisis butir soal'); if (!p) return;
   var r = analisisUjian(p.id, p.lingkup, p.kelas), R = r.hasil.ringkasan || {};
   doc_().setActiveSheet(doc_().getSheetByName(r.sheet));
-  SpreadsheetApp.getUi().alert('Selesai: ' + r.sheet + '\nSiswa ' + r.hasil.n + ', soal ' + r.hasil.k + '\nKR-20 ' + R.kr20 + ' (' + R.kategoriKr20 + ')\nDiterima ' + R.diterima + ' · Direvisi ' + R.direvisi + ' · Dibuang ' + R.dibuang + (r.hasil.peringatan.length ? '\n\n' + r.hasil.peringatan.join('\n') : ''));
+  SpreadsheetApp.getUi().alert('Selesai: ' + r.sheet + '\nSiswa ' + r.hasil.n + ', soal ' + r.hasil.k + '\nKR-20 ' + R.kr20 + ' (' + R.kategoriKr20 + ')\n' + R.teksRekomendasi + (r.hasil.peringatan.length ? '\n\n' + r.hasil.peringatan.join('\n') : ''));
 }
 function menuBank() {
   var p = pilihUjianDialog_('Simpan ke Bank Soal'); if (!p) return;

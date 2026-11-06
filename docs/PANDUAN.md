@@ -239,13 +239,24 @@ Kartu ujian → **Analisis**, lalu pilih lingkup: **seluruh tingkat** (misalnya 
 | Ukuran | Arti singkat |
 | --- | --- |
 | Tingkat kesukaran (P) | Proporsi siswa yang menjawab benar: sukar / sedang / mudah |
-| Daya pembeda (D, 27%) | Selisih kelompok atas dan bawah: baik sekali / baik / cukup / jelek |
-| Validitas (r point-biserial terkoreksi) | Dibandingkan r tabel (α 0,05) sesuai jumlah siswa |
+| Daya pembeda (D, 27%) | Selisih kelompok atas dan bawah: baik sekali / baik / cukup / jelek. Skor seri di batas kelompok dibagi berbobot, jadi hasilnya tidak bergantung urutan data |
+| Korelasi butir-total (r terkoreksi) | Memadai bila r ≥ r tabel (α 0,05), Rendah bila di bawahnya, “–” bila tidak dapat dihitung. Ini bukti konsistensi internal, bukan validitas isi. |
 | Reliabilitas KR-20 / KR-21 / SEM | Konsistensi tes; ada juga KR-20 jika butir dihapus |
 | Efektivitas pengecoh | Berfungsi bila dipilih ≥ 5% siswa dan lebih banyak dipilih kelompok bawah daripada kelompok atas |
-| Rekomendasi | Diterima / Direvisi / Dibuang, beserta alasannya |
+| Rekomendasi | Diterima / Direvisi / Audit kritis (D atau r negatif: periksa kunci, naskah, bukti scan) / Data kurang (n < 20), beserta alasannya. Tidak ada soal yang dibuang otomatis; keputusan akhir oleh guru |
 
-Hasil ditulis ke sheet `AN_<ujian>_<lingkup>`. **Simpan ke Bank Soal** menyalin butir ke sheet **BankSoal**, dikelompokkan per Mapel + Tingkat. Kolom *Status Guru* (Pakai / Revisi / Arsip) dan *Catatan* diisi guru.
+Hasil ditulis ke sheet `AN_<ujian>_<lingkup>`. **Simpan ke Bank Soal** menyalin butir ke sheet **BankSoal**, dikelompokkan per Mapel + Tingkat. Kolom *Status Guru* (Pakai / Telaah / Revisi / Arsip; butir selain Diterima masuk sebagai Telaah) dan *Catatan* diisi guru.
+
+**Validitas isi tetap tugas guru.** Angka statistik hanya menunjukkan bagaimana butir berperilaku pada data siswa. Kesesuaian soal dengan CP/TP, kisi-kisi, materi, level kognitif, dan bahasa harus ditelaah guru atau MGMP. Soal yang dijawab benar 95% siswa belum tentu jelek bila memang mengukur kompetensi dasar.
+
+### Hak akses dan perlindungan data
+
+- Hanya **guru pembuat ujian** yang dapat menyimpan hasil, menganalisis, mengirim ke bank soal, membuat laporan, mengubah, atau mengarsipkan ujian itu.
+- Hasil hanya diterima untuk siswa yang **ada di sheet Siswa dan termasuk kelas ujian**. NISN dan nomor peserta diambil dari sheet Siswa. Dua siswa bernama sama di satu kelas wajib dibedakan dengan NISN.
+- Kunci jawaban dengan karakter salah **ditolak** dan nomor posisinya disebutkan; KKTP harus 0–100.
+- Guru yang diubah menjadi *Aktif: Tidak* langsung kehilangan akses, walau masih login.
+- Kiriman ulang hasil scan yang sama (ScanID sama) memperbarui baris lama, tidak menambah baris ganda.
+- Hasil antrean offline yang ditolak server (misalnya siswa tidak terdaftar) dilaporkan ke guru, tidak dicoba ulang selamanya.
 
 ## 7. Laporan nilai dan analisis (PDF, Excel, Google Sheet)
 
@@ -307,6 +318,17 @@ Dua gejala lain di analisis dan laporan:
 
 - **“Ekspor PDF/Excel gagal (401/403)”** berarti izin baru belum disetujui. Jalankan **Tes koneksi & izin** di spreadsheet, setujui, lalu buat versi baru deployment.
 - **r pbis, D, dan KR-20 tampil “–”** terjadi bila semua siswa memperoleh skor total sama (misalnya 4 siswa sama-sama benar 6). Statistik itu memang tidak terdefinisi; analisis baru bermakna bila skor siswa bervariasi, idealnya ≥ 20 siswa.
+
+Pesan penolakan dari server:
+
+| Pesan | Artinya | Yang dilakukan |
+| --- | --- | --- |
+| Ujian ini milik guru lain | Guru mencoba memakai ujian yang dibuat guru lain | Masuk dengan akun pembuat ujian, atau buat ujian sendiri |
+| Siswa … tidak ada di sheet Siswa | Nama belum terdaftar | Tambahkan siswa di sheet Siswa, Muat ulang, simpan lagi |
+| Siswa … bukan peserta ujian ini | Kelas siswa tidak termasuk kelas ujian | Tambahkan kelas itu ke ujian, atau pilih siswa yang benar |
+| Ada lebih dari satu siswa bernama … | Nama kembar di kelas yang sama | Isi NISN kedua siswa di sheet Siswa |
+| Kunci tidak sah: nomor … | Ada karakter selain A–D/A–E | Perbaiki huruf di nomor yang disebut |
+| Akun guru tidak aktif | Kolom Aktif guru = Tidak | Operator mengaktifkan kembali bila perlu |
 
 ## 9. Daftar periksa operator
 

@@ -10,10 +10,16 @@
  * Acuan kategori (dipakai luas di sekolah Indonesia):
  *   Tingkat kesukaran P   : 0,00–0,30 Sukar · 0,31–0,70 Sedang · 0,71–1,00 Mudah
  *   Daya pembeda D (27%)  : <0 Negatif · 0,00–0,20 Jelek · 0,21–0,40 Cukup · 0,41–0,70 Baik · 0,71–1,00 Baik Sekali
- *   Validitas             : r point-biserial terkoreksi (butir vs skor total tanpa butir itu) >= r tabel (α = 0,05, dua sisi)
+ *   Korelasi butir-total  : r point-biserial terkoreksi (item-rest) dibanding r tabel (α = 0,05, dua sisi)
+ *                           -> 'Memadai' / 'Rendah' / '-' (tidak dapat dihitung). Ini bukti KONSISTENSI INTERNAL,
+ *                           bukan validitas isi (kesesuaian dengan CP/TP & kisi-kisi tetap ditelaah guru).
+ *   Kelompok atas/bawah   : 27% (n < 20: 50%); skor SERI di batas kelompok dibagi berbobot (fraksional),
+ *                           sehingga hasil tidak bergantung urutan data.
  *   Reliabilitas          : KR-20 (varians populasi /N), KR-21, SEM
  *                           0,80–1,00 Sangat Tinggi · 0,60–0,79 Tinggi · 0,40–0,59 Sedang · 0,20–0,39 Rendah · <0,20 Sangat Rendah
  *   Pengecoh berfungsi    : dipilih >= 5% peserta DAN lebih banyak dipilih kelompok bawah daripada kelompok atas
+ *   Rekomendasi           : Diterima · Direvisi · Audit kritis (D/r negatif: periksa kunci & soal, keputusan guru)
+ *                           · Data kurang (n < 20: indikator ditampilkan, tanpa rekomendasi keras) · '-' (skor seragam)
  */
 
 function statMean_(a) { return a.length ? a.reduce(function (s, v) { return s + v; }, 0) / a.length : 0; }
@@ -51,14 +57,16 @@ function kr20_(X, k) {
 }
 
 function analisisButir(respons, kunci, opsi, kktp) {
-  kunci = String(kunci || '').toUpperCase().replace(/[^A-E]/g, '');
+  // posisi kunci dipertahankan: karakter tak sah menjadi '?' (tidak pernah cocok), BUKAN dihapus (nomor tidak bergeser)
   opsi = opsi === 'ABCDE' ? 'ABCDE' : 'ABCD';
-  kktp = Number(kktp) || 75;
+  kunci = String(kunci || '').toUpperCase().replace(/\s+/g, '').split('').map(function (c) { return opsi.indexOf(c) >= 0 ? c : '?'; }).join('');
+  kktp = (kktp === '' || kktp == null || !isFinite(Number(kktp))) ? 75 : Math.max(0, Math.min(100, Number(kktp)));
   var k = kunci.length, n = respons.length;
-  var hasil = { n: n, k: k, opsi: opsi, kktp: kktp, peringatan: [], butir: [], siswa: [], ringkasan: null };
+  var hasil = { n: n, k: k, opsi: opsi, kktp: kktp, peringatan: [], butir: [], siswa: [], ringkasan: null, sampelKecil: n < 20 };
+  if (/\?/.test(kunci)) hasil.peringatan.push('Kunci memuat karakter tidak sah pada nomor ' + kunci.split('').map(function (c, i) { return c === '?' ? i + 1 : 0; }).filter(Boolean).join(', ') + ': nomor itu dinilai salah untuk semua siswa — perbaiki kunci.');
   if (!k) { hasil.peringatan.push('Kunci jawaban kosong.'); return hasil; }
   if (n < 2) { hasil.peringatan.push('Minimal 2 siswa untuk analisis.'); return hasil; }
-  if (n < 20) hasil.peringatan.push('Jumlah siswa ' + n + ' (< 20): statistik butir kurang stabil, gunakan sebagai gambaran awal.');
+  if (n < 20) hasil.peringatan.push('Jumlah siswa ' + n + ' (< 20): statistik butir kurang stabil. Indikator ditampilkan sebagai gambaran awal; rekomendasi Diterima/Direvisi ditahan ("Data kurang").');
 
   // matriks benar/salah + pilihan
   var X = [], C = [];
@@ -70,10 +78,20 @@ function analisisButir(respons, kunci, opsi, kktp) {
   var total = X.map(function (r) { return r.reduce(function (s, v) { return s + v; }, 0); });
   var skor = total.map(function (t) { return Math.round(t / k * 10000) / 100; });
 
-  // kelompok atas/bawah 27% (n < 20: 50%)
-  var urut = total.map(function (t, i) { return { t: t, i: i }; }).sort(function (a, b) { return b.t - a.t || a.i - b.i; });
+  // kelompok atas/bawah 27% (n < 20: 50%). Bobot fraksional untuk skor seri di batas kelompok:
+  // siswa dengan skor sama mendapat bobot sama -> hasil identik apa pun urutan datanya (= rata-rata semua cara memecah seri).
   var g = n >= 20 ? Math.max(1, Math.round(n * 0.27)) : Math.floor(n / 2);
-  var atas = urut.slice(0, g).map(function (o) { return o.i; }), bawah = urut.slice(n - g).map(function (o) { return o.i; });
+  function bobotKelompok_(atasKah) {
+    var penuh = total.map(function () { return false; }), seri = penuh.slice(), fr = 0;
+    if (!g) return { penuh: penuh, seri: seri, fr: 0 };
+    var s = total.slice().sort(function (a, b) { return atasKah ? b - a : a - b; }), batas = s[g - 1];
+    var lewat = 0, nSeri = 0;
+    total.forEach(function (t, i) { if (atasKah ? t > batas : t < batas) { penuh[i] = true; lewat++; } else if (t === batas) { seri[i] = true; nSeri++; } });
+    return { penuh: penuh, seri: seri, fr: (g - lewat) / nSeri };
+  }
+  var wA = bobotKelompok_(true), wB = bobotKelompok_(false);
+  // jumlah bilangan bulat dulu, bobot pecahan dikalikan sekali -> hasil persis sama apa pun urutan data
+  function sumW_(w, f) { var a = 0, b = 0; for (var i = 0; i < n; i++) { if (w.penuh[i]) a += f(i); else if (w.seri[i]) b += f(i); } return a + w.fr * b; }
 
   var rTab = statRTabel_(n);
   var varTot = statVarPop_(total), sdTot = Math.sqrt(varTot);
@@ -87,12 +105,13 @@ function analisisButir(respons, kunci, opsi, kktp) {
   for (var j = 0; j < k; j++) {
     var col = X.map(function (r) { return r[j]; });
     var benar = col.reduce(function (s, v) { return s + v; }, 0), p = benar / n;
-    var pU = atas.reduce(function (s, i) { return s + X[i][j]; }, 0) / g;
-    var pL = bawah.reduce(function (s, i) { return s + X[i][j]; }, 0) / g;
+    var pU = g ? sumW_(wA, function (i) { return X[i][j]; }) / g : 0;
+    var pL = g ? sumW_(wB, function (i) { return X[i][j]; }) / g : 0;
     var D = g && !seragam ? pU - pL : null;
     var rest = total.map(function (t, i) { return t - X[i][j]; });
     var rpb = seragam ? null : statPearson_(col, rest);
-    var valid = rpb != null && rTab != null && rpb >= rTab;
+    // tiga keadaan: true (r >= r tabel) · false · null (tidak dapat dihitung)
+    var valid = rpb == null || rTab == null ? null : rpb >= rTab;
     // KR-20 jika butir dihapus
     var Xd = X.map(function (r) { return r.filter(function (_, jj) { return jj !== j; }); });
     var r20del = seragam ? null : kr20_(Xd, k - 1);
@@ -100,36 +119,38 @@ function analisisButir(respons, kunci, opsi, kktp) {
     var dist = {}, berfungsi = [], mati = [];
     var letters = (opsi + '-').split('');
     letters.forEach(function (L) {
-      var cnt = 0, cU = 0, cL = 0;
+      var cnt = 0;
       for (var i = 0; i < n; i++) if (C[i][j] === L) cnt++;
-      atas.forEach(function (i) { if (C[i][j] === L) cU++; });
-      bawah.forEach(function (i) { if (C[i][j] === L) cL++; });
-      dist[L] = { n: cnt, p: cnt / n, atas: g ? cU / g : 0, bawah: g ? cL / g : 0 };
+      var cU = sumW_(wA, function (i) { return C[i][j] === L ? 1 : 0; }), cL = sumW_(wB, function (i) { return C[i][j] === L ? 1 : 0; });
+      dist[L] = { n: cnt, p: cnt / n, atas: g ? round_(cU / g, 4) : 0, bawah: g ? round_(cL / g, 4) : 0 };
       if (L !== '-' && L !== kunci.charAt(j)) {
-        if (cnt / n >= 0.05 && cL >= cU) berfungsi.push(L); else mati.push(L);
+        if (cnt / n >= 0.05 && cL > cU + 1e-9) berfungsi.push(L); else mati.push(L);   // lebih banyak (bukan sama) dipilih kelompok bawah
       }
     });
     var nDis = opsi.length - 1;
     // rekomendasi
     var alasan = [], rek;
     if (seragam) { rek = '-'; alasan.push('skor total seragam: belum bisa dinilai'); }
+    else if (kunci.charAt(j) === '?') { rek = 'Audit kritis'; alasan.push('kunci nomor ini tidak sah'); }
     else if ((D != null && D < 0) || (rpb != null && rpb < 0)) {
-      rek = 'Dibuang';
+      // bukan "buang otomatis": penyebab bisa salah kunci, gangguan pembacaan, soal multidimensi, atau sampel kecil
+      rek = 'Audit kritis';
       if (D != null && D < 0) alasan.push('daya pembeda negatif (kelompok bawah lebih banyak benar)');
       if (rpb != null && rpb < 0) alasan.push('korelasi butir-total negatif');
-      alasan.push('periksa kunci jawaban');
+      alasan.push('periksa kunci, naskah soal, dan bukti scan; keputusan akhir oleh guru');
     } else {
-      if (!valid) alasan.push(rpb == null ? 'validitas tidak dapat dihitung (semua benar/salah)' : 'tidak valid (r ' + rpb.toFixed(2) + ' < r tabel ' + (rTab == null ? '-' : rTab.toFixed(2)) + ')');
+      if (valid !== true) alasan.push(rpb == null ? 'korelasi butir-total tidak dapat dihitung (semua benar/salah)' : 'korelasi butir-total rendah (r ' + rpb.toFixed(2) + ' < r tabel ' + (rTab == null ? '-' : rTab.toFixed(2)) + ')');
       if (D == null || D <= 0.20) alasan.push('daya pembeda jelek');
       if (berfungsi.length < Math.ceil(nDis / 2)) alasan.push('pengecoh tidak berfungsi: ' + (mati.join(', ') || '-'));
       if (p > 0.90) alasan.push('terlalu mudah');
       if (p < 0.10) alasan.push('terlalu sukar');
-      rek = alasan.length === 0 || (alasan.length === 1 && /terlalu/.test(alasan[0]) && valid && D > 0.20) ? 'Diterima' : 'Direvisi';
+      rek = alasan.length === 0 || (alasan.length === 1 && /terlalu/.test(alasan[0]) && valid === true && D > 0.20) ? 'Diterima' : 'Direvisi';
+      if (n < 20) { alasan.unshift('sampel kecil (n ' + n + ' < 20), indikasi awal: ' + rek.toLowerCase()); rek = 'Data kurang'; }
     }
     hasil.butir.push({
       no: j + 1, kunci: kunci.charAt(j), benar: benar, p: round_(p, 3), tk: kategoriP_(p),
       d: D == null ? null : round_(D, 3), dp: kategoriD_(D), rpbis: rpb == null ? null : round_(rpb, 3), rTabel: rTab == null ? null : round_(rTab, 3),
-      valid: valid, kr20JikaDihapus: r20del == null ? null : round_(r20del, 3), sebaran: dist,
+      valid: valid, korelasi: labelKorelasi(valid), kr20JikaDihapus: r20del == null ? null : round_(r20del, 3), sebaran: dist,
       pengecohBerfungsi: berfungsi, pengecohMati: mati, rekomendasi: rek, alasan: alasan.join('; ')
     });
   }
@@ -146,9 +167,21 @@ function analisisButir(respons, kunci, opsi, kktp) {
     tuntas: tuntas, persenTuntas: round_(tuntas / n * 100, 1), kelompok: g,
     diterima: hasil.butir.filter(function (b) { return b.rekomendasi === 'Diterima'; }).length,
     direvisi: hasil.butir.filter(function (b) { return b.rekomendasi === 'Direvisi'; }).length,
-    dibuang: hasil.butir.filter(function (b) { return b.rekomendasi === 'Dibuang'; }).length
+    auditKritis: hasil.butir.filter(function (b) { return b.rekomendasi === 'Audit kritis'; }).length,
+    dataKurang: hasil.butir.filter(function (b) { return b.rekomendasi === 'Data kurang'; }).length
   };
+  hasil.ringkasan.dibuang = hasil.ringkasan.auditKritis;   // kompatibel aplikasi versi lama
+  hasil.ringkasan.teksRekomendasi = teksRekomendasi(hasil.ringkasan);
   return hasil;
+}
+
+/** label korelasi butir-total tiga keadaan */
+function labelKorelasi(valid) { return valid === true ? 'Memadai' : (valid === false ? 'Rendah' : '-'); }
+/** ringkasan rekomendasi untuk ditampilkan (hanya kategori yang ada) */
+function teksRekomendasi(R) {
+  var a = ['Diterima ' + (R.diterima || 0), 'Direvisi ' + (R.direvisi || 0), 'Audit kritis ' + (R.auditKritis || 0)];
+  if (R.dataKurang) a.push('Data kurang ' + R.dataKurang);
+  return a.join(' · ');
 }
 
 function round_(v, d) { var f = Math.pow(10, d); return Math.round(v * f) / f; }
@@ -162,4 +195,4 @@ function tingkatDariKelas(kelas) {
   return null;
 }
 
-if (typeof module !== 'undefined') module.exports = { analisisButir: analisisButir, statRTabel_: statRTabel_, kr20_: kr20_, tingkatDariKelas: tingkatDariKelas };
+if (typeof module !== 'undefined') module.exports = { analisisButir: analisisButir, labelKorelasi: labelKorelasi, teksRekomendasi: teksRekomendasi, statRTabel_: statRTabel_, kr20_: kr20_, tingkatDariKelas: tingkatDariKelas };

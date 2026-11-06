@@ -266,7 +266,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val r = api.post(body); say("✅ Tersimpan — $selSiswa: ${r.optDouble("skor")} (${r.optInt("benar")}/${r.optInt("jumlah")})")
         } catch (e: Exception) {
-            if (isNetwork(e)) { val qa = store.queue(); qa.put(body); store.setQueue(qa); queueSize = qa.length(); say("Offline: disimpan di antrean, dikirim otomatis nanti") }
+            if (isNetwork(e)) {
+                val qa = store.queue(); qa.put(body)
+                if (store.setQueue(qa)) { queueSize = qa.length(); say("Offline: disimpan di antrean perangkat, dikirim otomatis nanti") }
+                else say("Offline DAN penyimpanan HP gagal — hasil BELUM tersimpan. Kosongkan ruang lalu simpan lagi.")
+            }
             else { busy = null; say("Gagal simpan: ${e.message}"); return@launch }
         }
         busy = null
@@ -277,9 +281,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val qa = store.queue(); if (qa.length() == 0) return@launch
         val rest = JSONArray()
         loading = "Mengirim ${qa.length()} hasil antrean…"
-        for (i in 0 until qa.length()) { val b = qa.getJSONObject(i); try { b.put("token", store.token); api.post(b) } catch (e: Exception) { rest.put(b) } }
+        val ditolak = ArrayList<String>()
+        for (i in 0 until qa.length()) { val b = qa.getJSONObject(i)
+            try { b.put("token", store.token); withContext(Dispatchers.IO) { api.post(b) } }
+            catch (e: Exception) {
+                // jaringan / sesi -> tetap di antrean; DITOLAK server (bukan pemilik, siswa tak terdaftar, ...) -> keluarkan & laporkan
+                if (isNetwork(e) || (e is ApiException && e.auth)) rest.put(b) else ditolak += (b.optJSONObject("siswa")?.optString("nama") ?: "?") + ": " + (e.message ?: "ditolak")
+            } }
         store.setQueue(rest); queueSize = rest.length(); loading = null
-        if (rest.length() < qa.length()) say("${qa.length() - rest.length()} hasil antrean terkirim")
+        val sent = qa.length() - rest.length() - ditolak.size
+        if (ditolak.isNotEmpty()) say("Ditolak server (tidak disimpan): " + ditolak.joinToString("; ").take(300))
+        else if (sent > 0) say("$sent hasil antrean terkirim")
     }
 
     // ---------------- analisis

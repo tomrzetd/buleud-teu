@@ -77,7 +77,8 @@ class Store(ctx: Context) {
     var ocr: Boolean get() = p.getBoolean("ocr", true); set(v) { p.edit().putBoolean("ocr", v).apply() }
     var auto: Boolean get() = p.getBoolean("auto", true); set(v) { p.edit().putBoolean("auto", v).apply() }
     fun queue(): JSONArray = try { JSONArray(p.getString("queue", "[]")) } catch (e: Exception) { JSONArray() }
-    fun setQueue(a: JSONArray) { p.edit().putString("queue", a.toString()).apply() }
+    /** commit() sinkron: true hanya bila antrean benar-benar tertulis ke penyimpanan perangkat */
+    fun setQueue(a: JSONArray): Boolean = p.edit().putString("queue", a.toString()).commit()
 }
 
 fun isNetwork(e: Throwable) = e is IOException

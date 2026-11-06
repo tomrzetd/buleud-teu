@@ -24,3 +24,5 @@ jobs:
         run: python3 tools/test/test_stats.py
       - name: Apps Script (tiruan layanan Google)
         run: node tools/test/test_appscript.js
+      - name: Uji keamanan & integritas statistik (temuan audit)
+        run: node tools/test/test_security.js

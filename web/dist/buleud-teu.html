@@ -1431,7 +1431,8 @@ else root.LJKIdent = LJKIdent;
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const store = {
         get(k, d) { try { const v = localStorage.getItem('bt_' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-        set(k, v) { try { localStorage.setItem('bt_' + k, JSON.stringify(v)); } catch (e) { } },
+        // true bila benar-benar tersimpan (penyimpanan penuh / diblokir -> false, jangan klaim "tersimpan")
+        set(k, v) { try { const s = JSON.stringify(v); localStorage.setItem('bt_' + k, s); return localStorage.getItem('bt_' + k) === s; } catch (e) { return false; } },
         del(k) { try { localStorage.removeItem('bt_' + k); } catch (e) { } }
     };
     const SPEC = LJKSpec.SPEC;
@@ -1584,7 +1585,7 @@ else root.LJKIdent = LJKIdent;
     function keyClear() { $('exKunci').value = ''; keyTyped(); }
     async function saveExam() {
         const e = S.editing;
-        e.nama = $('exNama').value.trim(); e.mapel = $('exMapel').value.trim().toUpperCase(); e.kktp = Number($('exKktp').value) || 75;
+        e.nama = $('exNama').value.trim(); e.mapel = $('exMapel').value.trim().toUpperCase(); e.kktp = $('exKktp').value.trim() === '' ? 75 : Number($('exKktp').value);
         const k = e.kunci;
         const msg = (t, c = 'n-bad') => $('examMsg').innerHTML = `<div class="note ${c}">${esc(t)}</div>`;
         if (!e.nama || !e.mapel) return msg('Nama ujian dan mapel wajib diisi.');
@@ -1592,6 +1593,7 @@ else root.LJKIdent = LJKIdent;
         if (!k.length) return msg('Kunci jawaban masih kosong.');
         if (/[-?]/.test(k)) return msg('Ada nomor kunci yang kosong di tengah (tanda -). Lengkapi atau hapus.');
         if (e.opsi === 'ABCD' && /E/.test(k)) return msg('Kunci berisi E, padahal opsi ABCD.');
+        if (!Number.isFinite(e.kktp) || e.kktp < 0 || e.kktp > 100) return msg('KKTP harus angka 0–100.');
         busy(true, 'Menyimpan ujian…');
         try { await apiPost({ action: 'saveExam', exam: e }); toast('Ujian tersimpan (' + k.length + ' soal)'); go('home'); await loadExams(true); }
         catch (err) { msg(err.message); } finally { busy(false); }
@@ -1999,7 +2001,14 @@ else root.LJKIdent = LJKIdent;
             toast(`✅ Tersimpan — ${nama}: ${r.skor} (${r.benar}/${r.jumlah})`);
             markScanned(u, kelas, nama);
         } catch (e) {
-            if (/fetch|network|Load failed/i.test(e.message) || !navigator.onLine) { S.queue.push(payload); store.set('queue', S.queue); markScanned(u, kelas, nama); toast('Offline: disimpan di antrean, akan dikirim otomatis'); }
+            if (/fetch|network|Load failed/i.test(e.message) || !navigator.onLine) {
+                S.queue.push(payload);
+                if (!store.set('queue', S.queue)) {   // penyimpanan perangkat gagal: JANGAN klaim tersimpan
+                    S.queue.pop(); busy(false); $('btnSave').disabled = false;
+                    toast('Offline DAN penyimpanan perangkat penuh/diblokir — hasil BELUM tersimpan. Kosongkan ruang penyimpanan lalu simpan lagi.', 8000); return;
+                }
+                markScanned(u, kelas, nama); toast('Offline: disimpan di antrean perangkat, dikirim otomatis saat online');
+            }
             else { busy(false); toast('Gagal simpan: ' + e.message, 5000); $('btnSave').disabled = false; return; }
         }
         busy(false);
@@ -2011,9 +2020,17 @@ else root.LJKIdent = LJKIdent;
         if (!S.queue.length || !S.token) return;
         const rest = [];
         homeLoading(`Mengirim ${S.queue.length} hasil antrean…`);
-        for (const p of S.queue) { try { await apiPost(p); } catch (e) { rest.push(p); } }
-        const sent = S.queue.length - rest.length; S.queue = rest; store.set('queue', rest); homeLoading(null);
-        if (sent) toast(`${sent} hasil antrean terkirim`); else if (manual) toast('Masih belum bisa mengirim antrean');
+        const ditolak = [];
+        for (const p of S.queue) {
+            try { await apiPost(p); }
+            catch (e) {
+                // gagal jaringan -> tetap di antrean; DITOLAK server (bukan pemilik, siswa tidak terdaftar, dll.) -> keluarkan & laporkan
+                if (/fetch|network|Load failed|Sesi berakhir/i.test(e.message) || !navigator.onLine) rest.push(p); else ditolak.push((p.siswa && p.siswa.nama || '?') + ': ' + e.message);
+            }
+        }
+        const sent = S.queue.length - rest.length - ditolak.length; S.queue = rest; store.set('queue', rest); homeLoading(null);
+        if (ditolak.length) { const lama = store.get('queueRejected', []); store.set('queueRejected', lama.concat(ditolak).slice(-50)); alert('Hasil antrean DITOLAK server (tidak disimpan):\n\n' + ditolak.join('\n') + '\n\nScan ulang lembar tersebut setelah data diperbaiki.'); }
+        if (sent) toast(`${sent} hasil antrean terkirim`); else if (manual && !ditolak.length) toast('Masih belum bisa mengirim antrean');
         renderHome();
     }
     function backToScan() { if (S.scanMode === 'markerless' || S.exam) { go('scan'); startLoop(); if (!S.stream) startScan(S.exam ? S.data.ujian.indexOf(S.exam) : null, S.scanMode); } else go('home'); }
@@ -2066,11 +2083,11 @@ else root.LJKIdent = LJKIdent;
             const R = r.ringkasan || {};
             const box = (a, b) => `<div><span class="muted">${a}</span><b>${esc(b == null ? '-' : b)}</b></div>`;
             let h = `<div class="card"><h3>Ringkasan</h3>${(r.peringatan || []).map(p => `<div class="note n-warn">${esc(p)}</div>`).join('')}<div class="qgrid">` +
-                box('Siswa', R.n) + box('Soal', R.k) + box('Rata-rata', R.rataRata) + box('Simpangan baku', R.sd) + box('KR-20', R.kr20 != null ? R.kr20 + ' ' + R.kategoriKr20 : '-') + box('SEM', R.sem) +
-                box('Tuntas', (R.tuntas || 0) + ' (' + (R.persenTuntas || 0) + '%)') + box('Diterima', R.diterima) + box('Revisi / Buang', (R.direvisi || 0) + ' / ' + (R.dibuang || 0)) +
+                box('Siswa', R.n) + box('Soal', R.k) + box('Rata-rata', R.rataRata) + box('Simpangan baku', R.sd) + box('KR-20', R.kr20 != null ? R.kr20 + ' ' + R.kategoriKr20 : '-') + box('SEM (butir benar)', R.sem) +
+                box('Tuntas', (R.tuntas || 0) + ' (' + (R.persenTuntas || 0) + '%)') + box('Diterima / Direvisi', (R.diterima || 0) + ' / ' + (R.direvisi || 0)) + box('Audit kritis', R.auditKritis != null ? R.auditKritis : R.dibuang) + (R.dataKurang ? box('Data kurang', R.dataKurang) : '') +
                 `</div><p class="muted small">Lembar lengkap: sheet <b>${esc(r.sheet)}</b> di spreadsheet sekolah.</p><button class="btn pri wide" onclick="App.saveBank()">Simpan ke Bank Soal</button></div>`;
-            h += `<div class="card" style="overflow-x:auto"><h3>Butir soal</h3><table class="t"><tr><th>No</th><th>Kunci</th><th>P</th><th>D</th><th>r</th><th>Rekomendasi</th></tr>` +
-                (r.butir || []).map(b => `<tr class="${b.rekomendasi === 'Diterima' ? 'tr-ok' : b.rekomendasi === 'Dibuang' ? 'tr-bad' : 'tr-rev'}"><td>${b.no}</td><td>${b.kunci}</td><td>${b.p}<br><span class="muted">${b.tk}</span></td><td>${b.d == null ? '-' : b.d}<br><span class="muted">${b.dp}</span></td><td>${b.rpbis == null ? '-' : b.rpbis}<br><span class="muted">${b.valid ? 'valid' : 'tidak'}</span></td><td><b>${b.rekomendasi}</b><br><span class="muted">${esc(b.alasan)}</span></td></tr>`).join('') + '</table></div>';
+            h += `<div class="card" style="overflow-x:auto"><h3>Butir soal</h3><p class="muted small">r = korelasi butir dengan skor total (bukti konsistensi internal, <b>bukan</b> validitas isi). <b>Audit kritis</b>: periksa kunci, naskah soal, dan bukti scan sebelum memutuskan; keputusan akhir oleh guru.</p><table class="t"><tr><th>No</th><th>Kunci</th><th>P</th><th>D</th><th>r</th><th>Rekomendasi</th></tr>` +
+                (r.butir || []).map(b => `<tr class="${b.rekomendasi === 'Diterima' ? 'tr-ok' : (b.rekomendasi === 'Audit kritis' || b.rekomendasi === 'Dibuang') ? 'tr-bad' : b.rekomendasi === 'Direvisi' ? 'tr-rev' : ''}"><td>${b.no}</td><td>${b.kunci}</td><td>${b.p}<br><span class="muted">${b.tk}</span></td><td>${b.d == null ? '-' : b.d}<br><span class="muted">${b.dp}</span></td><td>${b.rpbis == null ? '-' : b.rpbis}<br><span class="muted">${esc(b.korelasi || (b.valid === true ? 'Memadai' : b.valid === false ? 'Rendah' : '-'))}</span></td><td><b>${b.rekomendasi}</b><br><span class="muted">${esc(b.alasan)}</span></td></tr>`).join('') + '</table></div>';
             $('anOut').innerHTML = h;
         } catch (e) { $('anOut').innerHTML = `<div class="note n-bad">${esc(e.message)}</div>`; } finally { busy(false); }
     }

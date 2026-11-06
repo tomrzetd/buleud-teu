@@ -367,16 +367,17 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
                     val pw = a.optJSONArray("peringatan"); if (pw != null) for (i in 0 until pw.length()) Note(pw.getString(i))
                     if (R != null) {
                         Text("Siswa ${R.optInt("n")} · Soal ${R.optInt("k")} · Rata-rata ${R.optDouble("rataRata")} · SD ${R.optDouble("sd")}", color = Color.White)
-                        Text("KR-20 ${R.opt("kr20")} (${R.optString("kategoriKr20")}) · SEM ${R.opt("sem")}", color = Color.White)
-                        Text("Tuntas ${R.optInt("tuntas")} (${R.optDouble("persenTuntas")}%) · Diterima ${R.optInt("diterima")} · Direvisi ${R.optInt("direvisi")} · Dibuang ${R.optInt("dibuang")}", color = TX2, fontSize = 13.sp)
+                        Text("KR-20 ${R.opt("kr20")} (${R.optString("kategoriKr20")}) · SEM ${R.opt("sem")} butir", color = Color.White)
+                        Text("Tuntas ${R.optInt("tuntas")} (${R.optDouble("persenTuntas")}%) · ${R.optString("teksRekomendasi").ifEmpty { "Diterima ${R.optInt("diterima")} · Direvisi ${R.optInt("direvisi")}" }}", color = TX2, fontSize = 13.sp)
+                        Text("r = korelasi butir-total (konsistensi internal, bukan validitas isi). Audit kritis: periksa kunci, naskah, dan bukti scan; keputusan akhir oleh guru.", color = TX2, fontSize = 11.sp)
                     }
                     Text("Lembar lengkap: sheet ${a.optString("sheet")}", color = TX2, fontSize = 12.sp)
                     Button({ vm.saveBank() }, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Simpan ke Bank Soal") }
                 }
                 val b = a.optJSONArray("butir")
                 if (b != null) Card { for (i in 0 until b.length()) { val o = b.getJSONObject(i); val rek = o.optString("rekomendasi")
-                    Column(Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(8.dp)).background((if (rek == "Diterima") OK else if (rek == "Dibuang") BAD else WARN).copy(alpha = 0.12f)).padding(8.dp)) {
-                        Text("No ${o.optInt("no")} · kunci ${o.optString("kunci")} · P ${o.opt("p")} ${o.optString("tk")} · D ${o.opt("d")} ${o.optString("dp")} · r ${o.opt("rpbis")}", color = Color.White, fontSize = 12.sp)
+                    Column(Modifier.fillMaxWidth().padding(vertical = 3.dp).clip(RoundedCornerShape(8.dp)).background((if (rek == "Diterima") OK else if (rek == "Audit kritis" || rek == "Dibuang") BAD else if (rek == "Direvisi") WARN else TX2).copy(alpha = 0.12f)).padding(8.dp)) {
+                        Text("No ${o.optInt("no")} · kunci ${o.optString("kunci")} · P ${o.opt("p")} ${o.optString("tk")} · D ${o.opt("d")} ${o.optString("dp")} · r ${o.opt("rpbis")} ${o.optString("korelasi")}", color = Color.White, fontSize = 12.sp)
                         Text("$rek — ${o.optString("alasan")}", color = TX2, fontSize = 12.sp)
                     } } }
             }

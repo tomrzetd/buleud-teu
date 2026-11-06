@@ -45,10 +45,10 @@ function responsLaporan_(u, lingkup, kelas) {
   rows_(SH.HASIL).forEach(function (h) {
     if (h['ID Ujian'] !== u.id) return;
     if (lingkup === 'kelas' && h['Kelas'].toUpperCase() !== String(kelas).toUpperCase()) return;
-    latest[h['Kelas'] + '|' + h['Nama']] = { nama: h['Nama'], kelas: h['Kelas'], jawaban: String(h['Jawaban']).replace(/^'/, ''),
+    latest[kunciSiswa_(h)] = { nama: h['Nama'], kelas: h['Kelas'], jawaban: String(h['Jawaban']).replace(/^'/, ''),
       nomor: String(h['Nomor Peserta'] || '').replace(/^'/, ''), nisn: String(h['NISN'] || '').replace(/^'/, ''), waktu: h['Waktu'] };
   });
-  return Object.keys(latest).sort().map(function (k) { return latest[k]; });
+  return Object.keys(latest).map(function (k) { return latest[k]; }).sort(function (a, b) { return (a.kelas + '|' + a.nama).localeCompare(b.kelas + '|' + b.nama); });
 }
 
 /**
@@ -107,19 +107,19 @@ function dataLaporan_(examId, o) {
     var sb = { nama: 'Analisis Butir', blok: [{ jenis: 'judul', teks: 'ANALISIS BUTIR SOAL — ' + (u.nama || '').toUpperCase(), besar: 12 }, { jenis: 'judul', teks: u.mapel + ' · ' + lingkupTeks + ' · ' + siswa.length + ' siswa', besar: 10 }] };
     if (has('statistik')) sb.blok.push({ jenis: 'kv', judul: 'Ringkasan statistik tes', baris: [
       ['Jumlah siswa / soal', A.n + ' / ' + A.k], ['Rata-rata benar (simpangan baku)', R.rataBenar + ' (' + R.sdBenar + ')'],
-      ['Reliabilitas KR-20', R.kr20 == null ? '-' : R.kr20 + ' (' + R.kategoriKr20 + ')'], ['KR-21', R.kr21 == null ? '-' : R.kr21], ['SEM (skor mentah)', R.sem == null ? '-' : R.sem],
+      ['Reliabilitas KR-20', R.kr20 == null ? '-' : R.kr20 + ' (' + R.kategoriKr20 + ')'], ['KR-21', R.kr21 == null ? '-' : R.kr21], ['SEM (dalam jumlah butir benar)', R.sem == null ? '-' : R.sem],
       ['r tabel (α 0,05; n = ' + A.n + ')', R.rTabel == null ? '-' : R.rTabel], ['Kelompok atas/bawah', R.kelompok + ' siswa (' + (A.n >= 20 ? '27%' : '50%') + ')'],
-      ['Rekomendasi butir', 'Diterima ' + R.diterima + ' · Direvisi ' + R.direvisi + ' · Dibuang ' + R.dibuang]] });
+      ['Rekomendasi butir', R.teksRekomendasi]] });
     if (A.peringatan.length) sb.blok.push({ jenis: 'catatan', teks: 'Catatan: ' + A.peringatan.join(' ') });
     if (has('butir')) {
-      var bh = ['No', 'Kunci', 'Benar', 'P', 'Tingkat kesukaran', 'D', 'Daya pembeda', 'r pbis', 'Valid', 'KR-20 jika dihapus', 'Rekomendasi', 'Alasan'];
+      var bh = ['No', 'Kunci', 'Benar', 'P', 'Tingkat kesukaran', 'D', 'Daya pembeda', 'r pbis', 'Korelasi (r ≥ r tabel)', 'KR-20 jika dihapus', 'Rekomendasi', 'Alasan'];
       var bw = [], br = A.butir.map(function (b) {
-        var c = b.rekomendasi === 'Diterima' ? LAP_WARNA.diterima : (b.rekomendasi === 'Dibuang' ? LAP_WARNA.dibuang : (b.rekomendasi === 'Direvisi' ? LAP_WARNA.direvisi : null));
+        var c = b.rekomendasi === 'Diterima' ? LAP_WARNA.diterima : (b.rekomendasi === 'Audit kritis' ? LAP_WARNA.dibuang : (b.rekomendasi === 'Direvisi' ? LAP_WARNA.direvisi : null));
         bw.push(bh.map(function () { return c; }));
-        return [b.no, b.kunci, b.benar, b.p, b.tk, b.d == null ? '-' : b.d, b.dp, b.rpbis == null ? '-' : b.rpbis, b.rpbis == null ? '-' : (b.valid ? 'Valid' : 'Tidak'), b.kr20JikaDihapus == null ? '-' : b.kr20JikaDihapus, b.rekomendasi, b.alasan || '-'];
+        return [b.no, b.kunci, b.benar, b.p, b.tk, b.d == null ? '-' : b.d, b.dp, b.rpbis == null ? '-' : b.rpbis, labelKorelasi(b.valid), b.kr20JikaDihapus == null ? '-' : b.kr20JikaDihapus, b.rekomendasi, b.alasan || '-'];
       });
       sb.blok.push({ jenis: 'tabel', judul: 'Analisis butir', kepala: bh, baris: br, warna: bw, lebarAkhir: 320 });
-      sb.blok.push({ jenis: 'catatan', teks: 'P = proporsi menjawab benar (≤ 0,30 sukar · ≤ 0,70 sedang · > 0,70 mudah). D = daya pembeda kelompok atas − bawah (≤ 0,20 jelek · ≤ 0,40 cukup · ≤ 0,70 baik · > 0,70 baik sekali). Valid bila r point-biserial terkoreksi ≥ r tabel.' });
+      sb.blok.push({ jenis: 'catatan', teks: 'P = proporsi menjawab benar (≤ 0,30 sukar · ≤ 0,70 sedang · > 0,70 mudah). D = daya pembeda kelompok atas − bawah (≤ 0,20 jelek · ≤ 0,40 cukup · ≤ 0,70 baik · > 0,70 baik sekali). Korelasi memadai bila r butir-total terkoreksi ≥ r tabel: bukti konsistensi internal, bukan validitas isi (kesesuaian dengan CP/TP dan kisi-kisi tetap ditelaah). Audit kritis = D atau r negatif: periksa kunci, naskah, dan bukti scan; keputusan akhir oleh guru.' });
     }
     sheets.push(sb);
   }
@@ -255,6 +255,7 @@ function buatLaporan(examId, opsi, emailGuru) {
 /** aksi aplikasi: {action:'report', examId, mode, bagian[], format, lingkup, kelas, urut, orientasi} */
 function apiReport_(d) {
   var g = auth_(d.token);
+  assertPemilik_(g, getUjian_(d.examId));
   var guru = rows_(SH.GURU).filter(function (r) { return r['Nama'] === g.nama; })[0];
   return buatLaporan(d.examId, d, guru && /@/.test(guru['Email']) ? String(guru['Email']).trim() : '');
 }
