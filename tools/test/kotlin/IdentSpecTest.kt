@@ -29,5 +29,13 @@ fun main(args: Array<String>) {
         if (got == exp) pok++ else println("BEDA parse: ${c[1]}\n  js=$exp\n  kt=$got")
     }
     println("Parse LJK lama Kotlin == JS: $pok/$pn")
-    if (bad > 0 || ok != n || pok != pn) System.exit(1)
+    // ML Kit memisahkan label cetak dan tulisan tangan ke blok berbeda (urutan blok acak) -> susun per baris visual
+    val B = LjkIdent::Baris
+    val acak = listOf(B("DWI PUTRI M.", 300, 62, 620, 104), B("Nomor Peserta", 10, 20, 180, 45), B("9A", 310, 108, 380, 150),
+        B("Kelas", 10, 115, 80, 140), B("Nama Peserta", 10, 68, 170, 93), B(":", 200, 70, 210, 92), B("09134", 300, 14, 450, 52),
+        B("Mata Pelajaran", 10, 162, 190, 187), B("INFORMATIKA", 300, 158, 560, 196))
+    val txt = LjkIdent.susunBaris(acak); val fb = LjkIdent.parse(txt)
+    val okB = fb == Fields("DWI PUTRI M", "09134", "9A")
+    println("Susun baris ML Kit: " + (if (okB) "OK" else "GAGAL $fb\n$txt"))
+    if (bad > 0 || ok != n || pok != pn || !okB) System.exit(1)
 }

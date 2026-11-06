@@ -37,12 +37,40 @@ const LJKIdent = (() => {
                 if (v && !/lembar|jawaban|penilaian|tahun/i.test(v)) loose.push(v);
             }
         }
-        // label tanpa nilai di barisnya -> isi dari baris lepas, berurutan
-        for (const k of order) if (!out[k] && loose.length) out[k] = loose.shift();
+        // label tanpa nilai di barisnya -> isi dari baris lepas menurut BENTUK nilainya (bukan sekadar urutan):
+        // OCR sering menukar urutan baris, atau gagal membaca satu baris tulisan tangan.
+        const sisa = [];
+        for (const v of loose) {
+            const t = isNomor(v) ? 'nomor' : isKelas(v) ? 'kelas' : isMapel(v) ? 'mapel' : isNama(v) ? (!out.nama && order.includes('nama') ? 'nama' : 'mapel') : '';
+            if (t && order.includes(t) && !out[t]) out[t] = v; else sisa.push(v);
+        }
+        for (const k of order) if (!out[k] && sisa.length && cocok(k, sisa[0])) out[k] = sisa.shift();
         // tidak ada label sama sekali -> asumsikan urutan Nomor, Nama, Kelas, Mapel
-        if (!out.nomor && !out.nama && !out.kelas && !out.mapel && loose.length >= 3)
-            ['nomor', 'nama', 'kelas', 'mapel'].forEach(k => { if (loose.length) out[k] = loose.shift(); });
-        return out;
+        if (!out.nomor && !out.nama && !out.kelas && !out.mapel && sisa.length >= 3)
+            ['nomor', 'nama', 'kelas', 'mapel'].forEach(k => { if (sisa.length) out[k] = sisa.shift(); });
+        return rapikan(out);
+    }
+
+    // ---------- bentuk nilai ----------
+    const cmp = (v) => String(v || '').toUpperCase().replace(/KELAS/g, '').replace(/[\s.]/g, '');
+    const nDig = (v) => (String(v || '').match(/[0-9]/g) || []).length;
+    const nHuruf = (v) => (String(v || '').match(/[A-Za-z]/g) || []).length;
+    /** nomor peserta: >= 3 angka dan sebagian besar angka (09134, 7-001-23) */
+    function isNomor(v) { const d = nDig(v); return d >= 3 && d >= 0.6 * (d + nHuruf(v)); }
+    /** kelas SMP: 7A, 8 B, 9-C, VIII A, 7.1 */
+    function isKelas(v) { const c = cmp(v); return c.length <= 6 && /^([0-9]{1,2}|VII|VIII|IX)[-]?[A-Z]?[0-9]?$/.test(c) && !isNomor(v); }
+    /** nama mapel SMP (agar mapel tidak terbaca sebagai nama bila nama gagal dibaca) */
+    const MAPEL_RE = /\b(informatika|matematika|ipa|ips|bahasa|indonesia|inggris|sunda|pkn|ppkn|pancasila|seni|budaya|pjok|penjas|agama|pai|prakarya|tik|fisika|biologi|bk)\b/i;
+    function isMapel(v) { return MAPEL_RE.test(String(v || '')); }
+    /** nama: minimal 3 huruf, didominasi huruf, bukan kelas/mapel */
+    function isNama(v) { const h = nHuruf(v); return h >= 3 && h >= 0.7 * (h + nDig(v)) && !isKelas(v) && !isMapel(v); }
+    function cocok(k, v) { return k === 'nomor' ? isNomor(v) || !isNama(v) : k === 'kelas' ? isKelas(v) : k === 'nama' ? isNama(v) : true; }
+    /** pengaman akhir: nilai yang jelas salah tempat dipindah, yang tidak masuk akal dikosongkan */
+    function rapikan(o) {
+        if (o.kelas && !isKelas(o.kelas) && isNomor(o.kelas) && !o.nomor) { o.nomor = o.kelas; o.kelas = ''; }
+        if (o.nama && !isNama(o.nama)) { if (isKelas(o.nama) && !o.kelas) o.kelas = o.nama; else if (isNomor(o.nama) && !o.nomor) o.nomor = o.nama; o.nama = ''; }
+        if (o.nomor && !isNomor(o.nomor) && !(digits(o.nomor).length >= 3 && !isNama(o.nomor) && !isKelas(o.nomor))) { if (isKelas(o.nomor) && !o.kelas) o.kelas = o.nomor; else if (isNama(o.nomor) && !o.nama) o.nama = o.nomor; o.nomor = ''; }
+        return o;
     }
 
     // ---------- kemiripan ----------
@@ -69,7 +97,7 @@ const LJKIdent = (() => {
         // cocokkan per kata (urutan bebas), berguna jika OCR hanya membaca sebagian nama
         const ta = a.split(' '), tb = b.split(' ');
         let tot = 0;
-        for (const t of ta) tot += Math.max(...tb.map(u => ratio(t, u)));
+        ta.forEach((t, i) => { tot += Math.max(...tb.map(u => t.length === 1 && i === ta.length - 1 && i > 0 ? (u[0] === t ? 0.9 : 0) : ratio(t, u))); });   // inisial nama belakang: "DWI PUTRI M." = MAHARANI
         s = Math.max(s, (tot / ta.length) * Math.min(1, ta.length / tb.length + 0.25));
         return s;
     }
@@ -82,7 +110,7 @@ const LJKIdent = (() => {
         const nd = digits(fields.nomor);
         if (nd.length >= 3) {
             const hits = students.filter(s => s.nomor && digits(s.nomor) === nd);
-            if (hits.length === 1) return Object.assign(res, { kelas: String(hits[0].kelas), nama: hits[0].nama, kelasScore: 1, namaScore: 1, via: 'nomor' });
+            if (hits.length === 1) return Object.assign(res, { kelas: String(hits[0].kelas), nama: hits[0].nama, kelasScore: 1, namaScore: 1, via: 'nomor', alternatives: [{ nama: hits[0].nama, kelas: String(hits[0].kelas), skor: 1 }] });
         }
         // 2) kelas
         const classes = [...new Set(students.map(s => String(s.kelas)))];
@@ -120,7 +148,7 @@ const LJKIdent = (() => {
         };
     }
 
-    return { parse, match, nameSim, normCls, digits, fromFields };
+    return { parse, match, nameSim, normCls, digits, fromFields, isNomor, isKelas, isNama, isMapel };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = LJKIdent;
 else root.LJKIdent = LJKIdent;

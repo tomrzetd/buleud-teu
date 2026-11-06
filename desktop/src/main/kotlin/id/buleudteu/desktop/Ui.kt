@@ -429,7 +429,7 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         if (s == null) { ocrLbl.text = ""; pickedLbl.text = ""; stripsPanel.revalidate(); stripsPanel.repaint(); recPanel.revalidate(); recPanel.repaint(); refreshResults(); return }
         s.strips.forEach { (k, img) -> stripsPanel.add(JLabel(scaled(img, 320, if (k == "identitas") 130 else 34)).apply { toolTipText = k; border = EmptyBorder(1, 0, 1, 0) }) }
         ocrLbl.text = s.ocrMsg
-        s.match?.alternatives?.take(3)?.forEach { a ->
+        s.match?.alternatives?.filter { it.skor >= 0.6 || s.match?.via == "nomor" }?.take(3)?.forEach { a ->
             val st = studentsOf(data, exam).firstOrNull { it.nama == a.nama && it.kelas == a.kelas } ?: return@forEach
             recPanel.add(JButton("${a.nama} · ${a.kelas}  ${(a.skor * 100).toInt()}%").apply { font = font.deriveFont(11f); margin = Insets(1, 6, 1, 6); addActionListener { pick(st) } })
         }

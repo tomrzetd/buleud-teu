@@ -35,7 +35,7 @@ object LjkIdent {
         var s = max(ratio(a, b), ratio(a.replace(" ", ""), b.replace(" ", "")))
         val ta = a.split(" "); val tb = b.split(" ")
         var tot = 0.0
-        for (t in ta) tot += tb.maxOf { ratio(t, it) }
+        for ((i, t) in ta.withIndex()) tot += tb.maxOf { if (t.length == 1 && i == ta.size - 1 && i > 0) (if (it.startsWith(t)) 0.9 else 0.0) else ratio(t, it) }   // inisial nama belakang: "DWI PUTRI M." = MAHARANI
         s = max(s, (tot / ta.size) * min(1.0, ta.size.toDouble() / tb.size + 0.25))
         return s
     }
@@ -64,9 +64,55 @@ object LjkIdent {
                 if (v.isNotEmpty() && out[lab.first]!!.isEmpty()) out[lab.first] = v else order.add(lab.first)
             } else { val v = clean(l); if (v.isNotEmpty() && !JUNK.containsMatchIn(v)) loose.add(v) }
         }
-        for (k in order) if (out[k]!!.isEmpty() && loose.isNotEmpty()) out[k] = loose.removeAt(0)
-        if (out.values.all { it.isEmpty() } && loose.size >= 3) for (k in listOf("nomor", "nama", "kelas", "mapel")) if (loose.isNotEmpty()) out[k] = loose.removeAt(0)
+        // label tanpa nilai di barisnya -> isi menurut BENTUK nilai (OCR sering menukar urutan / melewatkan baris)
+        val sisa = ArrayList<String>()
+        for (v in loose) {
+            val t = when { isNomor(v) -> "nomor"; isKelas(v) -> "kelas"; isMapel(v) -> "mapel"; isNama(v) -> if (out["nama"]!!.isEmpty() && "nama" in order) "nama" else "mapel"; else -> "" }
+            if (t.isNotEmpty() && t in order && out[t]!!.isEmpty()) out[t] = v else sisa.add(v)
+        }
+        for (k in order) if (out[k]!!.isEmpty() && sisa.isNotEmpty() && cocok(k, sisa[0])) out[k] = sisa.removeAt(0)
+        if (out.values.all { it.isEmpty() } && sisa.size >= 3) for (k in listOf("nomor", "nama", "kelas", "mapel")) if (sisa.isNotEmpty()) out[k] = sisa.removeAt(0)
+        rapikan(out)
         return Fields(out["nama"]!!, out["nomor"]!!, out["kelas"]!!)
+    }
+
+    // ---------- bentuk nilai (port 1:1 ljk-ident.js)
+    private fun cmp(v: String) = v.uppercase().replace("KELAS", "").replace(Regex("[\\s.]"), "")
+    private fun nDig(v: String) = v.count { it in '0'..'9' }
+    private fun nHuruf(v: String) = v.count { it in 'A'..'Z' || it in 'a'..'z' }
+    private val KELAS_RE = Regex("^([0-9]{1,2}|VII|VIII|IX)[-]?[A-Z]?[0-9]?$")
+    private val MAPEL_RE = Regex("\\b(informatika|matematika|ipa|ips|bahasa|indonesia|inggris|sunda|pkn|ppkn|pancasila|seni|budaya|pjok|penjas|agama|pai|prakarya|tik|fisika|biologi|bk)\\b", I)
+    fun isNomor(v: String): Boolean { val d = nDig(v); return d >= 3 && d >= 0.6 * (d + nHuruf(v)) }
+    fun isKelas(v: String): Boolean { val c = cmp(v); return c.length <= 6 && KELAS_RE.matches(c) && !isNomor(v) }
+    fun isMapel(v: String) = MAPEL_RE.containsMatchIn(v)
+    fun isNama(v: String): Boolean { val h = nHuruf(v); return h >= 3 && h >= 0.7 * (h + nDig(v)) && !isKelas(v) && !isMapel(v) }
+    private fun cocok(k: String, v: String) = when (k) { "nomor" -> isNomor(v) || !isNama(v); "kelas" -> isKelas(v); "nama" -> isNama(v); else -> true }
+    private fun rapikan(o: MutableMap<String, String>) {
+        val kl = o["kelas"]!!
+        if (kl.isNotEmpty() && !isKelas(kl) && isNomor(kl) && o["nomor"]!!.isEmpty()) { o["nomor"] = kl; o["kelas"] = "" }
+        val nm = o["nama"]!!
+        if (nm.isNotEmpty() && !isNama(nm)) { if (isKelas(nm) && o["kelas"]!!.isEmpty()) o["kelas"] = nm else if (isNomor(nm) && o["nomor"]!!.isEmpty()) o["nomor"] = nm; o["nama"] = "" }
+        val no = o["nomor"]!!
+        if (no.isNotEmpty() && !isNomor(no) && !(digits(no).length >= 3 && !isNama(no) && !isKelas(no))) { if (isKelas(no) && o["kelas"]!!.isEmpty()) o["kelas"] = no else if (isNama(no) && o["nama"]!!.isEmpty()) o["nama"] = no; o["nomor"] = "" }
+    }
+
+    /** Baris OCR dengan kotak posisi (ML Kit). Disusun ulang per BARIS visual supaya "Nama Peserta" dan tulisan
+     *  tangan di kanannya menjadi satu baris "Nama Peserta DWI PUTRI M." walau OCR memisahkannya ke blok lain. */
+    data class Baris(val text: String, val x0: Int, val y0: Int, val x1: Int, val y1: Int)
+    fun susunBaris(lines: List<Baris>): String {
+        val ls = lines.filter { it.text.isNotBlank() }.sortedBy { (it.y0 + it.y1) / 2 }
+        val rows = ArrayList<MutableList<Baris>>()
+        for (l in ls) {
+            val yc = (l.y0 + l.y1) / 2.0; val h = (l.y1 - l.y0).coerceAtLeast(1)
+            val row = rows.lastOrNull()
+            if (row != null) {
+                val ry0 = row.minOf { it.y0 }; val ry1 = row.maxOf { it.y1 }; val rc = (ry0 + ry1) / 2.0
+                val tol = 0.5 * maxOf(h, row.minOf { it.y1 - it.y0 })
+                if (kotlin.math.abs(yc - rc) <= tol) { row.add(l); continue }
+            }
+            rows.add(mutableListOf(l))
+        }
+        return rows.joinToString("\n") { r -> r.sortedBy { it.x0 }.joinToString(" ") { it.text.trim() } }
     }
 
     fun fromFields(nama: String?, nomor: String?, kelas: String?): Fields {
@@ -82,7 +128,7 @@ object LjkIdent {
         val nd = digits(f.nomor)
         if (nd.length >= 3) {
             val hits = students.filter { it.nomor.isNotEmpty() && digits(it.nomor) == nd }
-            if (hits.size == 1) return Match(hits[0].kelas, hits[0].nama, 1.0, 1.0, "nomor", emptyList())
+            if (hits.size == 1) return Match(hits[0].kelas, hits[0].nama, 1.0, 1.0, "nomor", listOf(Alt(hits[0].nama, hits[0].kelas, 1.0)))
         }
         var kelas: String? = null; var kelasScore = 0.0
         val classes = students.map { it.kelas }.distinct()

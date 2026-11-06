@@ -531,15 +531,20 @@
         apiPost({ action: 'ocr', image: c.toDataURL('image/jpeg', 0.9).split(',')[1] }).then(j => j.text || '').catch(e => { S.ocrErr = e.message; return ''; })
             .then(t => { if (scan !== S.scanId) return; const f = LJKIdent.parse(t); f.nomor = LJKIdent.digits(f.nomor); applyIdentity(f); });
     }
+    const SARAN_MIN = 0.6;   // saran nama di bawah ini tidak ditampilkan (menyesatkan)
     function applyIdentity(f) {
         const sts = examStudents(S.exam), m = LJKIdent.match(f, sts);
         S.ident = { nomor: f.nomor }; log(`OCR: nama="${f.nama}" nomor="${f.nomor}" kelas="${f.kelas}"`);
         if (!f.nama && !f.nomor && !f.kelas) { $('ocrStatus').innerHTML = `<span style="color:#fcd34d">OCR tidak membaca apa pun${S.ocrErr ? ' (' + esc(S.ocrErr) + ')' : ''}. Pilih manual.</span>`; return; }
-        const best = (m.alternatives || [])[0], read = f.nama || f.nomor;
-        $('ocrStatus').innerHTML = !read ? '<span style="color:#fcd34d">OCR tidak membaca nama. Cari / pilih siswa secara manual.</span>'
-            : (!best || best.skor < 0.8) ? `<span style="color:#fcd34d">OCR membaca "<b>${esc(read)}</b>" — tidak ada nama yang cocok di daftar. Cari manual, atau ketuk saran terdekat.</span>`
-            : `OCR membaca "<b>${esc(read)}</b>". Rekomendasi (ketuk untuk memilih):`;
-        $('ocrAlts').innerHTML = (m.alternatives || []).filter(a => a.skor >= 0.3).map((a, i) => `<span class="chip ${i === 0 && a.skor >= 0.8 ? 'rec' : ''}" data-n="${esc(a.nama)}" data-k="${esc(a.kelas)}">${esc(a.nama)} (${esc(a.kelas)}) ${Math.round(a.skor * 100)}%</span>`).join('');
+        const best = (m.alternatives || [])[0];
+        const baca = [f.nomor && 'No. ' + esc(f.nomor), f.nama && 'nama "<b>' + esc(f.nama) + '</b>"', f.kelas && 'kelas ' + esc(f.kelas)].filter(Boolean).join(' · ');
+        const warn = (t) => `<span style="color:#fcd34d">${t}</span>`;
+        $('ocrStatus').innerHTML = m.via === 'nomor' ? `OCR membaca ${baca} → cocok dengan nomor peserta. Periksa lalu simpan.`
+            : !f.nama ? warn(`OCR membaca ${baca}, tetapi nama tidak terbaca. Cari / pilih siswa secara manual.`)
+            : (!best || best.skor < SARAN_MIN) ? warn(`OCR membaca ${baca} — tidak ada nama yang mirip di daftar siswa. Cari manual.`)
+            : best.skor < 0.8 ? warn(`OCR membaca ${baca} — belum yakin. Periksa saran di bawah atau cari manual.`)
+            : `OCR membaca ${baca}. Rekomendasi (ketuk untuk memilih):`;
+        $('ocrAlts').innerHTML = (m.alternatives || []).filter(a => a.skor >= SARAN_MIN).map((a, i) => `<span class="chip ${i === 0 && a.skor >= 0.8 ? 'rec' : ''}" data-n="${esc(a.nama)}" data-k="${esc(a.kelas)}">${esc(a.nama)} (${esc(a.kelas)}) ${Math.round(a.skor * 100)}%</span>`).join('');
         $('ocrAlts').onclick = (e) => { const d = e.target.dataset; if (!d || !d.n) return; pickStudent(d.n, d.k); };
     }
     function pickStudent(nama, kelas) { $('selKelas').value = kelas; fillStudents(); $('selSiswa').value = nama; $('cariSiswa').value = ''; $('cariHasil').innerHTML = ''; showPicked(); }

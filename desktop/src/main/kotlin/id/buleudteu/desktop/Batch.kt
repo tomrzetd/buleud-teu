@@ -127,10 +127,14 @@ class Processor(private val store: Store, private val api: Api?) {
         s.nomorOcr = if (s.mode == "marker") f.nomor else LjkIdent.digits(f.nomor)
         s.ocrRead = f.nama.ifEmpty { f.nomor }; s.match = m
         val best = m.alternatives.firstOrNull()
+        val baca = listOfNotNull(f.nomor.ifEmpty { null }?.let { "No. $it" }, f.nama.ifEmpty { null }?.let { "\"$it\"" }, f.kelas.ifEmpty { null }?.let { "kelas $it" }).joinToString(" · ")
         s.ocrMsg = when {
-            s.ocrRead.isEmpty() -> "OCR tidak membaca nama — pilih manual."
-            best == null || best.skor < 0.8 -> "OCR: \"${s.ocrRead}\" — tidak ada nama yang cocok."
-            else -> "OCR: \"${s.ocrRead}\""
+            baca.isEmpty() -> "OCR tidak membaca identitas — pilih manual."
+            m.via == "nomor" -> "OCR: $baca — cocok nomor peserta."
+            f.nama.isEmpty() -> "OCR: $baca — nama tidak terbaca, pilih manual."
+            best == null || best.skor < 0.6 -> "OCR: $baca — tidak ada nama yang mirip."
+            best.skor < 0.8 -> "OCR: $baca — belum yakin, periksa saran."
+            else -> "OCR: $baca"
         }
     }
 

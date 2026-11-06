@@ -247,7 +247,7 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                 if (vm.ocrMsg.isNotEmpty()) Text(vm.ocrMsg, color = TX2, fontSize = 13.sp, modifier = Modifier.padding(vertical = 6.dp))
                 // rekomendasi OCR (tidak dipilih otomatis)
                 Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    vm.match?.alternatives?.filter { it.skor >= 0.3 }?.forEachIndexed { i, a ->
+                    vm.match?.alternatives?.filter { it.skor >= vm.SARAN_MIN }?.forEachIndexed { i, a ->
                         val pct = (a.skor * 100).toInt()
                         FilterChip(vm.selSiswa == a.nama && vm.selKelas == a.kelas, { vm.pickStudent(a.nama, a.kelas) }, { Text("${a.nama} (${a.kelas}) $pct%") }, Modifier.padding(end = 6.dp),
                             colors = FilterChipDefaults.filterChipColors(containerColor = if (i == 0 && pct >= 80) OK.copy(alpha = 0.15f) else Color.Transparent))

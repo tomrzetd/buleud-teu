@@ -204,7 +204,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (m2.nama != null && (m.nama == null || m2.namaScore > m.namaScore)) { f = g; m = m2 }
         }
         if (id != scanId) return@launch
-        nomorOcr = f.nomor; match = m; ocrMsg = recommendMsg(f.nama.ifEmpty { f.nomor }, m)
+        nomorOcr = f.nomor; match = m; ocrMsg = recommendMsg(f, m)
+        m.kelas?.let { k -> if (studentsOf(exam).any { it.kelas == k }) selKelasFilter = k }
     }
 
     /** LJK lama: satu potongan berlabel (Nomor/Nama/Kelas/Mapel) -> OCR -> parse -> cocokkan */
@@ -223,18 +224,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (m2.nama != null && (m.nama == null || m2.namaScore > m.namaScore)) { f = g; m = m2 }
         }
         if (id != scanId) return
-        nomorOcr = LjkIdent.digits(f.nomor); match = m; ocrMsg = recommendMsg(f.nama.ifEmpty { f.nomor }, m)
+        nomorOcr = LjkIdent.digits(f.nomor); match = m; ocrMsg = recommendMsg(f, m)
+        m.kelas?.let { k -> if (studentsOf(exam).any { it.kelas == k }) selKelasFilter = k }
     }
 
-    /** OCR hanya rekomendasi: guru tetap memilih/mencari sendiri */
-    private fun recommendMsg(read: String, m: Match): String {
+    /** OCR hanya rekomendasi: guru tetap memilih/mencari sendiri. Tampilkan SEMUA yang terbaca supaya guru bisa menilai. */
+    private fun recommendMsg(f: id.buleudteu.ljk.ident.Fields, m: Match): String {
         val best = m.alternatives.firstOrNull()
+        val baca = listOfNotNull(f.nomor.ifEmpty { null }?.let { "No. $it" }, f.nama.ifEmpty { null }?.let { "nama \"$it\"" }, f.kelas.ifEmpty { null }?.let { "kelas $it" }).joinToString(" · ")
         return when {
-            read.isEmpty() -> "OCR tidak membaca nama. Cari / pilih siswa secara manual."
-            best == null || best.skor < 0.8 -> "OCR membaca \"$read\" — tidak ada nama yang cocok di daftar siswa. Cari manual, atau ketuk saran terdekat."
-            else -> "OCR membaca \"$read\". Rekomendasi (ketuk untuk memilih):"
+            baca.isEmpty() -> "OCR tidak membaca identitas. Cari / pilih siswa secara manual."
+            m.via == "nomor" -> "OCR membaca $baca → cocok dengan nomor peserta. Periksa lalu simpan."
+            f.nama.isEmpty() -> "OCR membaca $baca, tetapi nama tidak terbaca. Cari / pilih siswa secara manual."
+            best == null || best.skor < SARAN_MIN -> "OCR membaca $baca — tidak ada nama yang mirip di daftar siswa. Cari manual."
+            best.skor < 0.8 -> "OCR membaca $baca — belum yakin. Periksa saran di bawah atau cari manual."
+            else -> "OCR membaca $baca. Rekomendasi (ketuk untuk memilih):"
         }
     }
+    /** saran nama di bawah ambang ini tidak ditampilkan (menyesatkan) */
+    val SARAN_MIN = 0.6
 
     /** pencarian siswa lintas kelas: berisi kata kunci, atau mirip (toleran salah ketik) */
     fun searchStudents(q: String): List<id.buleudteu.ljk.ident.Siswa> {

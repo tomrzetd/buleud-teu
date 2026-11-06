@@ -27,7 +27,12 @@ object IdentOcr {
         LjkIdent.fromFields(jobs["nama"]?.await(), jobs["nomor"]?.await(), jobs["kelas"]?.await())
     }
 
-    suspend fun mlkitText(b: Bitmap): String = try { recognizer.process(InputImage.fromBitmap(b, 0)).await().text } catch (e: Exception) { "" }
+    /** LJK lama: teks disusun ulang per baris visual (label + tulisan tangan di kanannya digabung) */
+    suspend fun mlkitText(b: Bitmap): String = try {
+        val t = recognizer.process(InputImage.fromBitmap(b, 0)).await()
+        val lines = t.textBlocks.flatMap { it.lines }.mapNotNull { l -> l.boundingBox?.let { r -> LjkIdent.Baris(l.text, r.left, r.top, r.right, r.bottom) } }
+        if (lines.isEmpty()) t.text else LjkIdent.susunBaris(lines)
+    } catch (e: Exception) { "" }
 
     suspend fun google(api: Api, strips: Map<String, Bitmap>): Fields = coroutineScope {
         val jobs = strips.mapValues { (_, b) -> async {
