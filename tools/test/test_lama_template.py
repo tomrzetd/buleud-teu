@@ -1,5 +1,5 @@
 """Uji template LJK F4 tanpa marker (20 / 25 soal; argumen: 20|25): isi, foto sintetis, baca dengan engine tanpa marker (+ arah otomatis)."""
-import os, sys, json, random, subprocess
+import os, sys, json, random, subprocess, zlib
 import numpy as np, cv2
 from PIL import Image, ImageDraw, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
@@ -29,7 +29,8 @@ cases = {'lurus': dict(), 'miring_8': dict(rot=8, fill=0.8), 'perspektif': dict(
          'jauh': dict(fill=0.6), 'terbalik': dict(flip=True), 'menyamping': dict(landscape=True, fill=0.95)}
 meta = []
 for name, kw in cases.items():
-    im = G.photo(page, seed=hash(name) % 1000, **kw)
+    # Python hash() diacak tiap proses; foto uji harus identik agar regresi bisa direproduksi.
+    im = G.photo(page, seed=zlib.crc32(name.encode('utf-8')) % 1000, **kw)
     fn = os.path.join(OUT, name + '.raw'); cv2.cvtColor(im, cv2.COLOR_BGR2RGBA).tofile(fn); cv2.imwrite(fn.replace('.raw', '.jpg'), im)
     meta.append(dict(name=name, file=fn, w=im.shape[1], h=im.shape[0], key=''.join('ABCD'[a] for a in KEY)))
 json.dump(dict(n=N, cases=meta), open(os.path.join(OUT, 'meta.json'), 'w'))
