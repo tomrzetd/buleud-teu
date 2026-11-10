@@ -52,7 +52,7 @@ Semua pengujian ada di `tools/test/` dan bisa dijalankan ulang.
 7. Setiap kali kode diubah, buka **Kelola deployment → Edit → Versi baru**.
 
 ### 2. Aplikasi web
-- Aktifkan **Settings → Pages → Source: GitHub Actions**. Workflow `pages.yml` akan menerbitkan folder `web/` ke `https://<username>.github.io/buleud-teu/`.
+- Aktifkan **Settings → Pages → Source: GitHub Actions** sebelum menjalankan workflow. Jika belum aktif, `configure-pages` gagal dengan `Get Pages site failed / Not Found`. Panduan rinci: **[Aktivasi GitHub Pages & audit PWA](docs/GITHUB_PAGES.md)**. Workflow `pages.yml` menerbitkan folder `web/` ke `https://<username>.github.io/buleud-teu/` setelah deployment sukses.
 - Buka alamat itu di HP, lalu pilih **Tambahkan ke layar utama**. Tempel URL `/exec`, pilih nama guru, dan masukkan PIN.
 - Kalau perlu satu file saja (misalnya untuk hosting sederhana), pakai `web/dist/buleud-teu.html`.
 

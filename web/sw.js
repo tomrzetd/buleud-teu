@@ -1,11 +1,60 @@
-/* Buleud Teu service worker: cache aplikasi agar bisa dibuka offline. API (script.google.com) tidak di-cache. */
-const CACHE = 'buleudteu-v40-1';
-const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'js/ljk-spec.js', 'js/ljk-template.js', 'js/ljk-engine.js', 'js/ljk-ident.js', 'js/app.js', 'icons/icon-192.png', 'icons/icon-512.png'];
-self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
-self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
-self.addEventListener('fetch', e => {
-  const u = new URL(e.request.url);
-  if (e.request.method !== 'GET' || u.origin !== location.origin) return;           // API & lintas domain: langsung ke jaringan
-  e.respondWith(fetch(e.request).then(r => { const cp = r.clone(); caches.open(CACHE).then(c => c.put(e.request, cp)); return r; })
-    .catch(() => caches.match(e.request).then(r => r || caches.match('index.html'))));   // jaringan dulu, cadangan cache
+/* Buleud Teu PWA: cache hanya berkas Buleud Teu, bukan cache proyek lain di github.io.
+ * API Apps Script, respons siswa, dan berkas lintas origin tidak pernah masuk Cache Storage.
+ */
+const PREFIX = 'buleudteu-';
+const CACHE = 'buleudteu-v40-pages2';
+const SHELL = [
+  './', 'index.html', 'manifest.webmanifest',
+  'js/ljk-spec.js', 'js/ljk-template.js', 'js/ljk-engine.js',
+  'js/ljk-ident.js', 'js/app.js',
+  'icons/icon-192.png', 'icons/icon-512.png'
+];
+const BASE = new URL('./', self.registration.scope);
+const INDEX = new URL('index.html', BASE).href;
+const SHELL_URLS = new Set(SHELL.map(p => new URL(p, BASE).href));
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE).then(cache => cache.addAll(SHELL))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    // Cache Storage bersifat per ORIGIN: jangan hapus cache Cikaracak/proyek lain.
+    await Promise.all(keys.filter(key => key.startsWith(PREFIX) && key !== CACHE)
+      .map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
+});
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.origin !== BASE.origin || !url.pathname.startsWith(BASE.pathname)) return;
+
+  const navigation = request.mode === 'navigate';
+  // Hindari menyimpan GET lain, termasuk parameter yang mungkin mengandung data.
+  const key = new URL(url.pathname, url.origin).href;
+  if (!navigation && !SHELL_URLS.has(key)) return;
+
+  event.respondWith((async () => {
+    try {
+      const response = await fetch(request);
+      if (response.ok && response.type !== 'opaque') {
+        const cache = await caches.open(CACHE);
+        // Navigasi selalu di-cache sebagai dokumen utama, bukan per query URL.
+        await cache.put(navigation ? INDEX : key, response.clone());
+      }
+      return response;
+    } catch (error) {
+      const hit = await caches.match(navigation ? INDEX : key);
+      if (hit) return hit;
+      // Tidak mengembalikan HTML untuk permintaan JS/CSS/gambar yang gagal.
+      throw error;
+    }
+  })());
 });

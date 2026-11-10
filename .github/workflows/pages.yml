@@ -1,19 +1,54 @@
 name: Web app (GitHub Pages)
+
 on:
   push:
     branches: [main]
-    paths: ['web/**', '.github/workflows/pages.yml']
+    paths:
+      - 'web/**'
+      - 'tools/test/test_pages.js'
+      - '.github/workflows/pages.yml'
   workflow_dispatch: {}
-permissions: { contents: read, pages: write, id-token: write }
-concurrency: { group: pages, cancel-in-progress: true }
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
-  deploy:
+  build:
+    name: Validasi dan kemas web
     runs-on: ubuntu-latest
-    environment: { name: github-pages, url: '${{ steps.d.outputs.page_url }}' }
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: web }
-      - id: d
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validasi berkas & service worker
+        run: |
+          node --check web/js/app.js
+          node --check web/sw.js
+          node tools/test/test_pages.js
+      # GitHub Pages harus pertama kali diaktifkan via Settings > Pages > Source: GitHub Actions.
+      # GITHUB_TOKEN biasa TIDAK cukup untuk enablement:true.
+      - name: Konfigurasi Pages
+        uses: actions/configure-pages@v5
+      - name: Unggah hanya folder web
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: web
+
+  deploy:
+    name: Terbitkan ke GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
         uses: actions/deploy-pages@v4
