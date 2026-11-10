@@ -722,6 +722,22 @@
                 if (!first) first = rF;
             }
         }
+        // Foto jauh kadang kehilangan pola pada salinan 1000px, meski pola masih
+        // bisa ditemukan pada foto 1600px. Jika penyaringan cepat gagal, ulangi
+        // semua tata letak pada resolusi penuh sebelum menyimpulkan gagal.
+        // Jalur ini hanya dijalankan pada kasus sulit (lebih lambat, tetapi aman).
+        if (rot == null) {
+            fullSearch: for (const deg of [0, 90, 270]) {
+                const full = rotateImg(img, deg);
+                for (const L of layouts) {
+                    const options = Object.assign({}, opt, { layout: L });
+                    const probe = processMarkerless(full, options);
+                    if (!probe.success) { if (!first) first = probe; continue; }
+                    rot = deg; im = full; r = probe; opt = options;
+                    break fullSearch;
+                }
+            }
+        }
         if (rot == null) return first || processMarkerless(img, Object.assign({}, opt, { layout: layouts[layouts.length - 1] }));
         // cek terbalik 180 dari letak nomor soal (butuh detail, jangan di salinan kecil)
         if (r.success && legacyCue(r).flipped) {
