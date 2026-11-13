@@ -48,8 +48,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var scanMode by mutableStateOf(ScanMode.EXAM)
     var queueSize by mutableStateOf(store.queue().length())
     var loading by mutableStateOf<String?>(null)        // progres ringan (memuat data) di beranda
+    /** Fail-closed: hanya laporan server mutakhir yang dapat mengaktifkan fitur produksi. */
+    val isDemo: Boolean get() = sekolah?.license != "Terdaftar" || data?.license != "Terdaftar"
 
-    companion object { const val WATERMARK = "by : rizalabdurrahman05@guru.smp.belajar.id" }
+    companion object { const val WATERMARK = "by : rizalabdurrahman@guru.smp.belajar.id" }
 
     // hasil scan
     var result by mutableStateOf<LjkResult?>(null)
@@ -68,8 +70,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var analysis by mutableStateOf<JSONObject?>(null)
     var analysisScope by mutableStateOf("tingkat" to "")
 
-    init { if (store.configJson.isNotEmpty()) applyConfig(JSONObject(store.configJson)); if (store.examsJson.isNotEmpty()) data = runCatching { Api.exams(JSONObject(store.examsJson)) }.getOrNull()
-        if (screen == Screen.HOME) loadExams() }
+    init {
+        if (store.configJson.isNotEmpty()) runCatching { applyConfig(JSONObject(store.configJson)) }
+        // Roster tersimpan tidak ditampilkan sebelum pemeriksaan lisensi live.
+        // Mode Demo tidak boleh membocorkan roster dari cache saat license dicabut.
+        if (screen == Screen.HOME) loadExams()
+    }
 
     fun say(m: String) { toast = m }
 
@@ -111,11 +117,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadExams() = viewModelScope.launch {
         loading = "Memuat data ujian & siswa dari spreadsheet…"
-        call { api.post(JSONObject().put("action", "exams")) }?.let { store.examsJson = it.toString(); data = Api.exams(it); flushQueue() }
+        call { api.post(JSONObject().put("action", "exams")) }?.let {
+            store.examsJson = it.toString()
+            data = Api.exams(it)
+            if (!isDemo) flushQueue()
+        }
         loading = null
         refreshConfig()
     }
-    fun studentsOf(u: Ujian?) = data?.siswa?.filter { s -> u == null || (if (u.kelas.isEmpty() || "SEMUA" in u.kelas) (u.tingkat.isEmpty() || s.tingkat == u.tingkat) else s.kelas in u.kelas) } ?: emptyList()
+    fun studentsOf(u: Ujian?) = data?.siswa?.filter { s ->
+        if (u == null) true
+        else if (u.kelas.isEmpty() || "SEMUA" in u.kelas) u.tingkat.isEmpty() || s.tingkat == u.tingkat
+        else u.kelas.any { it.equals(s.kelas, ignoreCase = true) || it.equals(s.tingkat, ignoreCase = true) }
+    } ?: emptyList()
 
     fun editExam(u: Ujian?) {
         draft = if (u == null) ExamDraft(mapel = data?.guru?.mapel?.firstOrNull() ?: "", opsi = data?.opsiDefault ?: "ABCD")
@@ -123,6 +137,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         draftMsg = ""; screen = Screen.EXAM
     }
     fun saveExam() = viewModelScope.launch {
+        if (isDemo) { draftMsg = "Mode DEMO: menyimpan ujian nonaktif."; return@launch }
         val d = draft; val k = d.kunci.uppercase()
         draftMsg = when {
             d.nama.isBlank() || d.mapel.isBlank() -> "Nama ujian dan mapel wajib diisi."
@@ -202,7 +217,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val use = strips.filterKeys { it in inked }
         ocrMsg = "Membaca identitas (ML Kit)…"
         var f = IdentOcr.mlkit(use); var m = LjkIdent.match(f, studentsOf(exam))
-        if ((m.nama == null || m.namaScore < 0.8) && store.token.isNotEmpty()) {
+        if ((m.nama == null || m.namaScore < 0.8) && store.token.isNotEmpty() && !isDemo) {
             ocrMsg = "Membaca identitas (OCR Google)…"
             val g = IdentOcr.google(api, use); val m2 = LjkIdent.match(g, studentsOf(exam))
             if (m2.nama != null && (m.nama == null || m2.namaScore > m.namaScore)) { f = g; m = m2 }
@@ -221,7 +236,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!store.ocr) { ocrMsg = "OCR mati — pilih manual."; return }
         ocrMsg = "Membaca identitas (ML Kit)…"
         var f = LjkIdent.parse(IdentOcr.mlkitText(bmp)); var m = LjkIdent.match(f, studentsOf(exam))
-        if ((m.nama == null || m.namaScore < 0.8) && store.token.isNotEmpty()) {
+        if ((m.nama == null || m.namaScore < 0.8) && store.token.isNotEmpty() && !isDemo) {
             ocrMsg = "Membaca identitas (OCR Google)…"
             val t = try { api.post(JSONObject().put("action", "ocr").put("image", IdentOcr.jpegB64(bmp))).optString("text") } catch (e: Exception) { "" }
             val g = LjkIdent.parse(t); val m2 = LjkIdent.match(g, studentsOf(exam))
@@ -252,7 +267,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun searchStudents(q: String): List<id.buleudteu.ljk.ident.Siswa> {
         val all = studentsOf(exam).filter { selKelasFilter.isEmpty() || it.kelas == selKelasFilter }
         val t = q.trim().uppercase()
-        if (t.isEmpty()) return all.sortedBy { it.nama }.take(30)
+        if (t.isEmpty()) return all.sortedBy { it.nama }
         return all.map { it to (if (it.nama.contains(t)) 2.0 else LjkIdent.nameSim(t, it.nama)) }.filter { it.second >= 0.5 }.sortedByDescending { it.second }.take(12).map { it.first }
     }
     fun pickStudent(nama: String, kelas: String) { selSiswa = nama; selKelas = kelas }
@@ -270,6 +285,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun score(): Pair<Int, Double>? { val u = exam ?: return null; var b = 0; for (i in 0 until u.jumlah) if (answers.getOrNull(i) != null && answers[i] == u.kunci[i]) b++; return b to (b * 10000.0 / u.jumlah).roundToInt() / 100.0 }
 
     fun save() = viewModelScope.launch {
+        if (isDemo) { say("Mode DEMO: hasil scan tidak boleh disimpan."); return@launch }
         val u = exam ?: return@launch
         if (selKelas.isEmpty() || selSiswa.isEmpty()) { say("Pilih kelas dan nama siswa dulu"); return@launch }
         val fl = flagged()
@@ -296,6 +312,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun flushQueue() = viewModelScope.launch {
+        if (isDemo) return@launch  // antrean lama tidak dikirim saat lisensi nonaktif
         val qa = store.queue(); if (qa.length() == 0) return@launch
         val rest = JSONArray()
         loading = "Mengirim ${qa.length()} hasil antrean…"
@@ -313,8 +330,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ---------------- analisis
-    fun openAnalysis(u: Ujian) { exam = u; analysis = null; analysisScope = "tingkat" to ""; screen = Screen.ANALYSIS }
+    fun openAnalysis(u: Ujian) { if (isDemo) { say("Analisis hanya untuk lisensi Terdaftar."); return }; exam = u; analysis = null; analysisScope = "tingkat" to ""; screen = Screen.ANALYSIS }
     fun runAnalysis() = viewModelScope.launch {
+        if (isDemo) { say("Mode DEMO: analisis dinonaktifkan."); return@launch }
         busy = "Menghitung analisis…"
         analysis = call { api.post(JSONObject().put("action", "analyze").put("examId", exam!!.id).put("lingkup", analysisScope.first).put("kelas", analysisScope.second)) }
         busy = null
@@ -337,6 +355,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setReportModeTo(m: String) { reportMode = m; reportBagian.clear(); reportBagian.addAll(Laporan.MODE.getValue(m)) }
     fun toggleBagian(k: String) { if (k in reportBagian) reportBagian.remove(k) else reportBagian.add(k) }
     fun makeReport() = viewModelScope.launch {
+        if (isDemo) { say("Mode DEMO: laporan dinonaktifkan."); return@launch }
         val u = exam ?: return@launch
         if (reportBagian.isEmpty()) { say("Pilih minimal satu bagian laporan"); return@launch }
         reportFile = null; reportUrl = ""; reportInfo = ""
@@ -358,6 +377,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun saveBank() = viewModelScope.launch {
+        if (isDemo) { say("Mode DEMO: Bank Soal dinonaktifkan."); return@launch }
         busy = "Menyimpan ke Bank Soal…"
         call { api.post(JSONObject().put("action", "bank").put("examId", exam!!.id).put("lingkup", analysisScope.first).put("kelas", analysisScope.second)) }?.let { say("Bank Soal: ${it.optInt("baru")} baru, ${it.optInt("diperbarui")} diperbarui") }
         busy = null

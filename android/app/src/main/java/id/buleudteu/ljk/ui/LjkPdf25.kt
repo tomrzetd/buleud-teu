@@ -74,10 +74,18 @@ fun shareLjk25(ctx: Context, vm: AppViewModel, exam: Ujian? = null) {
     text(schoolName, 107.5f, 28f, 3.6f, true, Paint.Align.CENTER)
     text("Asesmen Sumatif Akhir Semester (ASAS)", 107.5f, 33.5f, 3.1f, false, Paint.Align.CENTER)
     text("TAHUN PELAJARAN " + year, 107.5f, 38.4f, 2.8f, false, Paint.Align.CENTER, Color.DKGRAY)
-    rect(176f, 16f, 23f, 22f, color = Color.DKGRAY)
-    text("LJK F4 · 25 SOAL", 187.5f, 22f, 2.0f, false, Paint.Align.CENTER)
-    text("ABCD", 187.5f, 30.5f, 5.2f, true, Paint.Align.CENTER)
-    text(MarkerLayouts.F4_25.id, 187.5f, 35.5f, 1.9f, false, Paint.Align.CENTER)
+    // QR vektor, hanya memuat ID form. F4 25 dan F4 50 tetap
+    // memakai marker sudut/tengah/asimetri yang persis sama.
+    val qr = id.buleudteu.ljk.engine.LjkQr25
+    rect(qr.X.toFloat(), qr.Y.toFloat(), qr.SIZE.toFloat(), qr.SIZE.toFloat(), stroke = 0f, fill = true, color = Color.WHITE)
+    val qrCell = qr.SIZE.toFloat() / qr.ROWS.size
+    qr.ROWS.forEachIndexed { y, bits ->
+        bits.forEachIndexed { x, ch ->
+            if (ch == '1') rect(qr.X.toFloat() + x * qrCell,
+                qr.Y.toFloat() + y * qrCell, qrCell + 0.006f, qrCell + 0.006f,
+                stroke = 0f, color = Color.BLACK, fill = true)
+        }
+    }
     line(14f, 41f, 201f, 41f, weight = 0.5f)
     line(14f, 42.2f, 201f, 42.2f)
     text("Tulis dengan HURUF KAPITAL, satu huruf per kotak, pakai pulpen/pensil gelap.", 16f, 47.6f, 2.3f, color = Color.DKGRAY)

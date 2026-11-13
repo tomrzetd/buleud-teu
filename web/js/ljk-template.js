@@ -32,11 +32,51 @@
         T(107.5, 28, school.nama || 'NAMA SEKOLAH ............................................', 3.6, { anchor: 'middle', bold: true });
         T(107.5, 33.5, exam.judul || 'PENILAIAN ........................................', 3.1, { anchor: 'middle' });
         T(107.5, 38.4, `TAHUN PELAJARAN ${exam.tahun || '..........'}${exam.mapel ? '  •  ' + exam.mapel : ''}`, 2.8, { anchor: 'middle', fill: GRAY });
-        // kode varian (kanan atas, dibaca guru)
-        R(176, 16, 23, 22, { stroke: GRAY, sw: 0.3, rx: 1.5 });
-        T(187.5, 22, compact ? 'LJK F4 • 25 SOAL' : 'LJK F4 • 50 SOAL', 2.1, { anchor: 'middle', fill: GRAY });
-        T(187.5, 30.5, variant, 5.2, { anchor: 'middle', bold: true });
-        T(187.5, 35.5, spec.id, 1.9, { anchor: 'middle', fill: GRAY });
+        // Varian 25: QR vektor di bidang header kanan, di LUAR tujuh marker.
+        // Terkode hanya ID profil, tidak ada data siswa. Animasi HUD tidak dicetak.
+        if (compact) {
+            const qrRows = `00000000000000000000000000000
+00000000000000000000000000000
+00111111100011011010111111100
+00100000100001111100100000100
+00101110101110101000101110100
+00101110100011000010101110100
+00101110101111100000101110100
+00100000101000000010100000100
+00111111101010101010111111100
+00000000000010010110000000000
+00010010101111110011011010000
+00111011001000111100101111000
+00011011111100100111010110000
+00101011000111101000011011000
+00000011110111011011110001100
+00101101011001100110111101100
+00000100110111100101010100000
+00001111001100111101110111100
+00111000101000000111111110100
+00000000001101111010001100100
+00111111100001001010101110000
+00100000100001111110001111000
+00101110101010001011111010100
+00101110100010001001100111100
+00101110100100010011000011000
+00100000101001101111001111000
+00111111100001101101011111100
+00000000000000000000000000000
+00000000000000000000000000000`.trim().split('\n');
+            R(176, 16, 23, 23, { fill: '#fff' });
+            const cell = 23 / 29;
+            qrRows.forEach((row, iy) => {
+                for (let ix = 0; ix < row.length; ix++) if (row[ix] === '1') {
+                    R(176 + ix * cell, 16 + iy * cell, cell + 0.004, cell + 0.004, { fill: '#000' });
+                }
+            });
+        } else {
+            R(176, 16, 23, 22, { stroke: GRAY, sw: 0.3, rx: 1.5 });
+            T(187.5, 22, 'LJK F4 • 50 SOAL', 2.1, { anchor: 'middle', fill: GRAY });
+            T(187.5, 30.5, variant, 5.2, { anchor: 'middle', bold: true });
+            T(187.5, 35.5, spec.id, 1.9, { anchor: 'middle', fill: GRAY });
+        }
         Lh(14, 41, 201, { sw: 0.5 }); Lh(14, 42.2, 201, { sw: 0.2 });
 
         // ---- identitas (kotak per huruf merah muda = warna dropout, dihapus engine sebelum OCR)

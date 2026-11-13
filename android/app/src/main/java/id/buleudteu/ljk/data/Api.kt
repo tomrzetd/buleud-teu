@@ -16,13 +16,13 @@ import java.util.concurrent.TimeUnit
 /** Klien Apps Script Buleud Teu V40 (protokol sama dengan web app). */
 class ApiException(msg: String, val auth: Boolean = false) : Exception(msg)
 
-data class Sekolah(val nama: String, val jenjang: String, val tahun: String, val opsiDefault: String, val logo: String)
+data class Sekolah(val nama: String, val jenjang: String, val tahun: String, val opsiDefault: String, val logo: String, val license: String = "Demo")
 data class Guru(val nama: String, val mapel: List<String>, val kelas: List<String>)
 data class Ujian(
     val id: String, val nama: String, val mapel: String, val tingkat: String, val kelas: List<String>, val opsi: String,
     val kunci: String, val jumlah: Int, val kktp: Double, val terscan: MutableSet<String>
 )
-data class ExamsData(val guru: Guru, val ujian: List<Ujian>, val siswa: List<Siswa>, val kelasSemua: List<String>, val opsiDefault: String)
+data class ExamsData(val guru: Guru, val ujian: List<Ujian>, val siswa: List<Siswa>, val kelasSemua: List<String>, val opsiDefault: String, val license: String = "Demo")
 
 class Api(private val store: Store) {
     private val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(150, TimeUnit.SECONDS).followRedirects(true).build()
@@ -48,7 +48,7 @@ class Api(private val store: Store) {
     // ---------------- pemetaan JSON
     companion object {
         fun strings(a: JSONArray?): List<String> = if (a == null) emptyList() else (0 until a.length()).map { a.getString(it) }
-        fun sekolah(c: JSONObject): Sekolah { val s = c.optJSONObject("sekolah") ?: JSONObject(); return Sekolah(s.optString("nama"), s.optString("jenjang"), s.optString("tahun"), s.optString("opsiDefault", "ABCD"), s.optString("logo")) }
+        fun sekolah(c: JSONObject): Sekolah { val s = c.optJSONObject("sekolah") ?: JSONObject(); return Sekolah(s.optString("nama"), s.optString("jenjang"), s.optString("tahun"), s.optString("opsiDefault", "ABCD"), s.optString("logo"), s.optString("license", "Demo")) }
         fun guruList(c: JSONObject): List<String> { val a = c.optJSONArray("guru") ?: JSONArray(); return (0 until a.length()).map { a.getJSONObject(it).getString("nama") } }
         fun guru(j: JSONObject) = Guru(j.getString("nama"), strings(j.optJSONArray("mapel")), strings(j.optJSONArray("kelas")))
         fun exams(j: JSONObject): ExamsData {
@@ -59,7 +59,7 @@ class Api(private val store: Store) {
                     Ujian(o.getString("id"), o.getString("nama"), o.getString("mapel"), o.optString("tingkat"), strings(o.optJSONArray("kelas")), o.optString("opsi", "ABCD"),
                         o.getString("kunci"), o.getInt("jumlah"), o.optDouble("kktp", 75.0), strings(o.optJSONArray("terscan")).toMutableSet()) },
                 (0 until s.length()).map { i -> val o = s.getJSONObject(i); Siswa(o.getString("nama"), o.getString("kelas"), o.optString("nomor"), o.optString("nisn"), o.optString("tingkat")) },
-                strings(j.optJSONArray("kelasSemua")), j.optString("opsiDefault", "ABCD"))
+                strings(j.optJSONArray("kelasSemua")), j.optString("opsiDefault", "ABCD"), j.optString("license", "Demo"))
         }
     }
 }

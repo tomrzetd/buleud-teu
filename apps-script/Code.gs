@@ -15,7 +15,7 @@ var HEAD = {
   HasilScan: ['Waktu', 'ID Ujian', 'Mapel', 'Tingkat', 'Kelas', 'Nama', 'NISN', 'Nomor Peserta', 'Jawaban', 'Benar', 'Jumlah Soal', 'Skor', 'Ditandai', 'Mode', 'Kualitas', 'Guru', 'ScanID'],
   BankSoal: ['Kode Soal', 'Mapel', 'Tingkat', 'Lingkup', 'ID Ujian', 'Nama Ujian', 'No', 'Kunci', 'N', 'P', 'TK', 'D', 'DP', 'r pbis', 'r tabel', 'Valid', 'KR20 jika dihapus', 'Pengecoh Berfungsi', 'Pengecoh Mati', 'Rekomendasi', 'Alasan', 'Tanggal Analisis', 'Status Guru', 'Catatan']
 };
-var SEKOLAH_KEYS = ['Nama Sekolah', 'NPSN', 'Jenjang (SD/SMP/SMA/SMK)', 'Alamat', 'Kota/Kabupaten', 'Kepala Sekolah', 'NIP Kepala Sekolah', 'Tahun Pelajaran', 'Logo (ID file Google Drive)'];
+var SEKOLAH_KEYS = ['Nama Sekolah', 'NPSN', 'Jenjang (SD/SMP/SMA/SMK)', 'Alamat', 'Kota/Kabupaten', 'Kepala Sekolah', 'NIP Kepala Sekolah', 'Tahun Pelajaran', 'Logo (ID file Google Drive)', 'License'];
 
 // ---------------------------------------------------------------- util
 function doc_() {
@@ -73,8 +73,16 @@ function sekolah_() {
   return {
     nama: o['Nama Sekolah'] || '', npsn: o['NPSN'] || '', jenjang: (o['Jenjang (SD/SMP/SMA/SMK)'] || '').toUpperCase(),
     alamat: o['Alamat'] || '', kota: o['Kota/Kabupaten'] || '', kepala: o['Kepala Sekolah'] || '', nipKepala: o['NIP Kepala Sekolah'] || '',
-    tahun: o['Tahun Pelajaran'] || '', logoId: o['Logo (ID file Google Drive)'] || ''
+    tahun: o['Tahun Pelajaran'] || '', logoId: o['Logo (ID file Google Drive)'] || '',
+    license: String(o['License'] || '').trim().toUpperCase() === 'TERDAFTAR' ? 'Terdaftar' : 'Demo'
   };
+}
+/** LICENSE diberlakukan di server. UI disable saja bukan pengaman API.
+ * Status missing/kosong/non-'Terdaftar' selalu DEMO (fail-closed).
+ */
+function lisensi_() { return sekolah_().license === 'Terdaftar'; }
+function wajibTerdaftar_() {
+  if (!lisensi_()) { var e = new Error('Mode DEMO: simpan, analisis, laporan, dan ubah ujian dinonaktifkan. Isi License = Terdaftar pada sheet Sekolah.'); e.forbidden = true; throw e; }
 }
 function opsiDefault_(jenjang) { return /SMA|SMK|MA\b/.test(String(jenjang).toUpperCase()) ? 'ABCDE' : 'ABCD'; }
 function logoDataUrl_(id) {
@@ -120,14 +128,45 @@ function getUjian_(id) {
   if (!r) throw new Error('Ujian ' + id + ' tidak ditemukan.');
   return ujianRow_(r);
 }
+/**
+ * Sheet Siswa yang diimpor Dapodik kadang memakai:
+ *   Kelas = 8, Tingkat = A  -> rombel 8A, tingkat akademik 8
+ * atau format normal:
+ *   Kelas = 8A, Tingkat = 8 -> rombel 8A, tingkat akademik 8.
+ * Tidak mengubah sel database yang sudah ada.
+ */
+function siswaInfo_(s) {
+  var raw = String(s['Kelas'] || '').toUpperCase().replace(/\s+/g, '');
+  var other = String(s['Tingkat'] || '').toUpperCase().replace(/\s+/g, '');
+  var grade = (/^(7|8|9|10|11|12)/.exec(raw) || [])[1] || '';
+  var kelas = /^(7|8|9|10|11|12)$/.test(raw) && /^[A-Z]{1,2}$/.test(other) ? raw + other : raw;
+  return { nama: String(s['Nama'] || '').toUpperCase(), kelas: kelas,
+    nomor: s['Nomor Peserta'], nisn: s['NISN'], tingkat: grade || other };
+}
+/** Kode lama "8" berarti seluruh rombel tingkat 8; "8A" hanya 8A. */
+function cocokKelas_(kelasList, s) {
+  if (!kelasList || !kelasList.length || kelasList.indexOf('SEMUA') >= 0) return true;
+  return kelasList.some(function (k) {
+    var x = String(k).toUpperCase().replace(/\s+/g, '');
+    return x === s.kelas || x === s.tingkat;
+  });
+}
 function siswaUntuk_(kelasList, tingkat) {
-  var semua = kelasList.length === 0 || kelasList.indexOf('SEMUA') >= 0;
-  return rows_(SH.SISWA).filter(function (s) {
-    var kls = s['Kelas'].toUpperCase(), tk = s['Tingkat'] || String(tingkatDariKelas(kls) || '');
-    return semua ? (!tingkat || String(tk) === String(tingkat)) : kelasList.indexOf(kls) >= 0;
-  }).map(function (s) {
-    return { nama: s['Nama'].toUpperCase(), kelas: s['Kelas'].toUpperCase(), nomor: s['Nomor Peserta'], nisn: s['NISN'],
-      tingkat: s['Tingkat'] || String(tingkatDariKelas(s['Kelas']) || '') };
+  var all = !kelasList || !kelasList.length || kelasList.indexOf('SEMUA') >= 0;
+  return rows_(SH.SISWA).map(siswaInfo_).filter(function (s) {
+    return cocokKelas_(kelasList, s) && (!all || !tingkat || s.tingkat === String(tingkat));
+  }).filter(function (s) { return !!s.nama; });
+}
+/** 5 nama sintetis, tidak pernah mengambil roster asli saat status Demo. */
+function siswaDemo_(g) {
+  var pool = ['ALYA NURFADILA (DEMO)', 'BIMA PRATAMA (DEMO)',
+    'CITRA MAHARANI (DEMO)', 'DANIS WICAKSONO (DEMO)', 'EKA PUTRI (DEMO)',
+    'FARHAN RAMADHAN (DEMO)', 'GITA AMELIA (DEMO)', 'HADI PRATAMA (DEMO)'];
+  var seed = String(g.nama || '').split('').reduce(function (n, ch) { return n + ch.charCodeAt(0); }, 0);
+  var kelas = g.kelas.length ? g.kelas[0] : '8A';
+  return Array.from({ length: 5 }, function (_, i) {
+    var x = pool[(seed + i * 3) % pool.length], grade = (/^(7|8|9|10|11|12)/.exec(kelas) || [])[1] || '8';
+    return { nama: x, kelas: kelas, nomor: String(i + 1).padStart(3, '0'), nisn: '', tingkat: grade, demo: true };
   });
 }
 
@@ -139,7 +178,7 @@ function doGet(e) {
     var sk = sekolah_();
     var guru = rows_(SH.GURU).filter(function (r) { return r['Nama'] && !/^(TIDAK|NO|N)$/i.test(r['Aktif']); })
       .map(function (g) { var i = guruInfo_(g); return { nama: i.nama, mapel: i.mapel }; });
-    return json_({ status: 'connected', version: VERSION, sekolah: { nama: sk.nama, npsn: sk.npsn, jenjang: sk.jenjang, kota: sk.kota, tahun: sk.tahun, kepala: sk.kepala, opsiDefault: opsiDefault_(sk.jenjang), logo: logoDataUrl_(sk.logoId) }, guru: guru });
+    return json_({ status: 'connected', version: VERSION, sekolah: { nama: sk.nama, npsn: sk.npsn, jenjang: sk.jenjang, kota: sk.kota, tahun: sk.tahun, kepala: sk.kepala, opsiDefault: opsiDefault_(sk.jenjang), logo: logoDataUrl_(sk.logoId), license: sk.license }, guru: guru });
   } catch (err) { return json_({ error: String(err.message || err) }); }
 }
 
@@ -153,7 +192,7 @@ function doPost(e) {
       case 'saveExam': return json_(withLock_(function () { return apiSaveExam_(data); }));
       case 'archiveExam': return json_(withLock_(function () { return apiArchiveExam_(data); }));
       case 'save': return json_(withLock_(function () { return apiSave_(data); }));
-      case 'ocr': auth_(data.token); return json_({ result: 'success', text: ocrImage_(data.image) });
+      case 'ocr': auth_(data.token); wajibTerdaftar_(); return json_({ result: 'success', text: ocrImage_(data.image) });
       case 'analyze': return json_(apiAnalyze_(data));
       case 'bank': return json_(withLock_(function () { return apiBank_(data); }));
       case 'report': return json_(apiReport_(data));
@@ -171,20 +210,31 @@ function withLock_(fn) {
 function apiExams_(d) {
   var g = auth_(d.token);
   var ujian = rows_(SH.UJIAN).map(ujianRow_).filter(function (u) { return u.guru.toUpperCase() === g.nama.toUpperCase() && u.status !== 'Arsip'; });
-  var kelasSet = {};
-  ujian.forEach(function (u) { siswaUntuk_(u.kelas, u.tingkat).forEach(function (s) { kelasSet[s.kelas + '|' + s.nama] = s; }); });
-  g.kelas.forEach(function (k) { siswaUntuk_([k]).forEach(function (s) { kelasSet[s.kelas + '|' + s.nama] = s; }); });
-  var siswa = Object.keys(kelasSet).map(function (k) { return kelasSet[k]; });
-  // jumlah yang sudah discan per ujian
-  var hasil = rows_(SH.HASIL), cnt = {};
-  hasil.forEach(function (h) { var k = h['ID Ujian']; cnt[k] = cnt[k] || {}; cnt[k][h['Kelas'] + '|' + h['Nama']] = 1; });
-  ujian.forEach(function (u) { u.terscan = Object.keys(cnt[u.id] || {}); delete u._row; });
-  var kelasSemua = Object.keys(rows_(SH.SISWA).reduce(function (a, s) { a[s['Kelas'].toUpperCase()] = 1; return a; }, {})).sort();
-  return { result: 'success', guru: g, ujian: ujian, siswa: siswa, kelasSemua: kelasSemua, opsiDefault: opsiDefault_(sekolah_().jenjang) };
+  var registered = lisensi_();
+  var siswa;
+  if (!registered) {
+    siswa = siswaDemo_(g);
+  } else {
+    var kelasSet = {};
+    ujian.forEach(function (u) { siswaUntuk_(u.kelas, u.tingkat).forEach(function (s) {
+      if (cocokKelas_(g.kelas, s)) kelasSet[s.kelas + '|' + s.nama] = s;
+    }); });
+    g.kelas.forEach(function (k) { siswaUntuk_([k]).forEach(function (s) { kelasSet[s.kelas + '|' + s.nama] = s; }); });
+    siswa = Object.keys(kelasSet).map(function (k) { return kelasSet[k]; });
+  }
+  var cnt = {};
+  if (registered) rows_(SH.HASIL).forEach(function (h) {
+    var key = h['ID Ujian']; cnt[key] = cnt[key] || {}; cnt[key][h['Kelas'] + '|' + h['Nama']] = 1;
+  });
+  ujian.forEach(function (u) { u.terscan = registered ? Object.keys(cnt[u.id] || {}) : []; delete u._row; });
+  var kelasSemua = Array.from(new Set(siswa.map(function (s) { return s.kelas; }).concat(g.kelas))).sort();
+  return { result: 'success', license: registered ? 'Terdaftar' : 'Demo',
+    guru: g, ujian: ujian, siswa: siswa, kelasSemua: kelasSemua, opsiDefault: opsiDefault_(sekolah_().jenjang) };
 }
 
 function apiSaveExam_(d) {
-  var g = auth_(d.token), x = d.exam || {}, sh = sheet_(SH.UJIAN);
+  var g = auth_(d.token); wajibTerdaftar_();
+  var x = d.exam || {}, sh = sheet_(SH.UJIAN);
   if (!x.nama || !x.mapel) throw new Error('Nama ujian dan mapel wajib diisi.');
   var opsi = x.opsi === 'ABCDE' ? 'ABCDE' : 'ABCD';
   var kunci = parseKey_(x.kunci, opsi), kktp = parseKktp_(x.kktp);
@@ -206,20 +256,22 @@ function apiSaveExam_(d) {
   return { result: 'success', id: row[0], jumlah: kunci.length };
 }
 function apiArchiveExam_(d) {
-  var g = auth_(d.token), u = getUjian_(d.id);
+  var g = auth_(d.token); wajibTerdaftar_();
+  var u = getUjian_(d.id);
   if (u.guru.toUpperCase() !== g.nama.toUpperCase()) throw new Error('Ujian ini milik guru lain.');
   sheet_(SH.UJIAN).getRange(u._row, 12).setValue('Arsip');
   return { result: 'success' };
 }
 
 function apiSave_(d) {
-  var g = auth_(d.token), u = getUjian_(d.examId), s = d.siswa || {};
+  var g = auth_(d.token); wajibTerdaftar_();
+  var u = getUjian_(d.examId), s = d.siswa || {};
   assertPemilik_(g, u);
   if (u.status === 'Arsip') throw new Error('Ujian sudah diarsipkan; hasil tidak dapat ditambahkan.');
   if (!s.nama) throw new Error('Nama siswa kosong.');
   // siswa harus ada di sheet Siswa DAN termasuk peserta ujian ini (identitas diambil dari roster, bukan dari aplikasi)
   var nm = normNama_(s.nama), kls = String(s.kelas || '').toUpperCase().trim();
-  var peserta = siswaUntuk_(u.kelas, u.tingkat).filter(function (x) { return normNama_(x.nama) === nm && (!kls || x.kelas === kls); });
+  var peserta = siswaUntuk_(u.kelas, u.tingkat).filter(function (x) { return cocokKelas_(g.kelas, x) && normNama_(x.nama) === nm && (!kls || x.kelas === kls); });
   if (!peserta.length) {
     var diRoster = rows_(SH.SISWA).some(function (x) { return normNama_(x['Nama']) === nm; });
     throw new Error(diRoster ? 'Siswa ' + nm + (kls ? ' (' + kls + ')' : '') + ' bukan peserta ujian ini (kelas ujian: ' + (u.kelas.join(', ') || 'SEMUA') + ').' : 'Siswa ' + nm + ' tidak ada di sheet Siswa.');
@@ -310,7 +362,7 @@ function tulisAnalisis_(nama, u, lingkup, kelas, A) {
 }
 
 function apiAnalyze_(d) {
-  assertPemilik_(auth_(d.token), getUjian_(d.examId));
+  assertPemilik_(auth_(d.token), getUjian_(d.examId)); wajibTerdaftar_();
   var r = analisisUjian(d.examId, d.lingkup, d.kelas);
   var A = r.hasil;
   return { result: 'success', sheet: r.sheet, ringkasan: A.ringkasan, peringatan: A.peringatan,
@@ -336,7 +388,7 @@ function bankSoal(id, lingkup, kelas) {
   });
   return { result: 'success', baru: baru, diperbarui: ubah, sheet: r.sheet };
 }
-function apiBank_(d) { assertPemilik_(auth_(d.token), getUjian_(d.examId)); return bankSoal(d.examId, d.lingkup, d.kelas); }
+function apiBank_(d) { assertPemilik_(auth_(d.token), getUjian_(d.examId)); wajibTerdaftar_(); return bankSoal(d.examId, d.lingkup, d.kelas); }
 
 // ---------------------------------------------------------------- OCR (Google Drive)
 // Wajib: editor Apps Script → Layanan (+) → Drive API → Tambahkan.

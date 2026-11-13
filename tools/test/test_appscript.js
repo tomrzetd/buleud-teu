@@ -7,6 +7,8 @@ const { ctx, ss, GET, POST, created, fetched, drive } = createGas();
 ctx.setup();
 assert.deepStrictEqual(ss.sheets.map(s => s.name), ['Sekolah', 'Guru', 'Siswa', 'Ujian', 'HasilScan', 'BankSoal']);
 ss.getSheetByName('Sekolah').getRange(1, 2, 3, 1).setValues([['SMPN 2 JALAKSANA'], ['20212345'], ['SMP']]);
+// Fixture produksi: default tanpa License memang DEMO dan wajib ditolak.
+ss.getSheetByName('Sekolah').getRange(10, 2).setValue('Terdaftar');
 ss.getSheetByName('Guru').appendRow(['NURHAYATI', 'n@x.id', '1234', 'IPA, MTK', '7A, 7B', 'Ya']);
 ss.getSheetByName('Guru').appendRow(['BUDI', '', '9999', 'IPS', '8A', 'Ya']);
 const rnd = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
@@ -95,6 +97,10 @@ assert.ok(!/SISWA 7A/.test(isi), 'nama siswa tidak boleh muncul'); assert.ok(/Pe
 assert.ok(/Belum ada hasil scan/.test(POST({ action: 'report', token: tokN, examId, lingkup: 'kelas', kelas: '8A' }).error));
 assert.ok(POST({ action: 'report', token: 'palsu', examId }).auth);
 // 5) skor seragam (screenshot pengguna): r pbis / KR-20 jika dihapus tidak boleh -1 / negatif palsu
+// Operator memberi tugas 8A kepada guru sebelum tes ini, untuk memenuhi
+// pembatasan roster berdasarkan penugasan guru di backend.
+ss.getSheetByName('Guru').getRange(2, 5).setValue('7A, 7B, 8A');
+ctx.ROWS_CACHE_ = {};
 const kU = POST({ action: 'saveExam', token: tokN, exam: { nama: 'UH SERAGAM', mapel: 'IPA', kelas: ['8A'], opsi: 'ABCD', kunci: 'ABAB' } }).id;
 for (const nm of ['S1', 'S2', 'S3', 'S4']) ss.getSheetByName('Siswa').appendRow(['99' + nm, '', '', nm, '8A', '', 'L']);
 for (const [nm, a] of [['S1', 'ABCC'], ['S2', 'CBAC'], ['S3', 'CCAB'], ['S4', 'AAAA']]) POST({ action: 'save', token: tokN, examId: kU, siswa: { nama: nm, kelas: '8A' }, answers: [...a] });
@@ -104,3 +110,19 @@ assert.ok(tU.peringatan.some(p => /skor total sama/.test(p)));
 console.log(`Laporan OK — simpel PDF (1 tab), lengkap XLSX (4 tab), pilihan bebas per kelas (Google Sheet), skor seragam aman`);
 const R = t.ringkasan;
 console.log(`Apps Script OK — ujian ${examId}: n=${R.n}, k=${R.k}, rata ${R.rataRata}, KR-20 ${R.kr20} (${R.kategoriKr20}), SEM ${R.sem}, tuntas ${R.persenTuntas}%, diterima ${R.diterima}/direvisi ${R.direvisi}/dibuang ${R.dibuang}; sheet ${t.sheet} (${anSheet.getLastRow()} baris x ${anSheet.getLastColumn()} kolom)`);
+
+/** Mode DEMO tidak boleh mengirim roster asli, maupun menulis ke HasilScan/analisis. */
+ss.getSheetByName('Sekolah').getRange(10, 2).setValue('Belum terdaftar');
+const demoCfg = GET('config');
+assert.strictEqual(demoCfg.sekolah.license, 'Demo');
+const demo = POST({ action: 'exams', token: tokN });
+assert.strictEqual(demo.license, 'Demo');
+assert.strictEqual(demo.siswa.length, 5);
+assert.ok(demo.siswa.every(s => s.nama.includes('(DEMO)')));
+assert.ok(!JSON.stringify(demo.siswa).includes('SISWA 7A'));
+assert.ok(POST({ action: 'save', token: tokN, examId, siswa: { nama: 'SISWA 7A 01', kelas: '7A' }, answers: [...KEY] }).error);
+assert.ok(POST({ action: 'analyze', token: tokN, examId }).error);
+assert.ok(POST({ action: 'bank', token: tokN, examId }).error);
+assert.ok(POST({ action: 'report', token: tokN, examId }).error);
+assert.ok(POST({ action: 'saveExam', token: tokN, exam: { nama: 'DEMO', mapel: 'IPA', kelas: ['7A'], opsi: 'ABCD', kunci: 'ABCD' } }).error);
+console.log('License DEMO OK: 5 siswa sintetis, simpan dan analisis diblokir di server');

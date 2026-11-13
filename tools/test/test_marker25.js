@@ -56,6 +56,17 @@ function sheet(layout, active = 20, printed = layout.pg.questions) {
     for (const c of S.SPEC.markers.corner.centers) square(c[0], c[1], 8);
     for (const c of S.SPEC.markers.mid.centers) square(c[0], c[1], 6);
     square(19, 8, 4);
+    if (layout === S.SPEC25) {
+        // QR baru turut dicetak pada lembar tes; jangan sampai disangka marker.
+        const qrRects = [...svg.matchAll(/<rect x="([\\d.]+)" y="([\\d.]+)" width="([\\d.]+)" height="([\\d.]+)" fill="#000"/g)];
+        for (const [, x0, y0, w0, h0] of qrRects) {
+            const [x, y, ww, hh] = [Number(x0), Number(y0), Number(w0), Number(h0)];
+            if (x < 176 || x >= 199 || y < 16 || y >= 39) continue;
+            const left = Math.floor(x * ppm), right = Math.ceil((x + ww) * ppm);
+            const top = Math.floor(y * ppm), bottom = Math.ceil((y + hh) * ppm);
+            for (let yy = top; yy < bottom; yy++) for (let xx = left; xx < right; xx++) dot(xx, yy, 0);
+        }
+    }
     for (let q = 0; q < printed; q++) for (let o = 0; o < 4; o++) {
         const p = S.bubbleMM(q, o, layout);
         circle(p.x, p.y, layout.pg.r, q < active && o === q % 4);

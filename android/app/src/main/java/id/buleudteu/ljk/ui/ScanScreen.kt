@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import id.buleudteu.ljk.AppViewModel
@@ -113,6 +114,14 @@ fun ScanScreen(vm: AppViewModel) {
                     } else drawCircle(Color.White.copy(alpha = 0.55f), r * 1.1f, c, style = Stroke(width = 2f))
                 }
             }
+        }
+
+        // Animasi visual memakai bidang QR yang diproyeksikan dari 4 marker.
+        // Tidak ikut ke ImageAnalysis (OpenCV) maupun ImageCapture.
+        ScanHud(det, vm.sekolah?.logo)
+        if (vm.isDemo) {
+            Text("DEMO", color = Color(0x66FCA5A5), fontSize = 52.sp,
+                fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.Center))
         }
 
         Column(Modifier.fillMaxWidth().background(Color(0xAA000000)).padding(top = 36.dp, start = 14.dp, end = 14.dp, bottom = 10.dp)) {
