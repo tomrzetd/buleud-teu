@@ -54,7 +54,9 @@ class Processor(private val store: Store, private val api: Api?) {
         val sens = store.sensitivity; val con = store.contrast
         if (u == null) return LjkEngine.processMarkerlessAuto(img, sens, con, legacyLayouts(null)).let { l ->
             if (l.success) l else LjkEngine.processMarker(img, 4, 50, sens, con).takeIf { it.success } ?: l }
-        val m = LjkEngine.processMarker(img, u.opsi.length, u.jumlah, sens, con)
+        val m = if (u.opsi == "ABCD" && u.jumlah <= 25) {
+            LjkEngine.processMarkerAuto(img, u.opsi.length, u.jumlah, sens, con)
+        } else LjkEngine.processMarker(img, u.opsi.length, u.jumlah, sens, con)
         val lays = legacyLayouts(u)
         if (!m.success && lays.isNotEmpty()) {
             val l = LjkEngine.processMarkerlessAuto(img, sens, con, lays)
@@ -91,9 +93,10 @@ class Processor(private val store: Store, private val api: Api?) {
         s.preview = pv
         val k = f / gs
         if (r.mode == "marker") {
-            val geo = r.geo!!; s.total = 50; s.rows = LjkSpec.ROWS; s.nOpt = geo.nOpt
-            s.bubbles = (0 until 50).map { q -> (0 until geo.nOpt).map { o -> val m = LjkSpec.bubbleMM(q, o); val p = geo.map(m.x, m.y); Pt(p.x * k, p.y * k) } }
-            s.bubbleR = LjkSpec.R * geo.pxPerMm * k
+            val geo = r.geo!!; val layout = geo.layout
+            s.total = layout.QUESTIONS; s.rows = layout.ROWS; s.nOpt = geo.nOpt
+            s.bubbles = (0 until layout.QUESTIONS).map { q -> (0 until geo.nOpt).map { o -> val m = layout.bubbleMM(q, o); val p = geo.map(m.x, m.y); Pt(p.x * k, p.y * k) } }
+            s.bubbleR = layout.R * geo.pxPerMm * k
         } else {
             val lat = r.lattice!!; val rows = r.grid.size; s.total = lat.questions; s.rows = rows; s.nOpt = lat.options
             s.bubbles = (0 until lat.questions).map { q -> val b = q / rows; val rr = q % rows; (0 until lat.options).map { o -> val g = r.grid[rr][b * lat.options + o]; Pt(g.x * k, g.y * k) } }

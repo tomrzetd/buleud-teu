@@ -2,7 +2,7 @@
  * API Apps Script, respons siswa, dan berkas lintas origin tidak pernah masuk Cache Storage.
  */
 const PREFIX = 'buleudteu-';
-const CACHE = 'buleudteu-v40-pages2';
+const CACHE = 'buleudteu-v41-marker25';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'js/ljk-spec.js', 'js/ljk-template.js', 'js/ljk-engine.js',

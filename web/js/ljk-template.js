@@ -8,7 +8,8 @@
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
     function renderLJK(opt = {}) {
-        const spec = S.SPEC, P = spec.pg, M = spec.markers;
+        const compact = opt.layout === 'MARKER25';
+        const spec = compact ? S.SPEC25 : S.SPEC, P = spec.pg, M = spec.markers;
         const variant = opt.variant === 'ABCDE' ? 'ABCDE' : 'ABCD';
         const nOpt = variant.length;
         const school = opt.school || {}, exam = opt.exam || {};
@@ -33,7 +34,7 @@
         T(107.5, 38.4, `TAHUN PELAJARAN ${exam.tahun || '..........'}${exam.mapel ? '  •  ' + exam.mapel : ''}`, 2.8, { anchor: 'middle', fill: GRAY });
         // kode varian (kanan atas, dibaca guru)
         R(176, 16, 23, 22, { stroke: GRAY, sw: 0.3, rx: 1.5 });
-        T(187.5, 22, 'LJK F4 • 50 SOAL', 2.1, { anchor: 'middle', fill: GRAY });
+        T(187.5, 22, compact ? 'LJK F4 • 25 SOAL' : 'LJK F4 • 50 SOAL', 2.1, { anchor: 'middle', fill: GRAY });
         T(187.5, 30.5, variant, 5.2, { anchor: 'middle', bold: true });
         T(187.5, 35.5, spec.id, 1.9, { anchor: 'middle', fill: GRAY });
         Lh(14, 41, 201, { sw: 0.5 }); Lh(14, 42.2, 201, { sw: 0.2 });
@@ -62,21 +63,29 @@
             out.push(`<line x1="${x}" y1="${fy1 + 3}" x2="${x}" y2="${fy2 - 3}" stroke="${DROP}" stroke-width="0.2"/>`);
         }
         for (let q = 0; q < P.questions; q++) {
-            const p0 = S.bubbleMM(q, 0);
+            const p0 = S.bubbleMM(q, 0, spec);
             T(P.x0 + Math.floor(q / P.rows) * P.blockW + P.numRight, p0.y + 1.05, `${q + 1}.`, 2.6, { anchor: 'end', bold: true });
             for (let o = 0; o < nOpt; o++) {
-                const p = S.bubbleMM(q, o);
+                const p = S.bubbleMM(q, o, spec);
                 out.push(`<circle cx="${p.x}" cy="${p.y}" r="${P.r}" fill="none" stroke="${GRAY}" stroke-width="0.3"/>`);
                 T(p.x, p.y + 0.85, S.LETTERS[o], 2.3, { anchor: 'middle', fill: LIGHT });
             }
         }
 
         // ---- esai / catatan
-        T(15, 203, 'II. ESAI / CATATAN', 3.4, { bold: true });
-        for (let y = 211; y <= 296; y += 8.5) Lh(15, y, 200, { stroke: DROP, sw: 0.2 });
-        R(15, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(17, 304, 'Nilai', 2.4, { fill: GRAY });
-        R(80, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(82, 304, 'Paraf Guru', 2.4, { fill: GRAY });
-        T(200, 309.5, 'Buleud Teu • "Mun buleud, ku urang dipariksa!"', 2, { anchor: 'end', fill: LIGHT });
+        if (compact) {
+            // Bebas garis: semua area di bawah panel PG adalah ruang uraian.
+            // Mid-marker pada y=165 berada di luar area tulis, di tepi x=8.5 / x=206.5.
+            T(15, 165, 'II. ESAI / CATATAN', 3.4, { bold: true });
+            T(200, 165, 'Jawab sesuai nomor soal. Gunakan area kosong di bawah.', 2.3, { anchor: 'end', fill: GRAY });
+            T(200, 312, 'SMPN 2 JALAKSANA • ASAS 2026/2027 • 25 SOAL ABCD', 2, { anchor: 'end', fill: LIGHT });
+        } else {
+            T(15, 203, 'II. ESAI / CATATAN', 3.4, { bold: true });
+            for (let y = 211; y <= 296; y += 8.5) Lh(15, y, 200, { stroke: DROP, sw: 0.2 });
+            R(15, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(17, 304, 'Nilai', 2.4, { fill: GRAY });
+            R(80, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(82, 304, 'Paraf Guru', 2.4, { fill: GRAY });
+            T(200, 309.5, 'Buleud Teu • "Mun buleud, ku urang dipariksa!"', 2, { anchor: 'end', fill: LIGHT });
+        }
 
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${spec.page.w}mm" height="${spec.page.h}mm" viewBox="0 0 ${spec.page.w} ${spec.page.h}">` +
             `<rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>`;
@@ -134,7 +143,11 @@
         return `<svg xmlns="http://www.w3.org/2000/svg" width="215mm" height="330mm" viewBox="0 0 215 330"><rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>`;
     }
 
-    const api = { renderLJK, renderLJKLama, LAMA, LAMA25 };
+    function renderLJK25(opt = {}) {
+        return renderLJK(Object.assign({}, opt, { variant: 'ABCD', layout: 'MARKER25' }));
+    }
+
+    const api = { renderLJK, renderLJK25, renderLJKLama, LAMA, LAMA25 };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKTemplate = api;
 })(typeof self !== 'undefined' ? self : this);

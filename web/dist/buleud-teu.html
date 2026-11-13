@@ -265,7 +265,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
   <div class="top"><div class="icon" onclick="App.go('home')">←</div><h1 id="prTitle">Cetak LJK</h1></div>
   <div class="body">
     <div class="card"><p class="muted small">Kertas <b>F4 / Folio (215 × 330 mm)</b>, skala <b>100% / ukuran sebenarnya</b> (jangan "fit to page"). Keempat kotak hitam di sudut wajib tercetak utuh.</p>
-      <div class="row"><div><label class="l">Varian</label><select id="prVar" class="in" onchange="App.renderPrint()"><option value="ABCD">F4 bermarker · 50 soal ABCD</option><option value="ABCDE">F4 bermarker · 50 soal ABCDE</option><option value="LAMA20">F4 tanpa marker · 20 soal ABCD</option><option value="LAMA25">F4 tanpa marker · 25 soal ABCD</option></select></div>
+      <div class="row"><div><label class="l">Varian</label><select id="prVar" class="in" onchange="App.renderPrint()"><option value="MARKER25">F4 bermarker · 25 soal ABCD (esai polos)</option><option value="ABCD">F4 bermarker · 50 soal ABCD</option><option value="ABCDE">F4 bermarker · 50 soal ABCDE</option><option value="LAMA20">F4 tanpa marker · 20 soal ABCD</option><option value="LAMA25">F4 tanpa marker · 25 soal ABCD</option></select></div>
       <div><label class="l">Jumlah lembar</label><input id="prCopies" class="in" type="number" min="1" max="60" value="1" onchange="App.renderPrint()"></div></div>
       <button class="btn pri wide" style="margin-top:12px" onclick="window.print()">🖨 Cetak / simpan PDF</button></div>
     <div class="card" style="padding:6px;background:#fff"><div id="prPreview"></div></div>
@@ -314,6 +314,20 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
         }
     };
 
+    // Formulir bermarker 25 soal: marker + identitas SAMA dengan F4-50-v1,
+    // tetapi 5 blok x 5 baris. PG berakhir pada y=155 mm, esai di bawah.
+    const SPEC25 = {
+        id: 'F4-25-ABCD-v1',
+        page: SPEC.page,
+        markers: SPEC.markers,
+        ident: SPEC.ident,
+        pg: Object.assign({}, SPEC.pg, {
+            questions: 25, blocks: 5, rows: 5,
+            frame: [15, 104, 200, 155]
+        }),
+        regions: { view: [12, 14, 203, 164], ident: SPEC.regions.ident }
+    };
+
     const LETTERS = 'ABCDE';
     // posisi pusat bulatan soal q (0-based) opsi o (0=A) dalam mm
     function bubbleMM(q, o, spec = SPEC) {
@@ -326,7 +340,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
         return { x: f.x, y: f.y, w: f.n * f.cw, h: f.h };
     }
 
-    const api = { SPEC, LETTERS, bubbleMM, combRect };
+    const api = { SPEC, SPEC25, LETTERS, bubbleMM, combRect };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKSpec = api;
 })(typeof self !== 'undefined' ? self : this);
@@ -343,7 +357,8 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
     function renderLJK(opt = {}) {
-        const spec = S.SPEC, P = spec.pg, M = spec.markers;
+        const compact = opt.layout === 'MARKER25';
+        const spec = compact ? S.SPEC25 : S.SPEC, P = spec.pg, M = spec.markers;
         const variant = opt.variant === 'ABCDE' ? 'ABCDE' : 'ABCD';
         const nOpt = variant.length;
         const school = opt.school || {}, exam = opt.exam || {};
@@ -368,7 +383,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
         T(107.5, 38.4, `TAHUN PELAJARAN ${exam.tahun || '..........'}${exam.mapel ? '  •  ' + exam.mapel : ''}`, 2.8, { anchor: 'middle', fill: GRAY });
         // kode varian (kanan atas, dibaca guru)
         R(176, 16, 23, 22, { stroke: GRAY, sw: 0.3, rx: 1.5 });
-        T(187.5, 22, 'LJK F4 • 50 SOAL', 2.1, { anchor: 'middle', fill: GRAY });
+        T(187.5, 22, compact ? 'LJK F4 • 25 SOAL' : 'LJK F4 • 50 SOAL', 2.1, { anchor: 'middle', fill: GRAY });
         T(187.5, 30.5, variant, 5.2, { anchor: 'middle', bold: true });
         T(187.5, 35.5, spec.id, 1.9, { anchor: 'middle', fill: GRAY });
         Lh(14, 41, 201, { sw: 0.5 }); Lh(14, 42.2, 201, { sw: 0.2 });
@@ -397,21 +412,29 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
             out.push(`<line x1="${x}" y1="${fy1 + 3}" x2="${x}" y2="${fy2 - 3}" stroke="${DROP}" stroke-width="0.2"/>`);
         }
         for (let q = 0; q < P.questions; q++) {
-            const p0 = S.bubbleMM(q, 0);
+            const p0 = S.bubbleMM(q, 0, spec);
             T(P.x0 + Math.floor(q / P.rows) * P.blockW + P.numRight, p0.y + 1.05, `${q + 1}.`, 2.6, { anchor: 'end', bold: true });
             for (let o = 0; o < nOpt; o++) {
-                const p = S.bubbleMM(q, o);
+                const p = S.bubbleMM(q, o, spec);
                 out.push(`<circle cx="${p.x}" cy="${p.y}" r="${P.r}" fill="none" stroke="${GRAY}" stroke-width="0.3"/>`);
                 T(p.x, p.y + 0.85, S.LETTERS[o], 2.3, { anchor: 'middle', fill: LIGHT });
             }
         }
 
         // ---- esai / catatan
-        T(15, 203, 'II. ESAI / CATATAN', 3.4, { bold: true });
-        for (let y = 211; y <= 296; y += 8.5) Lh(15, y, 200, { stroke: DROP, sw: 0.2 });
-        R(15, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(17, 304, 'Nilai', 2.4, { fill: GRAY });
-        R(80, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(82, 304, 'Paraf Guru', 2.4, { fill: GRAY });
-        T(200, 309.5, 'Buleud Teu • "Mun buleud, ku urang dipariksa!"', 2, { anchor: 'end', fill: LIGHT });
+        if (compact) {
+            // Bebas garis: semua area di bawah panel PG adalah ruang uraian.
+            // Mid-marker pada y=165 berada di luar area tulis, di tepi x=8.5 / x=206.5.
+            T(15, 165, 'II. ESAI / CATATAN', 3.4, { bold: true });
+            T(200, 165, 'Jawab sesuai nomor soal. Gunakan area kosong di bawah.', 2.3, { anchor: 'end', fill: GRAY });
+            T(200, 312, 'SMPN 2 JALAKSANA • ASAS 2026/2027 • 25 SOAL ABCD', 2, { anchor: 'end', fill: LIGHT });
+        } else {
+            T(15, 203, 'II. ESAI / CATATAN', 3.4, { bold: true });
+            for (let y = 211; y <= 296; y += 8.5) Lh(15, y, 200, { stroke: DROP, sw: 0.2 });
+            R(15, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(17, 304, 'Nilai', 2.4, { fill: GRAY });
+            R(80, 300, 60, 11, { stroke: GRAY, sw: 0.3, rx: 1 }); T(82, 304, 'Paraf Guru', 2.4, { fill: GRAY });
+            T(200, 309.5, 'Buleud Teu • "Mun buleud, ku urang dipariksa!"', 2, { anchor: 'end', fill: LIGHT });
+        }
 
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${spec.page.w}mm" height="${spec.page.h}mm" viewBox="0 0 ${spec.page.w} ${spec.page.h}">` +
             `<rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>`;
@@ -469,7 +492,11 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
         return `<svg xmlns="http://www.w3.org/2000/svg" width="215mm" height="330mm" viewBox="0 0 215 330"><rect width="100%" height="100%" fill="#fff"/>${out.join('')}</svg>`;
     }
 
-    const api = { renderLJK, renderLJKLama, LAMA, LAMA25 };
+    function renderLJK25(opt = {}) {
+        return renderLJK(Object.assign({}, opt, { variant: 'ABCD', layout: 'MARKER25' }));
+    }
+
+    const api = { renderLJK, renderLJK25, renderLJKLama, LAMA, LAMA25 };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKTemplate = api;
 })(typeof self !== 'undefined' ? self : this);
@@ -970,11 +997,38 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
         qScore = Math.round(clamp(qScore, 0, 100));
         ret.quality = { score: qScore, grade: qScore >= 80 ? 'A' : qScore >= 60 ? 'B' : 'C', pxPerMm: +pxPerMm.toFixed(2), residMm: residMm == null ? null : +residMm.toFixed(2), light: +light.toFixed(2), sharp: +sharp.toFixed(2), tilt: +tilt.toFixed(1) };
         ret.geo = { kind: 'mm', spec, H: Hg, blocks: blockFits, scale, pxPerMm, nOpt, active };
+        ret.markerMatch = best.bm;
         ret.debug.grid = grid;
         ret.success = true;
         log(`Ambang ${(dec.thr * 100).toFixed(0)}% (kosong ${(dec.empty * 100).toFixed(0)}%, terisi ${(dec.full * 100).toFixed(0)}%), residu ${residMm == null ? '-' : residMm.toFixed(2) + ' mm'}, kualitas ${qScore}`);
         log(`Selesai ${Math.round(now() - t0)} ms`);
         return ret;
+    }
+
+    // Auto-layout F4 bermarker 25 (5x5) / 50 (5x10), dengan marker identik.
+    // Kapasitas kertas TIDAK mengubah panjang kunci ujian dalam database.
+    function processMarkerAuto(img, opt = {}) {
+        const standard = processMarker(img, Object.assign({}, opt, { spec: SpecMod.SPEC }));
+        if (opt.options === 5 || (opt.active || 50) > 25) return standard;
+        let extra = 0;
+        if (standard.success) {
+            const mmCircles = (standard.debug.cands || []).map(c => standard.geo.H.inv(c.x, c.y));
+            for (let b = 0; b < 5; b++) for (let row = 5; row < 10; row++) for (let o = 0; o < 4; o++) {
+                const p = SpecMod.bubbleMM(b * 10 + row, o, SpecMod.SPEC);
+                if (mmCircles.some(c => Math.hypot(c.x - p.x, c.y - p.y) < 1.1)) extra++;
+            }
+            if (extra >= 18) {
+                standard.logs.push('Auto-layout: F4-50-v1, bulatan bawah ' + extra + '/100');
+                return standard;
+            }
+        }
+        const compact = processMarker(img, Object.assign({}, opt, { spec: SpecMod.SPEC25 }));
+        const selected = compact.success && (!standard.success || compact.markerMatch > standard.markerMatch + 0.12)
+            ? compact : standard;
+        selected.logs.push('Auto-layout: ' + (selected.geo?.spec?.id || '-') +
+            ', bulatan bawah ' + extra + '/100, cocok 50=' + Math.round((standard.markerMatch || 0) * 100) +
+            '%, 25=' + Math.round((compact.markerMatch || 0) * 100) + '%');
+        return selected;
     }
 
     // deteksi marker cepat (preview kamera, ~640 px): kembalikan 4 sudut dalam koordinat gambar asli
@@ -1200,6 +1254,22 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
                 if (!first) first = rF;
             }
         }
+        // Foto jauh kadang kehilangan pola pada salinan 1000px, meski pola masih
+        // bisa ditemukan pada foto 1600px. Jika penyaringan cepat gagal, ulangi
+        // semua tata letak pada resolusi penuh sebelum menyimpulkan gagal.
+        // Jalur ini hanya dijalankan pada kasus sulit (lebih lambat, tetapi aman).
+        if (rot == null) {
+            fullSearch: for (const deg of [0, 90, 270]) {
+                const full = rotateImg(img, deg);
+                for (const L of layouts) {
+                    const options = Object.assign({}, opt, { layout: L });
+                    const probe = processMarkerless(full, options);
+                    if (!probe.success) { if (!first) first = probe; continue; }
+                    rot = deg; im = full; r = probe; opt = options;
+                    break fullSearch;
+                }
+            }
+        }
         if (rot == null) return first || processMarkerless(img, Object.assign({}, opt, { layout: layouts[layouts.length - 1] }));
         // cek terbalik 180 dari letak nomor soal (butuh detail, jangan di salinan kecil)
         if (r.success && legacyCue(r).flipped) {
@@ -1310,7 +1380,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
         return out;
     }
 
-    const api = { LEGACY_LAYOUTS, processMarker, processMarkerless, processMarkerlessAuto, legacyCue, rotateImg, shrinkImg, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
+    const api = { LEGACY_LAYOUTS, processMarker, processMarkerAuto, processMarkerless, processMarkerlessAuto, legacyCue, rotateImg, shrinkImg, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKEngine = api;
 })(typeof self !== 'undefined' ? self : this);
@@ -1801,7 +1871,7 @@ else root.LJKIdent = LJKIdent;
         const p = { sensitivity: S.params.sens, contrast: S.params.con };
         if (S.scanMode === 'markerless') return LJKEngine.processMarkerlessAuto(img, Object.assign(p, { layouts: legacyLayouts() }));
         const opsi = S.scanMode === 'key' ? S.editing.opsi : S.exam.opsi;
-        const r = LJKEngine.processMarker(img, Object.assign({}, p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
+        const r = (S.scanMode === 'exam' && S.exam.jumlah <= 25 && opsi === 'ABCD' ? LJKEngine.processMarkerAuto : LJKEngine.processMarker)(img, Object.assign({}, p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
         // LJK lama (tanpa marker, 20 atau 25 soal) dikenali otomatis untuk ujian <= 25 soal ABCD
         if (!r.success && legacyAllowed()) {
             const l = LJKEngine.processMarkerlessAuto(img, Object.assign({}, p, { layouts: legacyLayouts() }));
@@ -1872,7 +1942,7 @@ else root.LJKIdent = LJKIdent;
             const ring = $('resRing'); ring.style.strokeDashoffset = 264 - 264 * sc.skor / 100; ring.style.stroke = sc.skor < (u.kktp || 75) ? '#ef4444' : '#22c55e';
         } else { $('resScore').textContent = S.answers.filter(Boolean).length; $('resBenar').textContent = 'jawaban terbaca (tanpa kunci)'; }
         const lama = S.res && S.res.mode === 'markerless';
-        renderLjk($('ljkGrid'), { n, total: lama ? lamaN() : 50, rows: lama ? 5 : 10, opsi: u ? u.opsi : 'ABCD', answers: S.answers, status: S.status, suggest: S.suggest, key: keyArr(), onTap: (q, L) => {
+        renderLjk($('ljkGrid'), { n, total: lama ? lamaN() : (S.res.geo?.spec?.pg?.questions || 50), rows: lama ? 5 : (S.res.geo?.spec?.pg?.rows || 10), opsi: u ? u.opsi : 'ABCD', answers: S.answers, status: S.status, suggest: S.suggest, key: keyArr(), onTap: (q, L) => {
             S.answers[q] = S.answers[q] === L ? null : L; S.status[q] = S.answers[q] ? 'ok' : 'blank'; S.confirm = false; renderAnswers(); drawEvidence();
         } });
         if (u) { const fl = flagged(); $('saveNote').innerHTML = fl.length ? `<div class="note n-warn">Perlu dicek: nomor ${fl.join(', ')} (kuning).</div>` : ''; }
@@ -1906,9 +1976,9 @@ else root.LJKIdent = LJKIdent;
         const n = S.exam ? S.exam.jumlah : lamaN(), LET = (S.exam ? S.exam.opsi : 'ABCD').split('');
         let ctx, toOut, R, ptsOf;
         if (r.mode === 'marker') {
-            const P = SPEC.pg, geo = r.geo, mapper = LJKEngine.mmMapper(geo);
+            const geo = r.geo, spec = geo.spec, P = spec.pg, mapper = LJKEngine.mmMapper(geo);
             if (ly.view === 'rect') {
-                const rc = LJKEngine.rectifyMM(S.lastImage, geo, SPEC.regions.view, 1000);
+                const rc = LJKEngine.rectifyMM(S.lastImage, geo, spec.regions.view, 1000);
                 ctx = putGray(cv, rc.w, rc.h, rc.data); toOut = (u, v) => rc.toOut(u, v); R = P.r * rc.k;
             } else {
                 const f = Math.min(1, 1000 / dbg.W);
@@ -1917,11 +1987,11 @@ else root.LJKIdent = LJKIdent;
                 toOut = (u, v) => { const p = mapper(u, v); return { x: p.x * f, y: p.y * f }; }; R = P.r * geo.pxPerMm * f;
                 // tepi halaman + marker
                 ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.beginPath();
-                [[0, 0], [SPEC.page.w, 0], [SPEC.page.w, SPEC.page.h], [0, SPEC.page.h]].forEach((c, i) => { const p = geo.H.fwd(c[0], c[1]); i ? ctx.lineTo(p.x * f, p.y * f) : ctx.moveTo(p.x * f, p.y * f); }); ctx.closePath(); ctx.stroke();
+                [[0, 0], [spec.page.w, 0], [spec.page.w, spec.page.h], [0, spec.page.h]].forEach((c, i) => { const p = geo.H.fwd(c[0], c[1]); i ? ctx.lineTo(p.x * f, p.y * f) : ctx.moveTo(p.x * f, p.y * f); }); ctx.closePath(); ctx.stroke();
                 ctx.fillStyle = '#38bdf8'; (dbg.markers || []).forEach(m => ctx.fillRect(m.x * f - 5, m.y * f - 5, 10, 10));
                 if (ly.circ) { ctx.strokeStyle = '#e879f9'; ctx.lineWidth = 1; (dbg.cands || []).forEach(c => { ctx.beginPath(); ctx.arc(c.x * f, c.y * f, c.r * f, 0, 6.3); ctx.stroke(); }); }
             }
-            ptsOf = (q, o) => { const b = LJKSpec.bubbleMM(q, o); return toOut(b.x, b.y); };
+            ptsOf = (q, o) => { const b = LJKSpec.bubbleMM(q, o, spec); return toOut(b.x, b.y); };
             if (ly.kisi) {   // garis baris & kolom melalui pusat bulatan (mengikuti lengkung kertas di "Foto asli")
                 ctx.strokeStyle = '#facc15aa'; ctx.lineWidth = Math.max(1, R / 5);
                 for (let rr = 0; rr < P.rows; rr++) { ctx.beginPath(); let first = true; for (let b = 0; b < P.blocks; b++) for (let o = 0; o < LET.length; o++) { const q = b * P.rows + rr, p = ptsOf(q, o); first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); first = false; } ctx.stroke(); }
@@ -2225,11 +2295,12 @@ else root.LJKIdent = LJKIdent;
     }
 
     // ------------------------------------------------------------ cetak
-    function openPrint(i) { S.exam = S.data.ujian[i]; $('prTitle').innerHTML = 'Cetak LJK<span class="sub">' + esc(S.exam.nama) + '</span>'; $('prVar').value = S.exam.opsi !== 'ABCD' ? S.exam.opsi : S.exam.jumlah <= 20 ? 'LAMA20' : S.exam.jumlah <= 25 ? 'LAMA25' : 'ABCD'; renderPrint(); go('print'); }
+    function openPrint(i) { S.exam = S.data.ujian[i]; $('prTitle').innerHTML = 'Cetak LJK<span class="sub">' + esc(S.exam.nama) + '</span>'; $('prVar').value = S.exam.opsi !== 'ABCD' ? S.exam.opsi : S.exam.jumlah <= 25 ? 'MARKER25' : 'ABCD'; renderPrint(); go('print'); }
     function renderPrint() {
         const sk = (S.config && S.config.sekolah) || {}, u = S.exam;
         const v = $('prVar').value, ex = { judul: u ? u.nama.toUpperCase() : '', mapel: u ? u.mapel : '', tahun: sk.tahun };
         const svg = v === 'LAMA20' || v === 'LAMA25' ? LJKTemplate.renderLJKLama({ questions: v === 'LAMA25' ? 25 : 20, school: { nama: sk.nama, logo: sk.logo }, exam: ex })
+            : v === 'MARKER25' ? LJKTemplate.renderLJK25({ school: { nama: sk.nama, logo: sk.logo }, exam: ex })
             : LJKTemplate.renderLJK({ variant: v, school: { nama: sk.nama, logo: sk.logo }, exam: ex });
         $('prPreview').innerHTML = svg.replace(/width="215mm" height="330mm"/, 'width="100%"');
         const n = Math.max(1, Math.min(60, Number($('prCopies').value) || 1));

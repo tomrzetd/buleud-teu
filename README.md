@@ -10,7 +10,7 @@ Buleud Teu memindai dan mengoreksi LJK pilihan ganda dengan kamera HP. Aplikasi 
 | `android/` | Aplikasi Android native (Kotlin, Jetpack Compose, CameraX, OpenCV, ML Kit) |
 | `desktop/` | Aplikasi PC **Windows 10/11 x64 & Linux x64** untuk scanner **ADF** (pindai massal satu tumpukan LJK) |
 | `apps-script/` | Backend Google Sheet: data sekolah, guru, siswa, ujian, hasil, analisis butir, dan bank soal |
-| `templates/` | Template LJK F4 siap cetak: bermarker 50 soal **ABCD** (SD–SMP) / **ABCDE** (SMA), dan **tanpa marker 20 / 25 soal ABCD** (tata letak LJK PSAS lama) |
+| `templates/` | Template F4 bermarker **25 soal ABCD (5×5, esai polos)** dan 50 soal ABCD/ABCDE; juga template lama tanpa marker 20/25. Generator `node tools/render_templates.js 200`. |
 | (unduh) | **APK Android untuk guru:** https://github.com/tomrzetd/buleud-teu/releases/latest/download/BuleudTeu.apk |
 | `docs/` | **[Panduan lengkap](docs/PANDUAN.md)**: persiapan database, penamaan kelas & mapel SMP, template LJK, scan, laporan, pemecahan masalah |
 | `spec/` | Geometri LJK F4 (sumber tunggal untuk web, Android, dan template) |
@@ -22,6 +22,26 @@ Buleud Teu memindai dan mengoreksi LJK pilihan ganda dengan kamera HP. Aplikasi 
 2. **LJK lama tanpa marker (20 soal 4 kolom × 5 baris, atau 25 soal 5 kolom × 5 baris; dikenali otomatis).** Posisi jawaban disimpulkan dari pola bulatan itu sendiri (inferensi kisi + homografi).
 
 Keputusan jawaban di kedua mode bersifat **relatif per lembar**: tingkat "kosong" dan "terisi" diukur dari lembar itu sendiri. Hasilnya tahan terhadap bayangan dan pensil tipis. Isian ganda, isian tipis, dan bekas hapusan ditandai **kuning** untuk dicek guru, bukan dipilih diam-diam.
+
+## Baru: LJK bermarker 25 soal ABCD (5 kolom × 5 baris)
+
+Formulir baru `F4-25-ABCD-v1` menampilkan **1–5, 6–10, 11–15,
+16–20, 21–25** dan seluruh area di bawahnya tersedia untuk esai **tanpa
+garis/kolom nilai/paraf**. Semua marker dan tiga area OCR tetap pada posisi
+`F4-50-v1`. Web, Android, dan desktop melakukan pemilihan kisi 25/50
+secara otomatis saat memindai lembar bermarker.
+
+**Panjang kunci di Google Spreadsheet tetap sumber jumlah soal aktif.**
+Misalnya ujian Informatika memiliki 20 kunci, sementara formulir mencetak
+25 bulatan: hanya nomor **1–20** dinilai; 21–25 ditampilkan nonaktif
+pada hasil digital. Template 50 ABCD/ABCDE lama tetap bisa dibaca.
+
+- **Android:** tombol cetak PDF vektor 25 soal tersedia di beranda dan
+  kartu ujian ABCD ≤25 soal; memakai logo/nama/tahun dari konfigurasi.
+- **Web:** Cetak LJK otomatis memilih formulir 25 bermarker bila jumlah
+  soal ABCD ≤25, tetapi opsi 50 dan tanpa marker tetap tersedia.
+- **Pengujian:** `node tools/test/test_marker25.js`, serta suite lama.
+- **Detail geometri dan panduan cetak:** [docs/LJK_MARKER_25.md](docs/LJK_MARKER_25.md).
 
 ## Hasil pengujian
 

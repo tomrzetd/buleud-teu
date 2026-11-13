@@ -35,6 +35,20 @@
         }
     };
 
+    // Formulir bermarker 25 soal: marker + identitas SAMA dengan F4-50-v1,
+    // tetapi 5 blok x 5 baris. PG berakhir pada y=155 mm, esai di bawah.
+    const SPEC25 = {
+        id: 'F4-25-ABCD-v1',
+        page: SPEC.page,
+        markers: SPEC.markers,
+        ident: SPEC.ident,
+        pg: Object.assign({}, SPEC.pg, {
+            questions: 25, blocks: 5, rows: 5,
+            frame: [15, 104, 200, 155]
+        }),
+        regions: { view: [12, 14, 203, 164], ident: SPEC.regions.ident }
+    };
+
     const LETTERS = 'ABCDE';
     // posisi pusat bulatan soal q (0-based) opsi o (0=A) dalam mm
     function bubbleMM(q, o, spec = SPEC) {
@@ -47,7 +61,7 @@
         return { x: f.x, y: f.y, w: f.n * f.cw, h: f.h };
     }
 
-    const api = { SPEC, LETTERS, bubbleMM, combRect };
+    const api = { SPEC, SPEC25, LETTERS, bubbleMM, combRect };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKSpec = api;
 })(typeof self !== 'undefined' ? self : this);
