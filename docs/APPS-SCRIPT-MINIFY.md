@@ -31,10 +31,15 @@ node tools/minify_gas.js
 
 File hasil: `apps-script/dist/BuleudTeu_deploy_min.gs`.
 
-Untuk sekolah, lebih praktis unduh **artifact**
-`buleud-teu-apps-script-minified` dari
-**GitHub Actions → Uji engine & Apps Script** yang sudah hijau.
-Artifact hanya diterbitkan setelah suite uji source ter-minify lulus.
+Untuk sekolah, lebih praktis lewat **GitHub Actions → Apps Script -
+Paket Distribusi Minified → Run workflow** (workflow akan tersedia di menu
+Actions setelah masuk branch default). Unduh artifact
+`BuleudTeu-AppsScript-Siap-Tempel` pada run yang hijau.
+
+Jalur CI reguler **Uji engine & Apps Script** juga melampirkan artifact
+`buleud-teu-apps-script-minified` setelah **seluruh** regresi lulus.
+Tidak ada server baru, tidak ada npm library yang perlu dipasang ke Apps
+Script. Dependensi Terser hanya digunakan ketika build di PC/Actions.
 
 ## Apa yang diuji otomatis
 
