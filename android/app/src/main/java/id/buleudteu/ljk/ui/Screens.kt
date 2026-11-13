@@ -237,7 +237,7 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                 Text(sc?.second?.let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() } ?: "${vm.answers.count { it != null }}", color = Color.White, fontSize = 52.sp, fontWeight = FontWeight.Black)
                 Text(sc?.let { "${it.first} benar dari ${u!!.jumlah} soal" } ?: "jawaban terbaca (tanpa kunci)", color = TX2)
                 val q = r.quality
-                Text("Kualitas foto ${q?.grade ?: "-"} · ${q?.score ?: "-"}   ·   ${if (r.mode == "marker") "Mode marker F4" else "Tanpa marker"}", color = if (q?.grade == "A") OK else WARN, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                Text("Kualitas foto ${q?.grade ?: "-"} · ${q?.score ?: "-"}   ·   ${if (r.mode == "marker") "Marker ${r.geo?.layout?.id ?: "F4"}" else "Tanpa marker"}", color = if (q?.grade == "A") OK else WARN, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 r.warnings.forEach { Note(it) }
             }
             if (u != null) Card {
@@ -278,7 +278,12 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
             }
             Card {
                 Text("LJK digital — ketuk bulatan untuk koreksi", color = TX2, fontSize = 12.sp)
-                LjkDigital(u?.jumlah ?: vm.lamaN(), u?.opsi ?: "ABCD", vm.answers, u?.kunci, vm.status, r.suggest, if (r.mode == "marker") 10 else 5, if (r.mode == "marker") 50 else vm.lamaN()) { q, l -> vm.tapAnswer(q, l) }
+                val printRows = if (r.mode == "marker") r.geo?.layout?.ROWS ?: 10 else 5
+                val printCapacity = if (r.mode == "marker") r.geo?.layout?.QUESTIONS ?: 50 else vm.lamaN()
+                if (u != null && u.jumlah < printCapacity) {
+                    Text("Kunci ujian: ${u.jumlah} soal aktif dari ${printCapacity} kotak pada formulir. Nomor sisanya tidak dinilai.", color = TX2, fontSize = 12.sp)
+                }
+                LjkDigital(u?.jumlah ?: vm.lamaN(), u?.opsi ?: "ABCD", vm.answers, u?.kunci, vm.status, r.suggest, printRows, printCapacity) { q, l -> vm.tapAnswer(q, l) }
             }
             if (r.mode == "marker") Card {
                 Text("Bukti deteksi", color = TX2, fontSize = 12.sp)
@@ -303,22 +308,22 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
     if (!foto) {
         val rc = LjkEngine.rectifyView(img, geo, 1000)
         bmp = Bitmap.createBitmap(rc.argb, rc.w, rc.h, Bitmap.Config.ARGB_8888).copy(Bitmap.Config.ARGB_8888, true)
-        map = { a, b -> val p = rc.toOut(a, b); p.x.toFloat() to p.y.toFloat() }; rad = (LjkSpec.R * rc.k).toFloat()
+        map = { a, b -> val p = rc.toOut(a, b); p.x.toFloat() to p.y.toFloat() }; rad = (geo.layout.R * rc.k).toFloat()
     } else {
         val g = r.gray ?: return null; val f = minOf(1.0, 1000.0 / g.w)
         val w = (g.w * f).toInt(); val h = (g.h * f).toInt(); val px = IntArray(w * h)
         for (y in 0 until h) for (x in 0 until w) { val v = g.g[minOf(g.h - 1, (y / f).toInt()) * g.w + minOf(g.w - 1, (x / f).toInt())]; px[y * w + x] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v }
         bmp = Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888).copy(Bitmap.Config.ARGB_8888, true)
-        map = { a, b -> val p = geo.map(a, b); (p.x * f).toFloat() to (p.y * f).toFloat() }; rad = (LjkSpec.R * geo.pxPerMm * f).toFloat()
+        map = { a, b -> val p = geo.map(a, b); (p.x * f).toFloat() to (p.y * f).toFloat() }; rad = (geo.layout.R * geo.pxPerMm * f).toFloat()
     }
     val c = android.graphics.Canvas(bmp); val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     if (kisi) {
         paint.color = 0xAAFACC15.toInt(); paint.strokeWidth = maxOf(1f, rad / 5)
-        for (row in 0 until LjkSpec.ROWS) { var prev: Pair<Float, Float>? = null; for (b in 0 until LjkSpec.BLOCKS) for (o in 0 until nOpt) { val m = LjkSpec.bubbleMM(b * 10 + row, o); val p = map(m.x, m.y); prev?.let { c.drawLine(it.first, it.second, p.first, p.second, paint) }; prev = p } }
+        for (row in 0 until geo.layout.ROWS) { var prev: Pair<Float, Float>? = null; for (b in 0 until geo.layout.BLOCKS) for (o in 0 until nOpt) { val m = geo.layout.bubbleMM(b * geo.layout.ROWS + row, o); val p = map(m.x, m.y); prev?.let { c.drawLine(it.first, it.second, p.first, p.second, paint) }; prev = p } }
     }
     val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFF43F5E.toInt(); textSize = maxOf(9f, rad); textAlign = Paint.Align.CENTER }
     for (q in 0 until n) for (o in 0 until nOpt) {
-        val m = LjkSpec.bubbleMM(q, o); val p = map(m.x, m.y); val l = LjkSpec.LETTERS[o]
+        val m = geo.layout.bubbleMM(q, o); val p = map(m.x, m.y); val l = LjkSpec.LETTERS[o]
         val st = vm.status.getOrNull(q); val a = vm.answers.getOrNull(q); val k = u?.kunci?.getOrNull(q)
         val col = when { (st == "double" || st == "weak") && (r.suggest.getOrNull(q) ?: "").contains(l) -> 0xFFF59E0B.toInt(); a == l -> if (k == null || k == l) 0xFF16A34A.toInt() else 0xFFDC2626.toInt(); else -> 0x553B82F6 }
         paint.color = col; paint.strokeWidth = if (col == 0x553B82F6) 1f else maxOf(2f, rad / 3)
