@@ -36,7 +36,7 @@ for (const [k, nm] of siswa.filter(s => s[0] !== '8A')) {
 }
 const ulang = POST({ action: 'save', token: tok, examId, siswa: { nama: 'SISWA 7A 01', kelas: '7A' }, answers: [...KEY] });
 assert.strictEqual(ulang.skor, 100);
-assert.strictEqual(ss.getSheetByName('HasilScan').getLastRow(), 52);
+assert.strictEqual(ss.getSheetByName('HasilScan').getLastRow(), 51);
 // analisis per tingkat & per kelas
 const t = POST({ action: 'analyze', token: tok, examId, lingkup: 'tingkat' });
 assert.strictEqual(t.result, 'success'); assert.strictEqual(t.ringkasan.n, 50, 'scan ulang tidak dihitung dua kali'); assert.strictEqual(t.ringkasan.k, 40);
