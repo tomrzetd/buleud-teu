@@ -97,6 +97,10 @@ assert.ok(!/SISWA 7A/.test(isi), 'nama siswa tidak boleh muncul'); assert.ok(/Pe
 assert.ok(/Belum ada hasil scan/.test(POST({ action: 'report', token: tokN, examId, lingkup: 'kelas', kelas: '8A' }).error));
 assert.ok(POST({ action: 'report', token: 'palsu', examId }).auth);
 // 5) skor seragam (screenshot pengguna): r pbis / KR-20 jika dihapus tidak boleh -1 / negatif palsu
+// Operator memberi tugas 8A kepada guru sebelum tes ini, untuk memenuhi
+// pembatasan roster berdasarkan penugasan guru di backend.
+ss.getSheetByName('Guru').getRange(2, 5).setValue('7A, 7B, 8A');
+ctx.ROWS_CACHE_ = {};
 const kU = POST({ action: 'saveExam', token: tokN, exam: { nama: 'UH SERAGAM', mapel: 'IPA', kelas: ['8A'], opsi: 'ABCD', kunci: 'ABAB' } }).id;
 for (const nm of ['S1', 'S2', 'S3', 'S4']) ss.getSheetByName('Siswa').appendRow(['99' + nm, '', '', nm, '8A', '', 'L']);
 for (const [nm, a] of [['S1', 'ABCC'], ['S2', 'CBAC'], ['S3', 'CCAB'], ['S4', 'AAAA']]) POST({ action: 'save', token: tokN, examId: kU, siswa: { nama: nm, kelas: '8A' }, answers: [...a] });
