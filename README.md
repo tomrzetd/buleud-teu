@@ -16,6 +16,8 @@ Buleud Teu memindai dan mengoreksi LJK pilihan ganda dengan kamera HP. Aplikasi 
 | `spec/` | Geometri LJK F4 (sumber tunggal untuk web, Android, dan template) |
 | `tools/` | Generator template, generator foto uji, dan semua pengujian |
 
+**Skema database administrasi sekolah:** [Tingkat Pendidikan + Nama Rombel (Dapodik v2)](docs/SCHEMA-DAPODIK-V2.md). Android, desktop dan PWA memakai kode rombel stabil seperti `8A`; rumus statistik serta geometri marker tidak diubah.
+
 ## Dua mode pemindaian
 
 1. **LJK F4 dengan marker sudut (mode utama).** Empat kotak hitam di sudut ditambah dua marker tengah membuat geometri halaman pasti. Penanda arah membuat LJK yang terbalik atau menyamping tetap terbaca. Setiap blok soal lalu disetel ulang dari bulatan yang terdeteksi, sehingga kertas yang melengkung tetap presisi.
@@ -65,8 +67,8 @@ Semua pengujian ada di `tools/test/` dan bisa dijalankan ulang.
 4. Simpan. Pilih fungsi **`setup`**, lalu **Jalankan** dan setujui izinnya. Sheet `Sekolah`, `Guru`, `Siswa`, `Ujian`, `HasilScan`, dan `BankSoal` akan dibuat.
 5. Isi datanya:
    - **Sekolah:** nama, NPSN, jenjang (SD/SMP/SMA), tahun pelajaran, dan ID file logo di Google Drive.
-   - **Guru:** nama, PIN 4 digit, mapel yang diampu, kelas yang diampu, dan Aktif = Ya.
-   - **Siswa:** NISN, NIS, Nomor Peserta, Nama, Kelas (bisa ditempel dari ekspor Dapodik).
+   - **Guru:** nama, PIN, mata pelajaran, **Tingkat/Rombel Diampu** (mis. `8A,8B,9`), dan Aktif = Ya.
+   - **Siswa:** NISN, NIS, Nomor Peserta, Nama, **Tingkat Pendidikan** (mis. `8`) dan **Nama Rombel** (mis. `8A`).
 6. Klik **Terapkan → Deployment baru → Aplikasi web**, dengan *Jalankan sebagai: **Saya*** dan *Akses: **Siapa saja***. Salin URL yang berakhiran `/exec`.
    - Akun `belajar.id` kadang tidak menyediakan pilihan "Siapa saja" karena dibatasi admin domain. Kalau begitu, pasang di akun Gmail biasa.
 7. Setiap kali kode diubah, buka **Kelola deployment → Edit → Versi baru**.
