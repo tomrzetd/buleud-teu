@@ -499,6 +499,25 @@
         return ret;
     }
 
+    // Auto-layout F4 bermarker 25 (5x5) / 50 (5x10), dengan marker identik.
+    // Kapasitas kertas TIDAK mengubah panjang kunci ujian dalam database.
+    function processMarkerAuto(img, opt = {}) {
+        const standard = processMarker(img, Object.assign({}, opt, { spec: SpecMod.SPEC }));
+        if (opt.options === 5 || (opt.active || 50) > 25) return standard;
+        const compact = processMarker(img, Object.assign({}, opt, { spec: SpecMod.SPEC25 }));
+        if (!compact.success) return standard;
+        if (!standard.success) return compact;
+        const mmCircles = (standard.debug.cands || []).map(c => standard.geo.H.inv(c.x, c.y));
+        let extra = 0;
+        for (let b = 0; b < 5; b++) for (let row = 5; row < 10; row++) for (let o = 0; o < 4; o++) {
+            const p = SpecMod.bubbleMM(b * 10 + row, o, SpecMod.SPEC);
+            if (mmCircles.some(c => Math.hypot(c.x - p.x, c.y - p.y) < 1.1)) extra++;
+        }
+        const selected = extra >= 18 ? standard : compact;
+        selected.logs.push('Auto-layout: ' + selected.geo.spec.id + ', bulatan baris 6-10: ' + extra + '/100');
+        return selected;
+    }
+
     // deteksi marker cepat (preview kamera, ~640 px): kembalikan 4 sudut dalam koordinat gambar asli
     function detectMarkersFast(img, opt = {}) {
         const spec = opt.spec || SpecMod.SPEC;
@@ -848,7 +867,7 @@
         return out;
     }
 
-    const api = { LEGACY_LAYOUTS, processMarker, processMarkerless, processMarkerlessAuto, legacyCue, rotateImg, shrinkImg, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
+    const api = { LEGACY_LAYOUTS, processMarker, processMarkerAuto, processMarkerless, processMarkerlessAuto, legacyCue, rotateImg, shrinkImg, detectMarkersFast, rectifyMM, rectifyLattice, identLattice, identityStrips, sampleRect, mmMapper, decide, _internal: { toGray, adaptiveThreshold, components, solidSquares, fitHomography, darkness } };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKEngine = api;
 })(typeof self !== 'undefined' ? self : this);
