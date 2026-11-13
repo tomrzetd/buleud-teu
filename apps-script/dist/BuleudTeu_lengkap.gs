@@ -1,4 +1,4 @@
-// ===== Buleud Teu V40 — satu file deploy (Code.gs + Statistik.gs + Laporan.gs), generated =====
+// ===== Buleud Teu V40 — file tunggal (hasil build Code.gs + Statistik.gs + Laporan.gs). Tempel seluruh isi ke Code.gs =====
 
 /*
  * BULEUD TEU — Apps Script V40  ("Buleud teu? Mun buleud, ku urang dipariksa!")
@@ -11,11 +11,11 @@
 var VERSION = 'V40';
 var SH = { SEKOLAH: 'Sekolah', GURU: 'Guru', SISWA: 'Siswa', UJIAN: 'Ujian', HASIL: 'HasilScan', BANK: 'BankSoal' };
 var HEAD = {
-  Guru: ['Nama', 'Email', 'PIN', 'Mapel (pisah koma)', 'Kelas (pisah koma)', 'Aktif'],
-  Siswa: ['NISN', 'NIS', 'Nomor Peserta', 'Nama', 'Kelas', 'Tingkat', 'L/P'],
-  Ujian: ['ID', 'Nama Ujian', 'Mapel', 'Tingkat', 'Kelas', 'Guru', 'Tanggal', 'Opsi', 'Kunci', 'Jumlah Soal', 'KKTP', 'Status', 'Dibuat'],
-  HasilScan: ['Waktu', 'ID Ujian', 'Mapel', 'Tingkat', 'Kelas', 'Nama', 'NISN', 'Nomor Peserta', 'Jawaban', 'Benar', 'Jumlah Soal', 'Skor', 'Ditandai', 'Mode', 'Kualitas', 'Guru', 'ScanID'],
-  BankSoal: ['Kode Soal', 'Mapel', 'Tingkat', 'Lingkup', 'ID Ujian', 'Nama Ujian', 'No', 'Kunci', 'N', 'P', 'TK', 'D', 'DP', 'r pbis', 'r tabel', 'Valid', 'KR20 jika dihapus', 'Pengecoh Berfungsi', 'Pengecoh Mati', 'Rekomendasi', 'Alasan', 'Tanggal Analisis', 'Status Guru', 'Catatan']
+  Guru: ['Nama', 'Email', 'PIN', 'Mapel (pisah koma)', 'Tingkat/Rombel Diampu (pisah koma)', 'Aktif'],
+  Siswa: ['NISN', 'NIS', 'Nomor Peserta', 'Nama', 'Tingkat Pendidikan', 'Nama Rombel', 'L/P'],
+  Ujian: ['ID', 'Nama Ujian', 'Mapel', 'Tingkat Pendidikan', 'Nama Rombel', 'Guru', 'Tanggal', 'Opsi', 'Kunci', 'Jumlah Soal', 'KKTP', 'Status', 'Dibuat'],
+  HasilScan: ['Waktu', 'ID Ujian', 'Mapel', 'Tingkat Pendidikan', 'Nama Rombel', 'Nama', 'NISN', 'Nomor Peserta', 'Jawaban', 'Benar', 'Jumlah Soal', 'Skor', 'Ditandai', 'Mode', 'Kualitas', 'Guru', 'ScanID'],
+  BankSoal: ['Kode Soal', 'Mapel', 'Tingkat Pendidikan', 'Lingkup', 'ID Ujian', 'Nama Ujian', 'No', 'Kunci', 'N', 'P', 'TK', 'D', 'DP', 'r pbis', 'r tabel', 'Valid', 'KR20 jika dihapus', 'Pengecoh Berfungsi', 'Pengecoh Mati', 'Rekomendasi', 'Alasan', 'Tanggal Analisis', 'Status Guru', 'Catatan']
 };
 var SEKOLAH_KEYS = ['Nama Sekolah', 'NPSN', 'Jenjang (SD/SMP/SMA/SMK)', 'Alamat', 'Kota/Kabupaten', 'Kepala Sekolah', 'NIP Kepala Sekolah', 'Tahun Pelajaran', 'Logo (ID file Google Drive)', 'License'];
 
@@ -37,7 +37,16 @@ function rows_(name) {
   if (lr < 2) return [];
   var head = s.getRange(1, 1, 1, lc).getDisplayValues()[0];
   return (ROWS_CACHE_[name] = s.getRange(2, 1, lr - 1, lc).getDisplayValues().map(function (r, i) {
-    var o = { _row: i + 2 }; head.forEach(function (h, j) { o[h] = String(r[j] == null ? '' : r[j]).trim(); }); return o;
+    var o = { _row: i + 2 };
+    head.forEach(function (h, j) { o[h] = String(r[j] == null ? '' : r[j]).trim(); });
+    // ALIAS BACA, bukan memindahkan data. Engine statistik, laporan, API lama,
+    // Android, x86 dan PWA tetap memakai kode internal kelas '8A'.
+    if (name === SH.GURU) o['Kelas (pisah koma)'] = o['Tingkat/Rombel Diampu (pisah koma)'] || o['Kelas (pisah koma)'] || '';
+    if (name === SH.UJIAN || name === SH.HASIL || name === SH.BANK) {
+      o['Tingkat'] = o['Tingkat Pendidikan'] || o['Tingkat'] || '';
+      if (name !== SH.BANK) o['Kelas'] = o['Nama Rombel'] || o['Kelas'] || '';
+    }
+    return o;
   }));
 }
 function splitList_(s) { return String(s || '').split(/[,;]/).map(function (x) { return x.trim().toUpperCase(); }).filter(String); }
@@ -168,19 +177,64 @@ function getUjian_(id) {
   return ujianRow_(r);
 }
 /**
- * Sheet Siswa yang diimpor Dapodik kadang memakai:
- *   Kelas = 8, Tingkat = A  -> rombel 8A, tingkat akademik 8
- * atau format normal:
- *   Kelas = 8A, Tingkat = 8 -> rombel 8A, tingkat akademik 8.
- * Tidak mengubah sel database yang sudah ada.
+ * Dapodik: Tingkat Pendidikan (1–12) + Nama Rombel (7A, VIII-A,
+ * X IPA 1, dll). Kode JSON `kelas` tetap adalah nama rombel penuh,
+ * untuk menjaga engine scan, OCR, status terscan, nilai dan statistik.
+ *
+ * Baca tiga struktur: v2 Dapodik, v1 terbalik (Kelas=8,Tingkat=A),
+ * dan v1 normal (Kelas=8A,Tingkat=8). Tidak menebak kelas yang ambigu.
  */
+function tingkatKode_(raw) {
+  var t = String(raw == null ? '' : raw).trim().toUpperCase();
+  if (/^(1[0-2]|[1-9])$/.test(t)) return t;
+  var n = typeof tingkatDariKelas === 'function' ? tingkatDariKelas(t) : null;
+  return n >= 1 && n <= 12 ? String(n) : '';
+}
+function rombelKode_(raw, grade) {
+  var r = String(raw == null ? '' : raw).trim().toUpperCase();
+  if (!r) return '';
+  // 8 A / 8-A / 8.A -> 8A, khusus penamaan sederhana.
+  var m = r.match(/^(1[0-2]|[1-9])[\s.\-]+([A-Z]{1,2})$/);
+  if (m) r = m[1] + m[2];
+  // Nama Rombel 'A' pada ekspor lama dapat dibaca dengan tingkat tegas.
+  if (/^[A-Z]{1,2}$/.test(r) && grade) return grade + r;
+  return r;
+}
 function siswaInfo_(s) {
-  var raw = String(s['Kelas'] || '').toUpperCase().replace(/\s+/g, '');
-  var other = String(s['Tingkat'] || '').toUpperCase().replace(/\s+/g, '');
-  var grade = (/^(7|8|9|10|11|12)/.exec(raw) || [])[1] || '';
-  var kelas = /^(7|8|9|10|11|12)$/.test(raw) && /^[A-Z]{1,2}$/.test(other) ? raw + other : raw;
-  return { nama: String(s['Nama'] || '').toUpperCase(), kelas: kelas,
-    nomor: s['Nomor Peserta'], nisn: s['NISN'], tingkat: grade || other };
+  var isV2 = Object.prototype.hasOwnProperty.call(s, 'Tingkat Pendidikan') ||
+    Object.prototype.hasOwnProperty.call(s, 'Nama Rombel');
+  var grade = '', kelas = '';
+  if (isV2) {
+    var primary = String(s['Tingkat Pendidikan'] || '').trim().toUpperCase();
+    var secondary = String(s['Nama Rombel'] || '').trim().toUpperCase();
+    // Graceful import: data CSV lawas kadang sudah punya E=8A F=8,
+    // walaupun header baru. Hasil tetap 8A, bukan kelas '8'.
+    if (!secondary && primary && !/^(1[0-2]|[1-9])$/.test(primary)) {
+      // CSV lama sering hanya mengisi nama kelas lengkap E=7A, F kosong.
+      grade = tingkatKode_(primary); kelas = rombelKode_(primary, grade);
+    } else if (!/^(1[0-2]|[1-9])$/.test(primary) &&
+        /^(1[0-2]|[1-9])$/.test(secondary) &&
+        tingkatKode_(primary) === secondary) {
+      grade = secondary;
+      kelas = rombelKode_(primary, grade);
+    } else {
+      grade = tingkatKode_(primary);
+      kelas = rombelKode_(secondary, grade);
+      if (!grade && kelas) grade = tingkatKode_(kelas);
+    }
+  } else {
+    var a = String(s['Kelas'] || '').trim().toUpperCase();
+    var b = String(s['Tingkat'] || '').trim().toUpperCase();
+    if (/^(1[0-2]|[1-9])$/.test(a) && /^[A-Z]{1,2}$/.test(b)) {
+      grade = a; kelas = a + b;
+    } else {
+      kelas = rombelKode_(a, '');
+      grade = tingkatKode_(b) || tingkatKode_(kelas);
+    }
+  }
+  return { nama: normNama_(s['Nama']), kelas: kelas, rombel: kelas,
+    nomor: s['Nomor Peserta'], nisn: s['NISN'],
+    tingkat: grade, tingkatPendidikan: grade };
 }
 /** Kode lama "8" berarti seluruh rombel tingkat 8; "8A" hanya 8A. */
 function cocokKelas_(kelasList, s) {
@@ -194,7 +248,7 @@ function siswaUntuk_(kelasList, tingkat) {
   var all = !kelasList || !kelasList.length || kelasList.indexOf('SEMUA') >= 0;
   return rows_(SH.SISWA).map(siswaInfo_).filter(function (s) {
     return cocokKelas_(kelasList, s) && (!all || !tingkat || s.tingkat === String(tingkat));
-  }).filter(function (s) { return !!s.nama; });
+  }).filter(function (s) { return !!s.nama && !!s.kelas && !!s.tingkat; });
 }
 /** 5 nama sintetis, tidak pernah mengambil roster asli saat status Demo. */
 function siswaDemo_(g) {
@@ -494,6 +548,37 @@ function onOpen() {
     .addToUi();
 }
 
+/**
+ * Migrasi deterministik skema siswa 2026 (A..G tidak bergeser).
+ * Kelas lama 8 + Tingkat A -> Tingkat Pendidikan 8 + Nama Rombel 8A.
+ * TIDAK mengubah NISN/NIS/Nomor Peserta/Nama atau nilai scan.
+ * Jika ada baris ambigu, batalkan sebelum menulis satu sel pun.
+ */
+function migrasiSiswaDapodik_() {
+  var sh = doc_().getSheetByName(SH.SISWA);
+  if (!sh || sh.getLastRow() < 2) return { berubah: 0 };
+  var header = sh.getRange(1, 5, 1, 2).getDisplayValues()[0];
+  if (header[0] === 'Tingkat Pendidikan' && header[1] === 'Nama Rombel') return { berubah: 0 };
+  if (header[0] !== 'Kelas' || header[1] !== 'Tingkat') throw new Error('Header Siswa E:F tidak dikenali; migrasi dibatalkan demi keamanan.');
+  var awal = sh.getRange(2, 5, sh.getLastRow() - 1, 2).getDisplayValues();
+  var baru = [], salah = [];
+  awal.forEach(function (row, i) {
+    var k = String(row[0] || '').trim().toUpperCase();
+    var t = String(row[1] || '').trim().toUpperCase();
+    if (!k && !t) { baru.push(['','']); return; }
+    var grade = '', rombel = '';
+    if (/^(1[0-2]|[1-9])$/.test(k) && /^[A-Z]{1,2}$/.test(t)) {
+      grade = k; rombel = k + t;
+    } else if (tingkatKode_(t) && tingkatKode_(k) === tingkatKode_(t) && !/^(1[0-2]|[1-9])$/.test(k)) {
+      grade = tingkatKode_(t); rombel = rombelKode_(k,grade);
+    } else { salah.push(i + 2); baru.push([k,t]); return; }
+    baru.push([grade,rombel]);
+  });
+  if (salah.length) throw new Error('Migrasi dibatalkan: rombel ambigu pada baris siswa ' + salah.slice(0,20).join(', ') + '. Tidak ada data diubah.');
+  sh.getRange(2, 5, baru.length, 2).setValues(baru);
+  return { berubah: baru.filter(function (r) { return r[0] && r[1]; }).length };
+}
+
 function setup() {
   var P = PropertiesService.getScriptProperties(), lama = P.getProperty('SHEET_ID'), aktif = null;
   try { aktif = SpreadsheetApp.getActiveSpreadsheet(); } catch (e) {}
@@ -508,6 +593,8 @@ function setup() {
   Logger.log('Setup pada spreadsheet: ' + d.getName() + ' (' + d.getId() + ')');
   var s = d.getSheetByName(SH.SEKOLAH);
   if (!s) { s = d.insertSheet(SH.SEKOLAH, 0); s.getRange(1, 1, SEKOLAH_KEYS.length, 2).setValues(SEKOLAH_KEYS.map(function (k) { return [k, '']; })); s.getRange(1, 1, SEKOLAH_KEYS.length, 1).setFontWeight('bold'); s.setColumnWidth(1, 230); s.setColumnWidth(2, 360); }
+  // Harus dilakukan SEBELUM mengganti nama header. Tidak melanjutkan jika ambigu.
+  migrasiSiswaDapodik_();
   Object.keys(HEAD).forEach(function (name) {
     var sh = d.getSheetByName(name);
     if (!sh) { sh = d.insertSheet(name); }
