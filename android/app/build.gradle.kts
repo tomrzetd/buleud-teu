@@ -57,6 +57,7 @@ dependencies {
     implementation("org.opencv:opencv:4.10.0")                       // deteksi marker real-time di preview kamera
     implementation("com.google.mlkit:text-recognition:16.0.1")       // OCR identitas di perangkat (offline)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0")
 }

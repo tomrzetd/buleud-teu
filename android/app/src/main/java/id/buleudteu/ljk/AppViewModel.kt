@@ -8,6 +8,9 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.Observer
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import androidx.lifecycle.viewModelScope
 import id.buleudteu.ljk.data.*
 import id.buleudteu.ljk.engine.ArgbImage
@@ -33,6 +36,7 @@ class ExamDraft(var id: String = "", var nama: String = "", var mapel: String = 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     val store = Store(app)
     val api = Api(store)
+    private val outbox = ScanOutbox(app)
 
     var screen by mutableStateOf(if (store.api.isEmpty()) Screen.SETUP else if (store.token.isEmpty()) Screen.LOGIN else Screen.HOME)
     var toast by mutableStateOf<String?>(null)
@@ -47,6 +51,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var draftMsg by mutableStateOf("")
     var scanMode by mutableStateOf(ScanMode.EXAM)
     var queueSize by mutableStateOf(store.queue().length())
+    var blockedQueueSize by mutableStateOf(0)
+    var otherAccountQueueSize by mutableStateOf(0)
     var loading by mutableStateOf<String?>(null)        // progres ringan (memuat data) di beranda
     // Hanya response "exams" terbaru berhak mengaktifkan UI. Status dari
     // get/config atau SharedPreferences lama tidak boleh menahan aktivasi.
@@ -72,11 +78,57 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var analysis by mutableStateOf<JSONObject?>(null)
     var analysisScope by mutableStateOf("tingkat" to "")
 
+    // UI memantau status WorkManager (tanpa memicu panggilan jaringan baru).
+    private val syncObserver = Observer<List<WorkInfo>> {
+        viewModelScope.launch { updateQueueCounters() }
+    }
+
     init {
         if (store.configJson.isNotEmpty()) runCatching { applyConfig(JSONObject(store.configJson)) }
-        // Roster tersimpan tidak ditampilkan sebelum pemeriksaan lisensi live.
-        // Mode Demo tidak boleh membocorkan roster dari cache saat license dicabut.
-        if (screen == Screen.HOME) loadExams()
+        // Roster dan hak akses adalah snapshot yang diterima dari SERVER pada login sebelumnya.
+        // Ini hanya untuk UI/offline. Server tetap memverifikasi lisensi SETIAP operasi tulis.
+        if (screen == Screen.HOME && store.examsJson.isNotEmpty()) {
+            data = runCatching { Api.exams(JSONObject(store.examsJson)) }.getOrNull()
+            licenseChecked = data != null
+        }
+        WorkManager.getInstance(app).getWorkInfosForUniqueWorkLiveData(ScanSync.WORK_NAME)
+            .observeForever(syncObserver)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { outbox.importLegacy(store) }
+            updateQueueCounters()
+            if (store.token.isNotBlank() && !isDemo && queueSize > 0) {
+                ScanSync.schedule(getApplication())
+            }
+        }
+        // Pada pemasangan baru / cache kosong, ambil roster sekali; bukan pada setiap dashboard.
+        if (screen == Screen.HOME && data == null) loadExams()
+    }
+
+    override fun onCleared() {
+        WorkManager.getInstance(getApplication()).getWorkInfosForUniqueWorkLiveData(ScanSync.WORK_NAME)
+            .removeObserver(syncObserver)
+        outbox.close()
+        super.onCleared()
+    }
+
+    private suspend fun updateQueueCounters() {
+        val endpoint = store.api
+        val teacher = store.guruNama
+        val stats = withContext(Dispatchers.IO) {
+            Triple(outbox.countFor(endpoint, teacher), outbox.blockedFor(endpoint, teacher), outbox.countAll())
+        }
+        queueSize = stats.first
+        blockedQueueSize = stats.second
+        otherAccountQueueSize = (stats.third - stats.first).coerceAtLeast(0)
+    }
+
+    /** Sinkronisasi berjalan di WorkManager, bukan di halaman dashboard. */
+    fun syncPendingScans(retryBlocked: Boolean = false) = viewModelScope.launch {
+        withContext(Dispatchers.IO) {
+            if (retryBlocked) outbox.retryBlocked(store.api, store.guruNama)
+        }
+        updateQueueCounters()
+        if (store.token.isNotBlank() && queueSize > 0) ScanSync.schedule(getApplication(), force = retryBlocked)
     }
 
     fun say(m: String) { toast = m }
@@ -89,6 +141,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val c = api.get("config", u)
             if (c.optString("version") != "V40") throw ApiException("Apps Script masih versi lama. Pasang kode Buleud Teu V40.")
+            if (store.api != u) {
+                // Hak akses dan roster lama tidak berlaku untuk endpoint sekolah baru.
+                store.token = ""
+                store.examsJson = ""
+                data = null
+                licenseChecked = false
+                ScanSync.cancel(getApplication())
+            }
             store.api = u; store.configJson = c.toString(); applyConfig(c); setupMsg = ""; screen = Screen.LOGIN
         } catch (e: Exception) { setupMsg = if (isNetwork(e)) "Tidak bisa dihubungi. Cek internet & akses Web App \"Siapa saja\"." else e.message ?: "Gagal" }
         busy = null
@@ -104,14 +164,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         loginMsg = "Memeriksa…"; busy = "Masuk…"
         try {
             val r = api.post(JSONObject().put("action", "login").put("guru", guru).put("pin", pin).put("token", ""))
-            store.token = r.getString("token"); store.guruNama = guru; loginMsg = ""; screen = Screen.HOME; loadExams()
+            store.token = r.getString("token"); store.guruNama = guru
+            data = null; store.examsJson = ""; licenseChecked = false
+            loginMsg = ""; screen = Screen.HOME
+            syncPendingScans(retryBlocked = true)
+            loadExams()
         } catch (e: Exception) { loginMsg = e.message ?: "Gagal" }
         busy = null
     }
-    fun logout() { store.token = ""; store.examsJson = ""; data = null; screen = Screen.LOGIN }
+    fun logout() {
+        ScanSync.cancel(getApplication())
+        store.token = ""; store.examsJson = ""
+        data = null; licenseChecked = false; screen = Screen.LOGIN
+        // Record lokal TIDAK dihapus agar scan tetap aman sampai akun yang sama login lagi.
+    }
 
     private suspend fun <T> call(block: suspend () -> T): T? = try { block() } catch (e: ApiException) {
-        if (e.auth) { store.token = ""; screen = Screen.LOGIN }; say(e.message ?: "Gagal"); null
+        if (e.auth) {
+            store.token = ""; store.examsJson = ""
+            data = null; licenseChecked = false; screen = Screen.LOGIN
+        }
+        say(e.message ?: "Gagal"); null
     } catch (e: Exception) { say(if (isNetwork(e)) "Offline / server tidak terjangkau" else (e.message ?: "Gagal")); null }
 
     // ---------------- ujian
@@ -122,23 +195,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { update = withContext(Dispatchers.IO) { Updater.cek(getApplication()) } } }
 
     fun loadExams() = viewModelScope.launch {
-        // Jangan tampilkan roster lama selama validasi ke server berjalan.
         if (loading != null) return@launch
-        licenseChecked = false
-        data = null
-        loading = "Memverifikasi koneksi & memuat ujian…"
-        // Refresh konfigurasi dari server lebih dahulu, lalu daftar ujian;
-        // kedua permintaan memakai URL deploy yang sama.
-        val config = call { api.get("config") }
-        if (config != null) {
-            store.configJson = config.toString()
-            applyConfig(config)
-            val response = call { api.post(JSONObject().put("action", "exams")) }
-            if (response != null) {
+        // Jangan reset dashboard ketika server sibuk. Simpan snapshot valid sebelumnya.
+        // Entitlement diambil dari response server pada login / tombol Refresh saja.
+        loading = "Memperbarui daftar ujian…"
+        val response = call { api.post(JSONObject().put("action", "exams")) }
+        if (response != null) {
+            val parsed = runCatching { Api.exams(response) }.getOrNull()
+            if (parsed != null) {
+                data = parsed
                 store.examsJson = response.toString()
-                data = Api.exams(response)
                 licenseChecked = true
-                if (!isDemo) flushQueue()
+                if (!isDemo) syncPendingScans()
             }
         }
         loading = null
@@ -209,7 +277,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (scanMode == ScanMode.KEY) { keyFromScan(r); return@launch }
         r.image?.let { image = it }      // LJK lama yang diputar otomatis: potongan identitas & bukti memakai gambar tegak
         result = r; answers.clear(); answers.addAll(r.answers); status.clear(); status.addAll(r.status)
-        confirmFlags = false; scanId = UUID.randomUUID().toString().take(8); match = null; ocrMsg = ""; selSiswa = ""; nomorOcr = ""
+        confirmFlags = false; scanId = UUID.randomUUID().toString(); match = null; ocrMsg = ""; selSiswa = ""; nomorOcr = ""
         val kelasList = studentsOf(exam).map { it.kelas }.distinct().sorted()
         selKelas = ""; selKelasFilter = if (kelasList.size == 1) kelasList[0] else ""
         screen = Screen.RESULT
@@ -302,49 +370,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun score(): Pair<Int, Double>? { val u = exam ?: return null; var b = 0; for (i in 0 until u.jumlah) if (answers.getOrNull(i) != null && answers[i] == u.kunci[i]) b++; return b to (b * 10000.0 / u.jumlah).roundToInt() / 100.0 }
 
+    /**
+     * Selalu simpan ke SQLite sebelum meninggalkan hasil scan.
+     * Tidak menunggu Google Sheet / Apps Script, juga tidak hilang bila timeout.
+     */
     fun save() = viewModelScope.launch {
-        if (isDemo) { say("Mode DEMO: hasil scan tidak boleh disimpan."); return@launch }
+        if (isDemo) { say("Mode latihan: hasil scan tidak dapat disimpan."); return@launch }
+        if (busy != null) return@launch
         val u = exam ?: return@launch
-        if (selKelas.isEmpty() || selSiswa.isEmpty()) { say("Pilih kelas dan nama siswa dulu"); return@launch }
+        if (selKelas.isEmpty() || selSiswa.isEmpty()) {
+            say("Pilih kelas dan nama siswa dulu"); return@launch
+        }
         val fl = flagged()
-        if (fl.isNotEmpty() && !confirmFlags) { confirmFlags = true; say("Nomor ${fl.joinToString()} perlu dicek. Tekan Simpan sekali lagi untuk tetap menyimpan."); return@launch }
+        if (fl.isNotEmpty() && !confirmFlags) {
+            confirmFlags = true
+            say("Nomor ${fl.joinToString()} perlu dicek. Tekan Simpan sekali lagi untuk tetap menyimpan.")
+            return@launch
+        }
         val st = studentsOf(u).firstOrNull { it.kelas == selKelas && it.nama == selSiswa }
         val q = result?.quality
         val body = JSONObject().put("action", "save").put("examId", u.id)
-            .put("siswa", JSONObject().put("nama", selSiswa).put("kelas", selKelas).put("nomor", st?.nomor?.ifEmpty { null } ?: nomorOcr).put("nisn", st?.nisn ?: ""))
-            .put("answers", JSONArray((0 until u.jumlah).map { (answers.getOrNull(it) ?: '-').toString() })).put("flags", JSONArray(fl))
-            .put("mode", "marker-android").put("quality", (q?.grade ?: "") + (q?.score ?: "")).put("scanId", scanId)
-        busy = "Menyimpan hasil $selSiswa ke database…"
-        try {
-            val r = api.post(body); say("✅ Tersimpan — $selSiswa: ${r.optDouble("skor")} (${r.optInt("benar")}/${r.optInt("jumlah")})")
-        } catch (e: Exception) {
-            if (isNetwork(e)) {
-                val qa = store.queue(); qa.put(body)
-                if (store.setQueue(qa)) { queueSize = qa.length(); say("Offline: disimpan di antrean perangkat, dikirim otomatis nanti") }
-                else say("Offline DAN penyimpanan HP gagal — hasil BELUM tersimpan. Kosongkan ruang lalu simpan lagi.")
-            }
-            else { busy = null; say("Gagal simpan: ${e.message}"); return@launch }
+            .put("siswa", JSONObject().put("nama", selSiswa).put("kelas", selKelas)
+                .put("nomor", st?.nomor?.ifEmpty { null } ?: nomorOcr).put("nisn", st?.nisn ?: ""))
+            .put("answers", JSONArray((0 until u.jumlah).map { (answers.getOrNull(it) ?: '-').toString() }))
+            .put("flags", JSONArray(fl))
+            .put("mode", "marker-android")
+            .put("quality", (q?.grade ?: "") + (q?.score ?: ""))
+            .put("scanId", scanId)
+        busy = "Menyimpan hasil ke perangkat…"
+        val persisted = withContext(Dispatchers.IO) {
+            outbox.enqueue(store.api, store.guruNama, body)
         }
+        if (!persisted) {
+            busy = null
+            say("Penyimpanan lokal gagal! Hasil belum aman. Periksa ruang penyimpanan HP.")
+            return@launch
+        }
+        updateQueueCounters()
+        // Scheduler tidak memblokir UI. WorkManager menunggu koneksi dan retry server sibuk.
+        ScanSync.schedule(getApplication())
         busy = null
-        u.terscan.add("$selKelas|$selSiswa"); screen = Screen.SCAN
-    }
-
-    fun flushQueue() = viewModelScope.launch {
-        if (isDemo) return@launch  // antrean lama tidak dikirim saat lisensi nonaktif
-        val qa = store.queue(); if (qa.length() == 0) return@launch
-        val rest = JSONArray()
-        loading = "Mengirim ${qa.length()} hasil antrean…"
-        val ditolak = ArrayList<String>()
-        for (i in 0 until qa.length()) { val b = qa.getJSONObject(i)
-            try { b.put("token", store.token); withContext(Dispatchers.IO) { api.post(b) } }
-            catch (e: Exception) {
-                // jaringan / sesi -> tetap di antrean; DITOLAK server (bukan pemilik, siswa tak terdaftar, ...) -> keluarkan & laporkan
-                if (isNetwork(e) || (e is ApiException && e.auth)) rest.put(b) else ditolak += (b.optJSONObject("siswa")?.optString("nama") ?: "?") + ": " + (e.message ?: "ditolak")
-            } }
-        store.setQueue(rest); queueSize = rest.length(); loading = null
-        val sent = qa.length() - rest.length() - ditolak.size
-        if (ditolak.isNotEmpty()) say("Ditolak server (tidak disimpan): " + ditolak.joinToString("; ").take(300))
-        else if (sent > 0) say("$sent hasil antrean terkirim")
+        say("✓ Hasil aman di perangkat · ${queueSize} menunggu sinkronisasi")
+        screen = Screen.SCAN
     }
 
     // ---------------- analisis
