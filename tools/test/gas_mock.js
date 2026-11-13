@@ -1,5 +1,5 @@
 // Tiruan layanan Google Apps Script untuk menjalankan Code.gs + Statistik.gs di Node.
-const fs = require('fs'), path = require('path'), vm = require('vm'), cp = require('child_process'), os = require('os');
+const fs = require('fs'), path = require('path'), vm = require('vm'), cp = require('child_process'), os = require('os'), crypto = require('crypto');
 // ---------------- tiruan Spreadsheet
 function colIdx(a) { let n = 0; for (const ch of a) n = n * 26 + ch.charCodeAt(0) - 64; return n; }
 class Sheet {
@@ -39,6 +39,15 @@ class SS {
 }
 function createGas(opt = {}) {
 const ss = new SS(), cache = new Map(), props = new Map(), created = [], fetched = [], drive = { folders: [], moved: [], viewers: [] };
+const testSecret = 'testing-only-do-not-use-in-production-0123456789abcdefgh';
+props.set('BT_LICENSE_HMAC_KEY', testSecret);
+const url64 = b => Buffer.from(b).toString('base64url');
+const mintLicense = (tier = 'school', sheetId = ss.getId(), expSeconds = 86400) => {
+    const now = Math.floor(Date.now() / 1000);
+    const payload = url64(Buffer.from(JSON.stringify({v:1,product:'buleud-teu',sid:sheetId,tier,iat:now,exp:now+expSeconds,jti:'test123'})));
+    const input = 'BTL1.' + payload;
+    return input + '.' + url64(crypto.createHmac('sha256', testSecret).update(input).digest());
+};
 const dv = () => { const o = { requireValueInList: () => o, build: () => ({}) }; return o; };
 const ctx = {
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, openById: () => ss, newDataValidation: dv, getUi: () => { throw new Error('no ui'); }, flush: () => { },
@@ -65,12 +74,19 @@ ctx.DriveApp = { getFileById: (id) => ({ setTrashed: () => { }, moveTo: (f) => d
     getFoldersByName: (n) => { const f = drive.folders.filter(x => x.name === n); let i = 0; return { hasNext: () => i < f.length, next: () => f[i++] }; },
     createFolder: (n) => { const f = { name: n }; drive.folders.push(f); return f; } };
 ctx.Utilities.base64Encode = (bytes) => Buffer.from(bytes).toString('base64');
+ctx.Utilities.base64EncodeWebSafe = bytes => Buffer.from(bytes).toString('base64url');
+ctx.Utilities.base64DecodeWebSafe = value => [...Buffer.from(value, 'base64url')];
+ctx.Utilities.computeHmacSha256Signature = (text, key) => [...crypto.createHmac('sha256', key).update(text).digest()];
+ctx.Utilities.Charset = { UTF_8: 'utf-8' };
+ctx.Utilities.newBlob = bytes => ({
+  bytes, getDataAsString: () => Buffer.from(bytes).toString('utf-8')
+});
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Statistik.gs'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Code.gs'), 'utf8'), ctx);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Laporan.gs'), 'utf8'), ctx);
 const GET = (action) => JSON.parse(ctx.doGet({ parameter: { action } }).getContent());
 const POST = (o) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(o) } }).getContent());
-return { ctx, ss, created, fetched, drive, GET, POST, doGet: (p) => ctx.doGet({ parameter: p }).getContent(), doPost: (body) => ctx.doPost({ postData: { contents: body } }).getContent() };
+return { ctx, ss, created, fetched, drive, GET, POST, mintLicense, doGet: (p) => ctx.doGet({ parameter: p }).getContent(), doPost: (body) => ctx.doPost({ postData: { contents: body } }).getContent() };
 }
 module.exports = { createGas };
