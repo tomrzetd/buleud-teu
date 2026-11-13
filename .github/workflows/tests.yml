@@ -20,6 +20,8 @@ jobs:
         run: node tools/render_templates.js 200 && python3 tools/test/gen_cases.py
       - name: Engine mode marker (16 kondisi foto)
         run: node tools/test/run_engine.js
+      - name: Regresi formulir bermarker 25 / 50, kunci 20 / 25
+        run: node tools/test/test_marker25.js
       - name: Template F4 tanpa marker 20 & 25 soal (10 kondisi foto)
         run: python3 tools/test/test_lama_template.py 20 && python3 tools/test/test_lama_template.py 25
       - name: Statistik vs numpy/scipy
