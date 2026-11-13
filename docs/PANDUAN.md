@@ -52,57 +52,52 @@ Kolom A berisi label (sudah dibuat `setup`), kolom B diisi.
 
 ### Sheet Guru
 
-Satu baris per guru. Nama inilah yang dipilih saat masuk.
+Satu baris per guru. Akses ditentukan oleh **Tingkat/Rombel Diampu (pisah koma)**.
 
 | Kolom | Contoh | Aturan |
 | --- | --- | --- |
-| Nama | Rizal Abdurrahman, S.Pd | Ditulis sama persis dengan yang dipilih saat login |
-| Email | (boleh kosong) | Catatan saja |
-| PIN | 1234 | 4 digit, diatur operator. 5 kali salah = kunci 10 menit |
-| Mapel (pisah koma) | INFORMATIKA, IPA | Pakai nama baku (bagian 3) |
-| Kelas (pisah koma) | 8A, 8B, 8C, 9A, 9B | **Nama rombel persis seperti di sheet Siswa** |
-| Aktif | Ya | Tidak = tidak bisa masuk |
+| Nama | GURU SEKOLAH | Sesuai nama saat login |
+| Email | (boleh kosong) | Kontak sekolah |
+| PIN | 4 digit | Disediakan operator; hindari PIN mudah ditebak saat distribusi |
+| Mapel (pisah koma) | INFORMATIKA, IPA | Gunakan nama baku |
+| Tingkat/Rombel Diampu (pisah koma) | 8A, 8B, 8C, 9 | `8A` berarti rombel tersebut; `9` berarti seluruh tingkat 9 |
+| Aktif | Ya | Tidak = akses ditolak |
 
-### Sheet Siswa
+### Sheet Siswa (skema Dapodik v2)
 
-Bisa ditempel dari ekspor Dapodik. Satu baris per siswa.
+Satu baris per siswa. Kolom E dan F kini mengikuti nomenklatur administrasi:
 
 | Kolom | Contoh | Aturan |
 | --- | --- | --- |
-| NISN | 0123456789 | Format teks (angka 0 di depan tidak hilang) |
-| NIS | 2324101 | Boleh kosong |
-| Nomor Peserta | 08101 | Yang ditulis siswa di LJK; membantu OCR |
-| Nama | IBNU BIN LADEN | Nama lengkap, huruf besar disarankan |
-| Kelas | **8A** | Nama rombel: tingkat + huruf (bagian 3) |
-| Tingkat | 8 | Angka 7/8/9. Boleh kosong bila Kelas diawali angka |
-| L/P | L | Boleh kosong |
+| NISN | 0123456789 | **Plain text**, jangan hilangkan nol awal |
+| NIS | 262707001 | Plain text |
+| Nomor Peserta | 08009 | Plain text, digunakan oleh OCR |
+| Nama | SISWA CONTOH | Nama lengkap |
+| **Tingkat Pendidikan** (E) | **8** | Angka tingkat 1–12, untuk SMP 7–9 |
+| **Nama Rombel** (F) | **8A** | Kode rombel lengkap sebagaimana tercatat di sekolah |
+| L/P | P | Sesuai data siswa |
 
-### Aturan pencocokan kelas (penyebab “351 dari 548 siswa”)
+Format lama `E=8, F=A` akan dimigrasikan menjadi `E=8, F=8A`.
+Jangan menukar isi kolom secara manual sebelum memasang Apps Script yang mendukung skema v2.
+[Lihat panduan migrasi lengkap](SCHEMA-DAPODIK-V2.md).
 
-Saat guru masuk, aplikasi **hanya menerima siswa dari kelas yang berkaitan dengan guru itu**, bukan seluruh sekolah. Ini disengaja: daftar pencarian lebih pendek dan OCR lebih tepat.
+### Pencocokan tingkat dan rombel
 
-- Siswa ikut terkirim bila **Kelas**-nya tercantum di kolom *Kelas (pisah koma)* guru tersebut, **atau** di kolom *Kelas* salah satu ujian milik guru itu.
-- Pencocokan memakai tulisan **persis sama** (huruf besar/kecil diabaikan). `8` tidak cocok dengan `8A`; `8 A` tidak cocok dengan `8A`; `VIII A` tidak cocok dengan `8A`.
-- Ujian berkelas **SEMUA** memakai kolom *Tingkat*: semua siswa tingkat itu ikut.
+Guru yang mendapat `8A,8B` melihat kedua rombel tersebut; guru yang
+mendapat `8` melihat seluruh rombel tingkat 8. Ujian berkode
+`Nama Rombel=SEMUA` dan `Tingkat Pendidikan=8` mencakup semua
+peserta tingkat 8. Nama rombel lain seperti `VIII-A` atau `X IPA 1`
+tetap boleh selama konsisten dan Tingkat Pendidikan terisi.
 
-![Aturan pencocokan kelas](img/aturan_kelas.png)
+**Identitas internal** tetap memakai `kelas: "8A"` demi kompatibilitas
+scan lama, laporan, statistik, dan antrean SQLite. Ini bukan instruksi
+untuk memakai nama header "Kelas" lagi di master siswa.
 
-Pada data sekarang, guru Rizal menulis Kelas `8,9`, sehingga yang terkirim hanya siswa kelas 8 dan 9 (351 siswa). Kelas 7 tidak ikut. Agar semua 548 siswa muncul, cantumkan **semua rombel yang diajar** di kolom Kelas guru, misalnya `7A, 7B, …, 9H`. Lebih baik lagi, ubah kolom Kelas di sheet Siswa menjadi nama rombel (`8A`) dan isi kolom Tingkat (`8`).
+## 3. Rekomendasi penamaan mata pelajaran
 
-## 3. Rekomendasi penamaan kelas, tingkat, dan mapel (SMP)
-
-Gunakan satu pola yang sama di sheet Siswa, Guru, dan Ujian. Aplikasi mengubah semuanya ke huruf besar, tetapi spasi dan tanda baca tetap dihitung.
-
-### Kelas (rombel) dan tingkat
-
-| Isi | Rekomendasi | Hindari |
-| --- | --- | --- |
-| Kelas di sheet Siswa | `7A`, `7B`, … `8A` … `9H` (angka tingkat + huruf rombel, tanpa spasi) | `8`, `8 A`, `VIII-A`, `Kelas 8A`, `8.A` |
-| Tingkat di sheet Siswa | `7`, `8`, `9` | `VII`, `Kelas 7`, kosong bila Kelas tidak diawali angka |
-| Kelas di sheet Guru | Semua rombel yang diajar: `8A, 8B, 8C, 9A, 9B` | Hanya tingkat (`8,9`) bila sheet Siswa memakai rombel |
-| Kelas ujian | Rombel yang ikut ujian, dipilih di aplikasi. Untuk satu angkatan: SEMUA + Tingkat | Mengetik manual dengan ejaan lain |
-
-Alasannya: dengan rombel, analisis butir bisa per kelas (8A saja) maupun per tingkat (seluruh kelas 8), dan daftar siswa yang dicari guru jadi pendek. Kalau sekolah memakai kelas paralel bernomor (`8-1`, `8-2`), itu juga boleh asal **sama persis** di ketiga sheet.
+Skema tingkat/rombel berlaku untuk SD, SMP, SMA dan SMK. Jangan mengasumsikan
+semua sekolah mempunyai rombel A–F; nama rombel resmi sekolah adalah sumber
+utama. Kode internal selalu mempertahankan nilai lengkapnya.
 
 ### Nama mata pelajaran
 
