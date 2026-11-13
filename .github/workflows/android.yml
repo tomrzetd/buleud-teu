@@ -35,6 +35,15 @@ jobs:
             echo "::warning::Secret ANDROID_KEYSTORE_B64 belum diisi — APK ditandatangani kunci DEBUG (hanya uji, tidak bisa update menimpa)."
             echo "ada=0" >> "$GITHUB_OUTPUT"
           fi
+      - name: Validasi rilis produksi
+        if: github.event_name == 'workflow_dispatch' && inputs.rilis
+        run: |
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Rilis ke guru hanya boleh dari branch main yang sudah teruji."; exit 1
+          fi
+          if [ "${{ steps.kunci.outputs.ada }}" != "1" ]; then
+            echo "::error::Keystore release tidak tersedia. Batalkan publikasi."; exit 1
+          fi
       - name: Build APK rilis
         env:
           BT_BUILD: ${{ github.run_number }}
@@ -51,17 +60,23 @@ jobs:
           if [ "${{ steps.kunci.outputs.ada }}" = "1" ] && [ "$CERT" != "$BT_CERT_SHA256" ]; then echo "::error::APK tidak ditandatangani kunci rilis Buleud Teu"; exit 1; fi
           V=4.1.${{ github.run_number }}
           mkdir -p ../dist && cp "$APK" ../dist/BuleudTeu.apk && cp "$APK" ../dist/BuleudTeu-$V.apk
-          echo "VERSI=$V" >> "$GITHUB_ENV"; ls -la ../dist
+          echo "VERSI=$V" >> "$GITHUB_ENV"; echo "CERT_SHA256=$CERT" >> "$GITHUB_ENV"
+          if [ "${{ steps.kunci.outputs.ada }}" = "1" ]; then
+            python3 ../tools/release_manifest.py --apk "$APK" --version-name "$V" \
+              --version-code $((1000 + ${{ github.run_number }})) \
+              --cert-sha256 "$CERT" --output ../dist/update-manifest.json
+          fi
+          ls -la ../dist
       - uses: actions/upload-artifact@v4
         with:
           name: buleud-teu-apk
-          path: dist/*.apk
+          path: dist/*
       - name: Terbitkan GitHub Release (link unduhan tetap)
-        if: github.event_name == 'workflow_dispatch' && inputs.rilis && steps.kunci.outputs.ada == '1'
+        if: github.event_name == 'workflow_dispatch' && inputs.rilis && steps.kunci.outputs.ada == '1' && github.ref_name == 'main'
         working-directory: .
         env: { GH_TOKEN: '${{ github.token }}' }
         run: |
           PREV=$(git describe --tags --abbrev=0 2>/dev/null || true)
           LOG=$(git log --pretty='- %s' ${PREV:+$PREV..}HEAD -- android apps-script web/js | head -15)
           printf 'Buleud Teu Android %s\n\nUnduh: https://github.com/%s/releases/latest/download/BuleudTeu.apk\n\nPerubahan:\n%s\n' "$VERSI" "$GITHUB_REPOSITORY" "$LOG" > notes.md
-          gh release create "v$VERSI" dist/BuleudTeu.apk "dist/BuleudTeu-$VERSI.apk" --title "Buleud Teu $VERSI" --notes-file notes.md --target "$GITHUB_SHA"
+          gh release create "v$VERSI" dist/BuleudTeu.apk "dist/BuleudTeu-$VERSI.apk" dist/update-manifest.json --title "Buleud Teu $VERSI" --notes-file notes.md --target "$GITHUB_SHA"
