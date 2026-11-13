@@ -24,6 +24,8 @@ jobs:
         run: node tools/test/test_marker25.js
       - name: Template F4 tanpa marker 20 & 25 soal (10 kondisi foto)
         run: python3 tools/test/test_lama_template.py 20 && python3 tools/test/test_lama_template.py 25
+      - name: Skema Dapodik v2 / migrasi v1 / rombel SD–SMP–SMA
+        run: node tools/test/test_schema_dapodik.js
       - name: Lisensi kriptografis, demo, roster guru dan pembatasan server
         run: node tools/test/test_signed_license.js && node tools/test/test_roster_license.js
       - name: Replay ScanID outbox saat respons server hilang

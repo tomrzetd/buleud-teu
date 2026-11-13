@@ -8,7 +8,7 @@ const NAMES = [['IBNU BIN LADEN', '9A'], ['SITI AMINAH', '9A'], ['ASEP SURYANA',
 const gas = createGas(), { ss } = gas;
 gas.ctx.setup();
 ss.getSheetByName('Sekolah').getRange(1, 2, 8, 1).setValues([['SMP NEGERI 2 JALAKSANA'], ['20212345'], ['SMP'], ['Jl. Raya'], ['Kuningan'], ['Dra. Kepala'], [''], ['2026/2027']]);
-ss.getSheetByName('Sekolah').getRange(10, 2).setValue('Terdaftar');
+ss.getSheetByName('Sekolah').getRange(10, 2).setValue(gas.mintLicense());
 ss.getSheetByName('Guru').appendRow(['NURHAYATI', '', '1234', 'IPA', '9A, 9B, 9C', 'Ya']);
 for (const [n, k] of NAMES.concat([['IBNU SINA', '9A'], ['SITI NURHALIZA', '9B'], ['ASEP SUNANDAR', '9C']])) ss.getSheetByName('Siswa').appendRow(['', '', '', n, k, '', 'L']);
 const tok = gas.POST({ action: 'login', guru: 'NURHAYATI', pin: '1234' }).token;
