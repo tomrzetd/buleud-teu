@@ -157,7 +157,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ScanMode.KEY -> LjkEngine.processMarker(img, draft.opsi.length, 50, store.sensitivity.toDouble(), store.contrast.toDouble())
                 ScanMode.EXAM -> {
                     val u = exam!!
-                    val m = LjkEngine.processMarker(img, u.opsi.length, u.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble())
+                    val m = if (u.opsi == "ABCD" && u.jumlah <= 25) {
+                        LjkEngine.processMarkerAuto(img, u.opsi.length, u.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble())
+                    } else {
+                        LjkEngine.processMarker(img, u.opsi.length, u.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble())
+                    }
                     // LJK lama (tanpa marker, 20 atau 25 soal) dikenali otomatis untuk ujian <= 25 soal ABCD
                     val lays = legacyLayouts()
                     if (!m.success && lays.isNotEmpty()) {
