@@ -39,6 +39,9 @@ import id.buleudteu.ljk.data.Updater
 import id.buleudteu.ljk.engine.LjkEngine
 import id.buleudteu.ljk.engine.LjkSpec
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 val BG = Color(0xFF0B1220); val CARD = Color(0xFF131C2E); val LINE = Color(0xFF26344F); val TX2 = Color(0xFF9FB0CC)
 val PRI = Color(0xFF4F7CFF); val OK = Color(0xFF22C55E); val BAD = Color(0xFFEF4444); val WARN = Color(0xFFF59E0B)
@@ -116,6 +119,9 @@ fun AppRoot(vm: AppViewModel) {
 // ---------------------------------------------------------------- beranda
 @Composable fun HomeScreen(vm: AppViewModel) {
     val ctx = LocalContext.current
+    val updateScope = rememberCoroutineScope()
+    var updating by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf("") }
     val semua = vm.data?.ujian ?: emptyList()
     val guru = vm.data?.guru
     var mapelAktif by remember(guru?.nama, guru?.mapel) { mutableStateOf(guru?.mapel?.firstOrNull() ?: "") }
@@ -147,8 +153,38 @@ fun AppRoot(vm: AppViewModel) {
                 Text("Versi baru tersedia: ${up.versi}", color = Color.White, fontWeight = FontWeight.Bold)
                 Text("Terpasang: ${Updater.versionName(ctx)}. Pastikan antrean scan terkirim sebelum menghapus aplikasi atau mengganti perangkat.", color = TX2, fontSize = 12.sp)
                 if (up.catatan.isNotEmpty()) Text(up.catatan, color = TX2, fontSize = 12.sp)
-                Button({ runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Updater.DOWNLOAD))) } },
-                    Modifier.fillMaxWidth().padding(top = 6.dp), enabled = !vm.isDemo && vm.queueSize == 0) { Text("Unduh pembaruan") }
+                if (updateStatus.isNotBlank()) Text(updateStatus, color = WARN, fontSize = 12.sp)
+                Button(onClick = {
+                    when {
+                        !up.verifiedAvailable -> runCatching {
+                            ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Updater.DOWNLOAD)))
+                        }.onFailure { updateStatus = "Tidak dapat membuka unduhan: ${it.message}" }
+                        Updater.needsInstallPermission(ctx) -> runCatching {
+                            ctx.startActivity(Updater.installPermissionIntent(ctx))
+                            updateStatus = "Izinkan instalasi dari aplikasi ini, lalu tekan Perbarui lagi."
+                        }.onFailure { updateStatus = "Izin instalasi perlu diaktifkan lewat pengaturan HP." }
+                        else -> {
+                            updating = true
+                            updateStatus = "Mengunduh dan memverifikasi pembaruan…"
+                            updateScope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    runCatching { Updater.downloadVerified(ctx, up) }
+                                }
+                                updating = false
+                                result.onSuccess { file ->
+                                    runCatching { ctx.startActivity(Updater.installIntent(ctx, file)) }
+                                        .onSuccess { updateStatus = "APK terverifikasi; konfirmasi pembaruan pada layar Android." }
+                                        .onFailure { updateStatus = "Tidak dapat membuka penginstal: ${it.message}" }
+                                }.onFailure {
+                                    updateStatus = "Pembaruan dibatalkan: ${it.message ?: "verifikasi gagal"}"
+                                }
+                            }
+                        }
+                    }
+                }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                    enabled = !updating && vm.queueSize == 0) {
+                    Text(if (updating) "Mengunduh…" else if (up.verifiedAvailable) "Unduh, verifikasi & perbarui" else "Buka unduhan resmi")
+                }
             } }
             if (vm.queueSize > 0) {
                 Card {
