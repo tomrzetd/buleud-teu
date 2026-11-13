@@ -248,7 +248,7 @@ fun shareTemplate(ctx: Context, v: String) {
                 OutlinedTextField(nama, { nama = it }, Modifier.fillMaxWidth(), label = { Text("Nama ujian") })
                 Row { OutlinedTextField(mapel, { mapel = it.uppercase() }, Modifier.weight(1f), label = { Text("Mapel") }); Spacer(Modifier.width(8.dp))
                     OutlinedTextField(kktp, { kktp = it.filter(Char::isDigit) }, Modifier.width(100.dp), label = { Text("KKTP") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)) }
-                Text("Kelas peserta", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+                Text("Nama rombel / tingkat peserta", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
                 val all = ((vm.data?.guru?.kelas ?: emptyList()) + (vm.data?.kelasSemua ?: emptyList())).distinct()
                 Row(Modifier.horizontalScroll(rememberScrollState())) { all.forEach { k -> FilterChip(k in kelas, { if (k in kelas) kelas.remove(k) else kelas.add(k) }, { Text(k) }, Modifier.padding(end = 6.dp)) } }
                 Text("Opsi jawaban", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
