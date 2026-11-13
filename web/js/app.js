@@ -324,7 +324,7 @@
         const p = { sensitivity: S.params.sens, contrast: S.params.con };
         if (S.scanMode === 'markerless') return LJKEngine.processMarkerlessAuto(img, Object.assign(p, { layouts: legacyLayouts() }));
         const opsi = S.scanMode === 'key' ? S.editing.opsi : S.exam.opsi;
-        const r = LJKEngine.processMarker(img, Object.assign({}, p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
+        const r = (S.scanMode === 'exam' && S.exam.jumlah <= 25 && opsi === 'ABCD' ? LJKEngine.processMarkerAuto : LJKEngine.processMarker)(img, Object.assign({}, p, { options: opsi.length, active: S.scanMode === 'key' ? 50 : S.exam.jumlah }));
         // LJK lama (tanpa marker, 20 atau 25 soal) dikenali otomatis untuk ujian <= 25 soal ABCD
         if (!r.success && legacyAllowed()) {
             const l = LJKEngine.processMarkerlessAuto(img, Object.assign({}, p, { layouts: legacyLayouts() }));
@@ -395,7 +395,7 @@
             const ring = $('resRing'); ring.style.strokeDashoffset = 264 - 264 * sc.skor / 100; ring.style.stroke = sc.skor < (u.kktp || 75) ? '#ef4444' : '#22c55e';
         } else { $('resScore').textContent = S.answers.filter(Boolean).length; $('resBenar').textContent = 'jawaban terbaca (tanpa kunci)'; }
         const lama = S.res && S.res.mode === 'markerless';
-        renderLjk($('ljkGrid'), { n, total: lama ? lamaN() : 50, rows: lama ? 5 : 10, opsi: u ? u.opsi : 'ABCD', answers: S.answers, status: S.status, suggest: S.suggest, key: keyArr(), onTap: (q, L) => {
+        renderLjk($('ljkGrid'), { n, total: lama ? lamaN() : (S.res.geo?.spec?.pg?.questions || 50), rows: lama ? 5 : (S.res.geo?.spec?.pg?.rows || 10), opsi: u ? u.opsi : 'ABCD', answers: S.answers, status: S.status, suggest: S.suggest, key: keyArr(), onTap: (q, L) => {
             S.answers[q] = S.answers[q] === L ? null : L; S.status[q] = S.answers[q] ? 'ok' : 'blank'; S.confirm = false; renderAnswers(); drawEvidence();
         } });
         if (u) { const fl = flagged(); $('saveNote').innerHTML = fl.length ? `<div class="note n-warn">Perlu dicek: nomor ${fl.join(', ')} (kuning).</div>` : ''; }
@@ -429,9 +429,9 @@
         const n = S.exam ? S.exam.jumlah : lamaN(), LET = (S.exam ? S.exam.opsi : 'ABCD').split('');
         let ctx, toOut, R, ptsOf;
         if (r.mode === 'marker') {
-            const P = SPEC.pg, geo = r.geo, mapper = LJKEngine.mmMapper(geo);
+            const geo = r.geo, spec = geo.spec, P = spec.pg, mapper = LJKEngine.mmMapper(geo);
             if (ly.view === 'rect') {
-                const rc = LJKEngine.rectifyMM(S.lastImage, geo, SPEC.regions.view, 1000);
+                const rc = LJKEngine.rectifyMM(S.lastImage, geo, spec.regions.view, 1000);
                 ctx = putGray(cv, rc.w, rc.h, rc.data); toOut = (u, v) => rc.toOut(u, v); R = P.r * rc.k;
             } else {
                 const f = Math.min(1, 1000 / dbg.W);
@@ -440,11 +440,11 @@
                 toOut = (u, v) => { const p = mapper(u, v); return { x: p.x * f, y: p.y * f }; }; R = P.r * geo.pxPerMm * f;
                 // tepi halaman + marker
                 ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.beginPath();
-                [[0, 0], [SPEC.page.w, 0], [SPEC.page.w, SPEC.page.h], [0, SPEC.page.h]].forEach((c, i) => { const p = geo.H.fwd(c[0], c[1]); i ? ctx.lineTo(p.x * f, p.y * f) : ctx.moveTo(p.x * f, p.y * f); }); ctx.closePath(); ctx.stroke();
+                [[0, 0], [spec.page.w, 0], [spec.page.w, spec.page.h], [0, spec.page.h]].forEach((c, i) => { const p = geo.H.fwd(c[0], c[1]); i ? ctx.lineTo(p.x * f, p.y * f) : ctx.moveTo(p.x * f, p.y * f); }); ctx.closePath(); ctx.stroke();
                 ctx.fillStyle = '#38bdf8'; (dbg.markers || []).forEach(m => ctx.fillRect(m.x * f - 5, m.y * f - 5, 10, 10));
                 if (ly.circ) { ctx.strokeStyle = '#e879f9'; ctx.lineWidth = 1; (dbg.cands || []).forEach(c => { ctx.beginPath(); ctx.arc(c.x * f, c.y * f, c.r * f, 0, 6.3); ctx.stroke(); }); }
             }
-            ptsOf = (q, o) => { const b = LJKSpec.bubbleMM(q, o); return toOut(b.x, b.y); };
+            ptsOf = (q, o) => { const b = LJKSpec.bubbleMM(q, o, spec); return toOut(b.x, b.y); };
             if (ly.kisi) {   // garis baris & kolom melalui pusat bulatan (mengikuti lengkung kertas di "Foto asli")
                 ctx.strokeStyle = '#facc15aa'; ctx.lineWidth = Math.max(1, R / 5);
                 for (let rr = 0; rr < P.rows; rr++) { ctx.beginPath(); let first = true; for (let b = 0; b < P.blocks; b++) for (let o = 0; o < LET.length; o++) { const q = b * P.rows + rr, p = ptsOf(q, o); first ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y); first = false; } ctx.stroke(); }
