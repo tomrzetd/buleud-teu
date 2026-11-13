@@ -25,6 +25,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -116,6 +119,14 @@ fun AppRoot(vm: AppViewModel) {
 // ---------------------------------------------------------------- beranda
 @Composable fun HomeScreen(vm: AppViewModel) {
     val ctx = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) vm.loadExams()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val semua = vm.data?.ujian ?: emptyList()
     val guru = vm.data?.guru
     var mapelAktif by remember(guru?.nama, guru?.mapel) { mutableStateOf(guru?.mapel?.firstOrNull() ?: "") }
@@ -143,12 +154,6 @@ fun AppRoot(vm: AppViewModel) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
             // Identitas sekolah, tahun, logo & copyright dipindahkan ke ATAS.
             SchoolFooter(vm)
-            if (vm.isDemo) {
-                Card {
-                    Text("DEMO • BELUM TERDAFTAR", fontWeight = FontWeight.Bold, color = WARN)
-                    Text("Hanya 5 siswa contoh. Pindai tersedia untuk latihan; simpan hasil, analisis, laporan, dan ubah ujian nonaktif. Aktifkan License = Terdaftar di sheet Sekolah.", color = TX2, fontSize = 12.sp)
-                }
-            }
             vm.update?.let { up -> Card {
                 Text("Versi baru tersedia: ${up.versi}", color = Color.White, fontWeight = FontWeight.Bold)
                 Text("Terpasang: ${Updater.versionName(ctx)}. Kirim antrean hasil (bila ada), lalu unduh & pasang.", color = TX2, fontSize = 12.sp)
@@ -451,7 +456,7 @@ fun logoBitmap(dataUrl: String?): Bitmap? = try {
     val sk = vm.sekolah
     val logo = remember(sk?.logo) { logoBitmap(sk?.logo) }
     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (logo != null) Image(logo.asImageBitmap(), "logo sekolah", Modifier.size(56.dp).clip(RoundedCornerShape(10.dp)).background(Color.White).padding(4.dp), contentScale = ContentScale.Fit)
+        if (logo != null) Image(logo.asImageBitmap(), "logo sekolah", Modifier.size(70.dp), contentScale = ContentScale.Fit)
         if (!sk?.nama.isNullOrEmpty()) Text(sk!!.nama, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp))
         if (!sk?.tahun.isNullOrEmpty()) Text("Tahun Pelajaran ${sk!!.tahun}", color = TX2, fontSize = 12.sp)
         Text("Buleud Teu • \"Mun buleud, ku urang dipariksa!\"", color = TX2.copy(alpha = 0.7f), fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
