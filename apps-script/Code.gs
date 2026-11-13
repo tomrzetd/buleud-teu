@@ -328,13 +328,36 @@ function apiSave_(d) {
   var row = [now_(), u.id, u.mapel, u.tingkat || tingkatDariKelas(ps.kelas) || '', ps.kelas, ps.nama, ps.nisn ? "'" + ps.nisn : '', nomor ? "'" + nomor : '',
     "'" + jw.join(''), benar, u.jumlah, skor, (d.flags || []).map(Number).filter(isFinite).join(','), safe_(String(d.mode || '').slice(0, 30)), safe_(String(d.quality || '').slice(0, 20)), g.nama, scanId];
   var sh = sheet_(SH.HASIL);
-  // idempoten: kiriman ulang dengan ScanID yang sama (mis. respons jaringan hilang lalu dicoba lagi) memperbarui baris, tidak menambah
-  if (scanId) {
-    var ada = rows_(SH.HASIL).filter(function (h) { return h['ScanID'] === scanId && h['ID Ujian'] === u.id; })[0];
-    if (ada) { sh.getRange(ada._row, 1, 1, row.length).setValues([row]); return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor, siswa: ps.nama, kelas: ps.kelas, duplikat: true }; }
+  var hasil = rows_(SH.HASIL).filter(function (h) { return h['ID Ujian'] === u.id; });
+  // 1) Replay request identik ketika server sudah menyimpan, tetapi ACK ke HP hilang.
+  var byId = scanId ? hasil.filter(function (h) { return String(h['ScanID'] || '') === scanId; })[0] : null;
+  if (byId && !samaPesertaHasil_(byId, ps)) {
+    throw new Error('ScanID sudah digunakan untuk siswa yang berbeda. Tidak ada data yang diubah.');
+  }
+  // 2) Scan ulang fisik menghasilkan ScanID BARU; tetap satu baris per ujian+siswa.
+  // Bila ada duplikat historis, perbarui baris PALING AKHIR supaya algoritma
+  // analisis (scan terakhir menang) dan nilai baru tetap konsisten.
+  var milikSiswa = hasil.filter(function (h) { return samaPesertaHasil_(h, ps); });
+  var target = byId || milikSiswa[milikSiswa.length - 1];
+  if (target) {
+    sh.getRange(target._row, 1, 1, row.length).setValues([row]);
+    return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor,
+      siswa: ps.nama, kelas: ps.kelas, duplikat: !!byId, diperbarui: !byId };
   }
   sh.appendRow(row);
-  return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor, siswa: ps.nama, kelas: ps.kelas };
+  return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor,
+    siswa: ps.nama, kelas: ps.kelas, duplikat: false, diperbarui: false };
+}
+/** Aman terhadap NISN berawalan nol. Bila NISN salah satu kosong,
+ * cocokkan kelas + nama terstandardisasi; tidak pernah cocok lintas ujian.
+ * Bila kedua NISN berbeda, kedua siswa dianggap berbeda walau senama.
+ */
+function samaPesertaHasil_(h, ps) {
+  var a = String(h['NISN'] || '').replace(/\D/g, '');
+  var b = String(ps.nisn || '').replace(/\D/g, '');
+  if (a && b) return a === b;
+  return String(h['Kelas'] || '').trim().toUpperCase() === String(ps.kelas || '').trim().toUpperCase() &&
+    normNama_(h['Nama']) === normNama_(ps.nama);
 }
 /** kunci identitas siswa untuk "scan terakhir menang": NISN bila ada, selain itu kelas|nama */
 function kunciSiswa_(h) { var nisn = String(h['NISN'] || '').replace(/^'/, ''); return nisn ? 'NISN:' + nisn : h['Kelas'] + '|' + h['Nama']; }
