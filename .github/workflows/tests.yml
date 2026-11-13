@@ -26,6 +26,8 @@ jobs:
         run: python3 tools/test/test_lama_template.py 20 && python3 tools/test/test_lama_template.py 25
       - name: Lisensi kriptografis, demo, roster guru dan pembatasan server
         run: node tools/test/test_signed_license.js && node tools/test/test_roster_license.js
+      - name: Replay ScanID outbox saat respons server hilang
+        run: node tools/test/test_scan_replay.js
       - name: Statistik vs numpy/scipy
         run: python3 tools/test/test_stats.py
       - name: Apps Script (tiruan layanan Google)
