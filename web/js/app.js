@@ -109,7 +109,7 @@
         const all = (S.data && S.data.siswa) || [];
         if (!u) return all;
         if (!u.kelas.length || u.kelas.indexOf('SEMUA') >= 0) return all.filter(s => !u.tingkat || String(s.tingkat) === String(u.tingkat));
-        return all.filter(s => u.kelas.indexOf(s.kelas) >= 0);
+        return all.filter(s => u.kelas.some(k => String(k).toUpperCase() === String(s.kelas).toUpperCase() || String(k).toUpperCase() === String(s.tingkat).toUpperCase()));
     }
     function renderHome() {
         renderFooter();
@@ -163,7 +163,7 @@
         const k = e.kunci;
         const msg = (t, c = 'n-bad') => $('examMsg').innerHTML = `<div class="note ${c}">${esc(t)}</div>`;
         if (!e.nama || !e.mapel) return msg('Nama ujian dan mapel wajib diisi.');
-        if (!e.kelas.length) return msg('Pilih minimal satu kelas.');
+        if (!e.kelas.length) return msg('Pilih minimal satu rombel/tingkat.');
         if (!k.length) return msg('Kunci jawaban masih kosong.');
         if (/[-?]/.test(k)) return msg('Ada nomor kunci yang kosong di tengah (tanda -). Lengkapi atau hapus.');
         if (e.opsi === 'ABCD' && /E/.test(k)) return msg('Kunci berisi E, padahal opsi ABCD.');
@@ -495,7 +495,7 @@
     // ---- identitas
     function setupIdentity() {
         const u = S.exam, sts = examStudents(u), kelas = [...new Set(sts.map(s => s.kelas))].sort();
-        $('selKelas').innerHTML = '<option value="">Kelas…</option>' + kelas.map(k => `<option>${esc(k)}</option>`).join('');
+        $('selKelas').innerHTML = '<option value="">Nama rombel…</option>' + kelas.map(k => `<option>${esc(k)}</option>`).join('');
         if (kelas.length === 1) $('selKelas').value = kelas[0];
         fillStudents(); $('ocrAlts').innerHTML = ''; $('ocrStatus').textContent = ''; $('cariSiswa').value = ''; $('cariHasil').innerHTML = ''; $('selSiswa').value = ''; showPicked();
         S.ident = { nomor: '' };
