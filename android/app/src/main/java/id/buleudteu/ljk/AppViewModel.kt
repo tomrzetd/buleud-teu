@@ -128,7 +128,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (retryBlocked) outbox.retryBlocked(store.api, store.guruNama)
         }
         updateQueueCounters()
-        if (store.token.isNotBlank() && queueSize > 0) ScanSync.schedule(getApplication())
+        if (store.token.isNotBlank() && queueSize > 0) ScanSync.schedule(getApplication(), force = retryBlocked)
     }
 
     fun say(m: String) { toast = m }
