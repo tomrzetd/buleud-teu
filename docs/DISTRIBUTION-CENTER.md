@@ -43,16 +43,17 @@ mengetik nilainya sebagai argumen CLI atau mengirim screenshot secret.
 
 PowerShell:
 ```powershell
-$env:BT_LICENSE_HMAC_KEY = Read-Host "Tempel secret operator (tidak disimpan dalam perintah)"
+$secret = Read-Host "Secret lisensi pusat" -AsSecureString
+$env:BT_LICENSE_HMAC_KEY = [System.Net.NetworkCredential]::new("", $secret).Password
 python tools/school_pack.py `
   --school "SMP CONTOH" `
   --sheet-id "ID_SPREADSHEET_SEKOLAH" `
   --script-url "https://script.google.com/macros/s/DEPLOYMENT_ID/exec" `
   --tier school --days 365 --output dist/schools
 ```
-Untuk masukan secret benar-benar tersembunyi pada layar, pakai password
-manager atau PowerShell `Read-Host -AsSecureString` dengan konversi
-lokal seperlunya; jangan simpan plaintext di terminal history.
+Input secret disembunyikan di layar oleh `Read-Host -AsSecureString`.
+Konversi ke environment berlaku hanya pada proses PowerShell itu,
+jadi jangan tinggalkan jendelanya terbuka; jangan print environment variable.
 Skrip menulis:
 - `OPERATOR-RAHASIA.txt`: lisensi BTL1, Spreadsheet ID, dan petunjuk
   aktivasi; **jangan dibagikan**.
@@ -61,9 +62,9 @@ Skrip menulis:
 Setelah selesai, `Remove-Item Env:BT_LICENSE_HMAC_KEY` bila tidak lagi
 diperlukan pada sesi terminal tersebut.
 
-> Catatan: `Read-Host` di atas masih memunculkan input pada layar; alternatif
-> yang benar-benar tertutup memerlukan input secure/prompt dari secret manager.
-> Jangan masukkan secret pada command line yang bisa terlihat di history.
+> Catatan: isi `BT_LICENSE_HMAC_KEY` tetap berada pada lingkungan proses
+> dan dapat diakses proses dengan hak pengguna tersebut. Untuk distribusi
+> komersial gunakan secret manager/remote signer yang dikontrol operator pusat.
 
 ## Tahap 2: sekolah satu klik (butuh OAuth resmi)
 Operator menghubungkan akun Google miliknya, lalu server provisioning
