@@ -22,8 +22,29 @@ import java.io.ByteArrayOutputStream
 object IdentOcr {
     private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
 
+    /**
+     * Coba ukuran asli dahulu, kemudian 2× apabila teks terlalu pendek.
+     * ML Kit sering tidak mengenali tulisan tangan terpisah bila setiap
+     * huruf hanya menempati sedikit piksel. Jangan pernah menebak identitas:
+     * hasil ini masih harus divalidasi terhadap roster oleh AppViewModel.
+     */
+    private suspend fun readStrip(bitmap: Bitmap): String {
+        suspend fun recognize(b: Bitmap): String = try {
+            recognizer.process(InputImage.fromBitmap(b, 0)).await().text
+        } catch (_: Exception) { "" }
+        val original = recognize(bitmap)
+        if (original.count { it.isLetterOrDigit() } >= 7) return original
+        val twice = Bitmap.createScaledBitmap(bitmap, bitmap.width * 2, bitmap.height * 2, true)
+        return try {
+            val enlarged = recognize(twice)
+            if (enlarged.count { it.isLetterOrDigit() } > original.count { it.isLetterOrDigit() }) enlarged else original
+        } finally {
+            if (twice !== bitmap) twice.recycle()
+        }
+    }
+
     suspend fun mlkit(strips: Map<String, Bitmap>): Fields = coroutineScope {
-        val jobs = strips.mapValues { (_, b) -> async { try { recognizer.process(InputImage.fromBitmap(b, 0)).await().text } catch (e: Exception) { "" } } }
+        val jobs = strips.mapValues { (_, b) -> async { readStrip(b) } }
         LjkIdent.fromFields(jobs["nama"]?.await(), jobs["nomor"]?.await(), jobs["kelas"]?.await())
     }
 
