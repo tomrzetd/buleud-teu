@@ -3,7 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require('playwright');
-const { renderLJK } = require('../web/js/ljk-template.js');
+const { renderLJK, renderLJK25 } = require('../web/js/ljk-template.js');
 
 (async () => {
     const dpi = Number(process.argv[2] || 200);
@@ -12,9 +12,9 @@ const { renderLJK } = require('../web/js/ljk-template.js');
     fs.mkdirSync(testDir, { recursive: true });
     const browser = await chromium.launch();
     const { renderLJKLama } = require('../web/js/ljk-template.js');
-    const NAMA = { LAMA20: 'TANPA_MARKER_20_ABCD', LAMA25: 'TANPA_MARKER_25_ABCD' };
-    for (const variant of ['ABCD', 'ABCDE', 'LAMA20', 'LAMA25']) {  // PNG uji: render/LJK_F4_<varian>_<dpi>dpi.png
-        const svg = NAMA[variant] ? renderLJKLama({ questions: variant === 'LAMA25' ? 25 : 20, exam: { tahun: '2026-2027' } }) : renderLJK({ variant });
+    const NAMA = { LAMA20: 'TANPA_MARKER_20_ABCD', LAMA25: 'TANPA_MARKER_25_ABCD', MARKER25: 'MARKER_25_ABCD' };
+    for (const variant of ['ABCD', 'ABCDE', 'MARKER25', 'LAMA20', 'LAMA25']) {  // PNG uji: render/LJK_F4_<varian>_<dpi>dpi.png
+        const svg = variant === 'MARKER25' ? renderLJK25({ school: { nama: 'SMPN 2 JALAKSANA' }, exam: { judul: 'Asesmen Sumatif Akhir Semester (ASAS)', tahun: '2026/2027' } }) : variant.startsWith('LAMA') ? renderLJKLama({ questions: variant === 'LAMA25' ? 25 : 20, exam: { tahun: '2026-2027' } }) : renderLJK({ variant });
         fs.writeFileSync(path.join(outDir, `LJK_F4_${NAMA[variant] || variant}.svg`), svg);
         const html = `<!doctype html><html><head><style>@page{size:215mm 330mm;margin:0}html,body{margin:0;padding:0}svg{display:block}</style></head><body>${svg}</body></html>`;
         const page = await browser.newPage();
