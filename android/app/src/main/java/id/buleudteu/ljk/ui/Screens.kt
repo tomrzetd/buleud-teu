@@ -207,17 +207,20 @@ fun AppRoot(vm: AppViewModel) {
     }
 }
 @Composable fun ExamCard(vm: AppViewModel, u: Ujian, ctx: Context) {
-    val tot = vm.studentsOf(u).size; val done = u.terscan.size
+    val tot = vm.studentsOf(u).size
+    val (uploaded, pending) = vm.studentScanCounts(u)
+    val done = uploaded + pending
     Card {
         Row {
             Column(Modifier.weight(1f)) {
                 Text(u.nama, color = Color.White, fontWeight = FontWeight.Bold)
                 Text("${u.mapel} · ${u.kelas.joinToString()} · ${u.jumlah} soal · ${u.opsi} · KKTP ${u.kktp.toInt()}", color = TX2, fontSize = 12.sp)
             }
-            Text("$done/$tot", color = Color(0xFFA5B8FF), fontSize = 12.sp)
+            Text("$uploaded/$tot", color = Color(0xFFA5B8FF), fontSize = 12.sp)
         }
-        LinearProgressIndicator(progress = { if (tot > 0) minOf(1f, done.toFloat() / tot) else 0f },
+        LinearProgressIndicator(progress = { if (tot > 0) minOf(1f, uploaded.toFloat() / tot) else 0f },
             Modifier.fillMaxWidth().padding(vertical = 8.dp), color = OK)
+        if (pending > 0) Text("⏳ $pending hasil tersimpan di HP, belum terkonfirmasi server", color = WARN, fontSize = 11.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button({ vm.startScan(u, ScanMode.EXAM) }) { Text("📷 Scan") }
             OutlinedButton({ vm.editExam(u) }, enabled = !vm.isDemo) { Text("Edit") }
@@ -319,7 +322,15 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                     }
                 }
                 // terpilih
-                Text(if (vm.selSiswa.isEmpty()) "Belum ada siswa dipilih" else "✓ ${vm.selSiswa} (${vm.selKelas})", color = if (vm.selSiswa.isEmpty()) WARN else OK, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
+                val selectedState = if (vm.selSiswa.isBlank()) "none" else vm.studentScanState(u, vm.selKelas, vm.selSiswa)
+                val selectedText = when (selectedState) {
+                    "uploaded" -> "✓ ${vm.selSiswa} (${vm.selKelas}) — sudah terkirim. Simpan ulang akan mengganti nilai."
+                    "pending" -> "⏳ ${vm.selSiswa} (${vm.selKelas}) — aman di HP, menunggu upload."
+                    "blocked" -> "⚠ ${vm.selSiswa} (${vm.selKelas}) — upload perlu diperiksa."
+                    else -> if (vm.selSiswa.isBlank()) "Belum ada siswa dipilih" else "${vm.selSiswa} (${vm.selKelas})"
+                }
+                Text(selectedText, color = if (selectedState == "uploaded") OK else if (selectedState == "none" && vm.selSiswa.isNotBlank()) Color.White else WARN,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 // cari manual (lintas kelas, toleran salah ketik) + saring kelas
                 val sts = vm.studentsOf(u)
                 var q by remember(vm.result) { mutableStateOf("") }
@@ -331,9 +342,19 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                 Column(Modifier.fillMaxWidth().heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
                     hasil.forEach { st ->
                         val sel = st.nama == vm.selSiswa && st.kelas == vm.selKelas
-                        val done = "${st.kelas}|${st.nama}" in u.terscan
-                        Row(Modifier.fillMaxWidth().clickable { vm.pickStudent(st.nama, st.kelas); q = "" }.background(if (sel) PRI.copy(alpha = 0.2f) else Color.Transparent).padding(vertical = 8.dp, horizontal = 6.dp)) {
-                            Text((if (done) "✓ " else "") + st.nama, color = Color.White, modifier = Modifier.weight(1f)); Text(st.kelas, color = TX2)
+                        val state = vm.studentScanState(u, st.kelas, st.nama)
+                        val prefix = when (state) {
+                            "uploaded" -> "✓ "
+                            "pending" -> "⏳ "
+                            "blocked" -> "⚠ "
+                            else -> ""
+                        }
+                        Row(Modifier.fillMaxWidth().clickable { vm.pickStudent(st.nama, st.kelas); q = "" }
+                            .background(if (sel) PRI.copy(alpha = 0.2f) else Color.Transparent)
+                            .padding(vertical = 8.dp, horizontal = 6.dp)) {
+                            Text(prefix + st.nama, color = if (state == "pending" || state == "blocked") WARN else Color.White,
+                                modifier = Modifier.weight(1f))
+                            Text(st.kelas, color = TX2)
                         }
                     }
                     if (hasil.isEmpty()) Text("Tidak ada nama yang cocok.", color = TX2, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
