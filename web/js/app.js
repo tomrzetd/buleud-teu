@@ -748,11 +748,12 @@
     }
 
     // ------------------------------------------------------------ cetak
-    function openPrint(i) { S.exam = S.data.ujian[i]; $('prTitle').innerHTML = 'Cetak LJK<span class="sub">' + esc(S.exam.nama) + '</span>'; $('prVar').value = S.exam.opsi !== 'ABCD' ? S.exam.opsi : S.exam.jumlah <= 20 ? 'LAMA20' : S.exam.jumlah <= 25 ? 'LAMA25' : 'ABCD'; renderPrint(); go('print'); }
+    function openPrint(i) { S.exam = S.data.ujian[i]; $('prTitle').innerHTML = 'Cetak LJK<span class="sub">' + esc(S.exam.nama) + '</span>'; $('prVar').value = S.exam.opsi !== 'ABCD' ? S.exam.opsi : S.exam.jumlah <= 25 ? 'MARKER25' : 'ABCD'; renderPrint(); go('print'); }
     function renderPrint() {
         const sk = (S.config && S.config.sekolah) || {}, u = S.exam;
         const v = $('prVar').value, ex = { judul: u ? u.nama.toUpperCase() : '', mapel: u ? u.mapel : '', tahun: sk.tahun };
         const svg = v === 'LAMA20' || v === 'LAMA25' ? LJKTemplate.renderLJKLama({ questions: v === 'LAMA25' ? 25 : 20, school: { nama: sk.nama, logo: sk.logo }, exam: ex })
+            : v === 'MARKER25' ? LJKTemplate.renderLJK25({ school: { nama: sk.nama, logo: sk.logo }, exam: ex })
             : LJKTemplate.renderLJK({ variant: v, school: { nama: sk.nama, logo: sk.logo }, exam: ex });
         $('prPreview').innerHTML = svg.replace(/width="215mm" height="330mm"/, 'width="100%"');
         const n = Math.max(1, Math.min(60, Number($('prCopies').value) || 1));
