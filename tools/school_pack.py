@@ -111,8 +111,11 @@ def make_package(school: str, sheet_id: str, script_url: str,
         z.write(config, config.name)
 
     # Critical audit: no private token or spreadsheet ID in teacher package.
-    assert signed not in archive.read_bytes()
-    assert sheet_id.encode("utf-8") not in archive.read_bytes()
+    with zipfile.ZipFile(archive) as z:
+        teacher_bytes = b"".join(z.read(member) for member in z.namelist())
+    assert signed.encode("utf-8") not in teacher_bytes
+    assert sheet_id.encode("utf-8") not in teacher_bytes
+    assert key not in teacher_bytes
     return {"folder": str(folder), "private": str(private),
             "teacher_package": str(archive), "expires": expires,
             "license_prefix": PREFIX}
