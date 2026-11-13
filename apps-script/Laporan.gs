@@ -258,6 +258,7 @@ function buatLaporan(examId, opsi, emailGuru) {
 /** aksi aplikasi: {action:'report', examId, mode, bagian[], format, lingkup, kelas, urut, orientasi} */
 function apiReport_(d) {
   var g = auth_(d.token);
+  wajibTerdaftar_();
   assertPemilik_(g, getUjian_(d.examId));
   var guru = rows_(SH.GURU).filter(function (r) { return r['Nama'] === g.nama; })[0];
   return buatLaporan(d.examId, d, guru && /@/.test(guru['Email']) ? String(guru['Email']).trim() : '');
