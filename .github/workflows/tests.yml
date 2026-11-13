@@ -25,7 +25,7 @@ jobs:
       - name: Template F4 tanpa marker 20 & 25 soal (10 kondisi foto)
         run: python3 tools/test/test_lama_template.py 20 && python3 tools/test/test_lama_template.py 25
       - name: Paket onboarding sekolah (lisensi, pemisahan rahasia & kit guru)
-        run: python3 tools/test/test_school_pack.py
+        run: python3 tools/test/test_school_pack.py && python3 tools/test/test_release_manifest.py
       - name: Skema Dapodik v2 / migrasi v1 / rombel SD–SMP–SMA
         run: node tools/test/test_schema_dapodik.js
       - name: Lisensi kriptografis, demo, roster guru dan pembatasan server
