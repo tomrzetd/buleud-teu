@@ -39,11 +39,11 @@ class GridPt(val x: Double, val y: Double, val r: Double, val d: Double, val det
 
 class Quality(val score: Int, val grade: String, val pxPerMm: Double, val residMm: Double?, val light: Double, val sharp: Double, val tilt: Double)
 
-class Geo(val H: HPair, val blocks: List<Homography>, val scale: Double, val pxPerMm: Double, val nOpt: Int, val active: Int) {
+class Geo(val H: HPair, val blocks: List<Homography>, val scale: Double, val pxPerMm: Double, val nOpt: Int, val active: Int, val layout: MarkerLayout = MarkerLayouts.F4_50) {
     /** mm -> koordinat citra kerja (homografi per blok di area pilihan ganda) */
     fun map(u: Double, v: Double): Pt {
-        if (v >= LjkSpec.PG_FRAME[1] && v <= LjkSpec.PG_FRAME[3]) {
-            val b = LjkEngine.clampI(floor((u - LjkSpec.X0 + 2) / LjkSpec.BLOCK_W).toInt(), 0, LjkSpec.BLOCKS - 1)
+        if (v >= layout.PG_FRAME[1] && v <= layout.PG_FRAME[3]) {
+            val b = LjkEngine.clampI(floor((u - layout.X0 + 2) / layout.BLOCK_W).toInt(), 0, layout.BLOCKS - 1)
             return blocks[b].map(u, v)
         }
         return H.fwd.map(u, v)
@@ -59,6 +59,7 @@ class LjkResult {
     var thr = 0.0; var empty = 0.0; var full = 0.0
     // mode tanpa marker
     var lattice: Lattice? = null
+    var markerMatch = 0.0
     var image: ArgbImage? = null; var rotation = 0
 }
 class Lattice(val map: (Double, Double) -> Pt, val colU: DoubleArray, val rowV: DoubleArray, val scale: Double, val r0: Double, val questions: Int, val blocks: Int, val options: Int)
@@ -350,11 +351,11 @@ object LjkEngine {
     }
 
     class Shift(val dx: Double, val dy: Double, val hits: Int, val tot: Int)
-    fun blockShift(mmPts: List<Pt>, b: Int, nOpt: Int, active: Int, range: Double = 3.5, step: Double = 0.5, tol: Double = 0.9): Shift {
-        val bx = LjkSpec.X0 + b * LjkSpec.BLOCK_W + LjkSpec.OPT_OFFSET
-        val rowsActive = max(0, min(LjkSpec.ROWS, active - b * LjkSpec.ROWS))
+    fun blockShift(mmPts: List<Pt>, b: Int, nOpt: Int, active: Int, range: Double = 3.5, step: Double = 0.5, tol: Double = 0.9, layout: MarkerLayout = MarkerLayouts.F4_50): Shift {
+        val bx = layout.X0 + b * layout.BLOCK_W + layout.OPT_OFFSET
+        val rowsActive = max(0, min(layout.ROWS, active - b * layout.ROWS))
         if (rowsActive == 0) return Shift(0.0, 0.0, 0, 0)
-        val near = mmPts.filter { it.x > bx - range - 3 && it.x < bx + (nOpt - 1) * LjkSpec.OPT_PITCH + range + 3 && it.y > LjkSpec.Y0 - range - 3 && it.y < LjkSpec.Y0 + (rowsActive - 1) * LjkSpec.ROW_PITCH + range + 3 }
+        val near = mmPts.filter { it.x > bx - range - 3 && it.x < bx + (nOpt - 1) * layout.OPT_PITCH + range + 3 && it.y > layout.Y0 - range - 3 && it.y < layout.Y0 + (rowsActive - 1) * layout.ROW_PITCH + range + 3 }
         var bdx = 0.0; var bdy = 0.0; var bh = -1
         var dy = -range
         while (dy <= range + 1e-9) {
@@ -362,9 +363,9 @@ object LjkEngine {
             while (dx <= range + 1e-9) {
                 var hits = 0
                 for (p in near) {
-                    val o = jsRound((p.x - dx - bx) / LjkSpec.OPT_PITCH).toInt(); val r = jsRound((p.y - dy - LjkSpec.Y0) / LjkSpec.ROW_PITCH).toInt()
+                    val o = jsRound((p.x - dx - bx) / layout.OPT_PITCH).toInt(); val r = jsRound((p.y - dy - layout.Y0) / layout.ROW_PITCH).toInt()
                     if (o < 0 || o >= nOpt || r < 0 || r >= rowsActive) continue
-                    if (abs(p.x - dx - (bx + o * LjkSpec.OPT_PITCH)) < tol && abs(p.y - dy - (LjkSpec.Y0 + r * LjkSpec.ROW_PITCH)) < tol) hits++
+                    if (abs(p.x - dx - (bx + o * layout.OPT_PITCH)) < tol && abs(p.y - dy - (layout.Y0 + r * layout.ROW_PITCH)) < tol) hits++
                 }
                 if (hits > bh || (hits == bh && hypot(dx, dy) < hypot(bdx, bdy))) { bdx = dx; bdy = dy; bh = hits }
                 dx += step
@@ -374,11 +375,11 @@ object LjkEngine {
         return Shift(bdx, bdy, bh, rowsActive * nOpt)
     }
 
-    fun processMarker(img: ArgbImage, options: Int = 4, activeIn: Int = 50, sensitivity: Double = 50.0, contrast: Double = 10.0, maxSide: Int = 1600): LjkResult {
+    fun processMarker(img: ArgbImage, options: Int = 4, activeIn: Int = 50, sensitivity: Double = 50.0, contrast: Double = 10.0, maxSide: Int = 1600, layout: MarkerLayout = MarkerLayouts.F4_50): LjkResult {
         val ret = LjkResult(); ret.mode = "marker"
         val nOpt = if (options == 5) 5 else 4
-        val active = clampI(if (activeIn > 0) activeIn else 50, 1, LjkSpec.QUESTIONS)
-        val LET = LjkSpec.LETTERS.substring(0, nOpt)
+        val active = clampI(if (activeIn > 0) activeIn else 50, 1, layout.QUESTIONS)
+        val LET = layout.LETTERS.substring(0, nOpt)
         val sens = clamp(sensitivity / 100, 0.2, 0.8)
         val t0 = System.currentTimeMillis()
         fun fail(m: String): LjkResult { ret.error = m; ret.logs.add("GAGAL: $m"); return ret }
@@ -393,7 +394,7 @@ object LjkEngine {
         val hyps = markerHypotheses(squares, g, W, H)
         if (hyps.isEmpty()) return fail("Susunan 4 marker sudut tidak cocok dengan LJK F4. Foto seluruh halaman.")
 
-        val rPx = LjkSpec.R * hyps[0].pxPerMm
+        val rPx = layout.R * hyps[0].pxPerMm
         val binC = adaptiveThreshold(g, W, H, max(5, jsRound(rPx * 3).toInt()), contrast, I)
         val cc = components(binC, W, H)
         val circles = removeNested(circleCandidates(cc.lab, cc.comps, W, H, rPx * 0.6, rPx * 1.6))
@@ -402,7 +403,7 @@ object LjkEngine {
         fun bubbleMatch(inv: Homography): Double {
             val mm = circles.map { inv.map(it.x, it.y) }
             var hit = 0; var tot = 0
-            for (b in 0 until LjkSpec.BLOCKS) { val s = blockShift(mm, b, min(nOpt, 4), active); hit += s.hits; tot += s.tot }
+            for (b in 0 until layout.BLOCKS) { val s = blockShift(mm, b, min(nOpt, 4), active, layout = layout); hit += s.hits; tot += s.tot }
             return if (tot > 0) hit.toDouble() / tot else 0.0
         }
         var best: Hyp? = null; var bestFp: HPair? = null; var bestBm = 0.0; var bestTotal = 0.0
@@ -422,15 +423,15 @@ object LjkEngine {
         val mmC = circles.map { it to Hg.inv.map(it.x, it.y) }
         val mmPts = mmC.map { it.second }
         val resid = ArrayList<Double>()
-        for (b in 0 until LjkSpec.BLOCKS) {
-            val sh = blockShift(mmPts, b, nOpt, active)
-            val rowsActive = max(0, min(LjkSpec.ROWS, active - b * LjkSpec.ROWS))
+        for (b in 0 until layout.BLOCKS) {
+            val sh = blockShift(mmPts, b, nOpt, active, layout = layout)
+            val rowsActive = max(0, min(layout.ROWS, active - b * layout.ROWS))
             fun collect(mapInv: ((Circle) -> Pt)?, dx: Double, dy: Double, tol: Double): List<Corr> {
                 val pairs = ArrayList<Corr>()
                 for (r in 0 until rowsActive) {
-                    val q = b * LjkSpec.ROWS + r
+                    val q = b * layout.ROWS + r
                     for (o in 0 until nOpt) {
-                        val bm = LjkSpec.bubbleMM(q, o)
+                        val bm = layout.bubbleMM(q, o)
                         var bestC: Circle? = null; var bd = tol
                         for (e in mmC) { val m = if (mapInv != null) mapInv(e.first) else e.second; val d = hypot(m.x - dx - bm.x, m.y - dy - bm.y); if (d < bd) { bd = d; bestC = e.first } }
                         if (bestC != null) pairs.add(Corr(bm.x, bm.y, bestC.x, bestC.y, "$q,$o"))
@@ -463,11 +464,11 @@ object LjkEngine {
         // sampling
         val grid = ArrayList<List<GridPt>>(); val qDs = ArrayList<DoubleArray>(); val samplePts = ArrayList<Pt>()
         for (q in 0 until active) {
-            val F = blockFits[q / LjkSpec.ROWS]; val row = ArrayList<GridPt>(); val ds = DoubleArray(nOpt)
+            val F = blockFits[q / layout.ROWS]; val row = ArrayList<GridPt>(); val ds = DoubleArray(nOpt)
             for (o in 0 until nOpt) {
-                val bm = LjkSpec.bubbleMM(q, o)
+                val bm = layout.bubbleMM(q, o)
                 var p = F.map(bm.x, bm.y)
-                val pr = F.map(bm.x + LjkSpec.R, bm.y); val rLocal = hypot(pr.x - p.x, pr.y - p.y)
+                val pr = F.map(bm.x + layout.R, bm.y); val rLocal = hypot(pr.x - p.x, pr.y - p.y)
                 val det = matched["$q,$o"]
                 val use = det != null && hypot(det.x - p.x, det.y - p.y) < rLocal * 0.5
                 if (use) p = Pt(det!!.x, det.y)
@@ -479,7 +480,7 @@ object LjkEngine {
         ret.dark.addAll(qDs)
         if (nOpt == 4) {
             var eHit = 0
-            for (q in 0 until active) { val e = LjkSpec.bubbleMM(q, 4); if (mmC.any { hypot(it.second.x - e.x, it.second.y - e.y) < 1.1 }) eHit++ }
+            for (q in 0 until active) { val e = layout.bubbleMM(q, 4); if (mmC.any { hypot(it.second.x - e.x, it.second.y - e.y) < 1.1 }) eHit++ }
             if (eHit > active * 0.5) ret.warnings.add("LJK ini tampaknya varian ABCDE, sedangkan ujian diatur ABCD. Opsi E diabaikan.")
         }
         val dec = decide(qDs, LET, sens)
@@ -487,11 +488,11 @@ object LjkEngine {
         ret.filledAnswers = dec.filled; ret.thr = dec.thr; ret.empty = dec.empty; ret.full = dec.full
 
         // kualitas
-        val sharp = sharpness(g, W, H, samplePts.filterIndexed { i, _ -> i % 3 == 0 }, LjkSpec.R * pxPerMm) / max(10.0, 255 * (dec.full - dec.empty + 0.2))
+        val sharp = sharpness(g, W, H, samplePts.filterIndexed { i, _ -> i % 3 == 0 }, layout.R * pxPerMm) / max(10.0, 255 * (dec.full - dec.empty + 0.2))
         val paperLv = ArrayList<Int>()
-        for (b in 0 until LjkSpec.BLOCKS) { val p = blockFits[b].map(LjkSpec.X0 + b * LjkSpec.BLOCK_W + 5, LjkSpec.Y0 - 6); val x = jsRound(p.x).toInt(); val y = jsRound(p.y).toInt(); if (x in 0 until W && y in 0 until H) paperLv.add(g[y * W + x]) }
+        for (b in 0 until layout.BLOCKS) { val p = blockFits[b].map(layout.X0 + b * layout.BLOCK_W + 5, layout.Y0 - 6); val x = jsRound(p.x).toInt(); val y = jsRound(p.y).toInt(); if (x in 0 until W && y in 0 until H) paperLv.add(g[y * W + x]) }
         val light = if (paperLv.isNotEmpty()) paperLv.min().toDouble() / max(1, paperLv.max()) else 1.0
-        val c0 = Hg.fwd.map(0.0, 0.0); val c1 = Hg.fwd.map(LjkSpec.PAGE_W, 0.0)
+        val c0 = Hg.fwd.map(0.0, 0.0); val c1 = Hg.fwd.map(layout.PAGE_W, 0.0)
         val tilt = abs(atan2(c1.y - c0.y, c1.x - c0.x) * 180 / PI)
         var qs = 100.0
         if (pxPerMm < 3) qs -= (3 - pxPerMm) * 25
@@ -501,11 +502,42 @@ object LjkEngine {
         if (best.mids == 0) qs -= 10
         val qScore = jsRound(clamp(qs, 0.0, 100.0)).toInt()
         ret.quality = Quality(qScore, if (qScore >= 80) "A" else if (qScore >= 60) "B" else "C", Math.round(pxPerMm * 100) / 100.0, residMm?.let { Math.round(it * 100) / 100.0 }, Math.round(light * 100) / 100.0, Math.round(sharp * 100) / 100.0, Math.round(tilt * 10) / 10.0)
-        ret.geo = Geo(Hg, blockFits, gr.scale, pxPerMm, nOpt, active)
+        ret.geo = Geo(Hg, blockFits, gr.scale, pxPerMm, nOpt, active, layout)
+        ret.markerMatch = bestBm
         ret.grid = grid; ret.success = true
         ret.logs.add("Ambang ${jsRound(dec.thr * 100)}% (kosong ${jsRound(dec.empty * 100)}%, terisi ${jsRound(dec.full * 100)}%), kualitas $qScore")
         ret.logs.add("Selesai ${System.currentTimeMillis() - t0} ms")
         return ret
+    }
+
+    /**
+     * Auto-identifikasi dua formulir BERMARKER dengan marker identik.
+     * Identitas/penilaian tetap mengikuti jumlah kunci (activeIn), bukan kapasitas PDF.
+     *
+     * Perbedaan yang paling tegas: lembar 50 memiliki bulatan cetak pada baris
+     * keenam–kesepuluh (y=156..188 mm) pada SETIAP blok. Lembar 25 tidak.
+     * Pemeriksaan ini jauh lebih aman daripada hanya membandingkan 20 bulatan
+     * aktif, karena pola bagian atas kedua formulir saling tumpang tindih.
+     */
+    fun processMarkerAuto(
+        img: ArgbImage, options: Int = 4, activeIn: Int = 50,
+        sensitivity: Double = 50.0, contrast: Double = 10.0, maxSide: Int = 1600
+    ): LjkResult {
+        val old = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.F4_50)
+        if (options != 4 || activeIn > 25) return old
+        val compact = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.F4_25)
+        if (!compact.success) return old
+        if (!old.success) return compact
+        val geo = old.geo ?: return compact
+        val mmCircles = old.circles.map { geo.H.inv.map(it.x, it.y) }
+        var lowerHits = 0
+        for (block in 0 until 5) for (row in 5 until 10) for (option in 0 until 4) {
+            val target = LjkSpec.bubbleMM(block * 10 + row, option)
+            if (mmCircles.any { hypot(it.x - target.x, it.y - target.y) < 1.1 }) lowerHits++
+        }
+        val result = if (lowerHits >= 18) old else compact
+        result.logs.add("Auto-layout: ${result.geo?.layout?.id}, bulatan baris 6–10 = $lowerHits/100")
+        return result
     }
 
     /** deteksi marker cepat untuk preview kamera; sudut dalam koordinat gambar asli */
@@ -794,6 +826,25 @@ object LjkEngine {
                 val v = if (pinkish) 255 else clampI(jsRound((rel - 0.45) / 0.37 * 255).toInt(), 0, 255)
                 s.argb[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
                 if (v < 160) ink++
+            }
+            // Cetakan sekolah sering hitam-putih: garis comb merah muda menjadi
+            // hitam dan lolos filter dropout warna. Hapus garis TEPI comb
+            // menggunakan geometri milimeter, tanpa menyentuh isi tengah sel.
+            val k = s.k
+            val xEdge = ((f.x - x1) * k).toInt()
+            val yTop = ((f.y - y1) * k).toInt()
+            val yBottom = ((f.y + f.h - y1) * k).toInt()
+            val strip = max(1, jsRound(k * 0.22).toInt())
+            val borderY = max(1, jsRound(k * 0.18).toInt())
+            for (y in 0 until s.h) {
+                for (x in 0 until s.w) {
+                    val vx = x - xEdge
+                    val nearVertical = vx >= -strip && vx <= f.n * f.cw * k + strip &&
+                        (0..f.n).any { ci -> abs(vx - ci * f.cw * k) <= strip }
+                    val nearHorizontal = x >= xEdge && x <= xEdge + f.n * f.cw * k &&
+                        (abs(y - yTop) <= borderY || abs(y - yBottom) <= borderY)
+                    if (nearVertical || nearHorizontal) s.argb[y * s.w + x] = -1
+                }
             }
             out[key] = s to ink.toDouble() / n
         }
