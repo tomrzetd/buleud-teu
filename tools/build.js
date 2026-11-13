@@ -11,7 +11,9 @@ fs.writeFileSync(path.join(R, 'apps-script/dist/BuleudTeu_lengkap.gs'),
     '// ===== Buleud Teu V40 — file tunggal (hasil build Code.gs + Statistik.gs + Laporan.gs). Tempel seluruh isi ke Code.gs =====\n\n' +
     fs.readFileSync(path.join(R, 'apps-script/Code.gs'), 'utf8') + '\n\n' + fs.readFileSync(path.join(R, 'apps-script/Statistik.gs'), 'utf8') + '\n\n' + fs.readFileSync(path.join(R, 'apps-script/Laporan.gs'), 'utf8'));
 // spesifikasi geometri dalam JSON (dipakai/diuji port Android)
-const { SPEC, bubbleMM } = require('../web/js/ljk-spec.js');
+const { SPEC, SPEC25, bubbleMM } = require('../web/js/ljk-spec.js');
 const pos = []; for (let q = 0; q < 50; q++) for (let o = 0; o < 5; o++) pos.push([q, o, bubbleMM(q, o).x, bubbleMM(q, o).y]);
 fs.writeFileSync(path.join(R, 'spec/ljk-f4-v1.json'), JSON.stringify({ spec: SPEC, bubbles: pos }, null, 1));
-console.log('build ok: web/dist/buleud-teu.html, apps-script/dist/BuleudTeu_lengkap.gs, spec/ljk-f4-v1.json');
+const pos25 = []; for (let q = 0; q < 25; q++) for (let o = 0; o < 4; o++) pos25.push([q, o, bubbleMM(q, o, SPEC25).x, bubbleMM(q, o, SPEC25).y]);
+fs.writeFileSync(path.join(R, 'spec/ljk-f4-25-v1.json'), JSON.stringify({ spec: SPEC25, bubbles: pos25 }, null, 1));
+console.log('build ok: web/dist/buleud-teu.html, apps-script/dist/BuleudTeu_lengkap.gs, spec/ljk-f4-v1.json, spec/ljk-f4-25-v1.json');
