@@ -77,4 +77,13 @@ for (const scenario of [
     assert.ok(r.status.every(s => s === 'ok'));
     console.log('OK', expected, printed + ' cetak', active + ' kunci', r.quality.grade + r.quality.score);
 }
+// Tidak boleh bergantung pada orientasi foto (marker arah tetap sama).
+for (const degrees of [180, 90]) {
+    const img = E.rotateImg(sheet(S.SPEC25, 20, 25), degrees);
+    const r = E.processMarkerAuto(img, { options: 4, active: 20, maxSide: 1155 });
+    assert.ok(r.success, 'Rotasi ' + degrees + ' gagal: ' + r.error);
+    assert.equal(r.geo.spec.id, S.SPEC25.id);
+    assert.equal(r.answers.join(''), 'ABCD'.repeat(5));
+    console.log('OK', 'form 25 rotasi', degrees + '°');
+}
 console.log('PASS marker25: vektor, identitas, auto 25/50, kunci 20/25');
