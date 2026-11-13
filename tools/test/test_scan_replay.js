@@ -15,9 +15,10 @@ const exam = POST({action:'saveExam',token,exam:{
 }});
 assert.equal(exam.result,'success',exam.error);
 const id='7f1b1e06-b7f1-43b0-a331-c4f10ab650ef';
+const startedAt = Date.now() - 120000;
 const body={ action:'save', token, examId: exam.id,
     siswa:{nama:'SISWA UJI',kelas:'8A',nomor:'0042'},
-    answers:['A','B','C','D'],flags:[],mode:'marker-android',quality:'A96',scanId:id
+    answers:['A','B','C','D'],flags:[],mode:'marker-android',quality:'A96',scanId:id, capturedAt:startedAt
 };
 const first = POST(body);
 assert.equal(first.result,'success',first.error);
@@ -27,7 +28,7 @@ const retry = POST(body);
 assert.equal(retry.result,'success',retry.error);
 assert.equal(retry.duplikat,true,'repeated ScanID updates existing row');
 assert.equal(ss.getSheetByName('HasilScan').getLastRow(), afterFirst,'no duplicate when server ACK is lost');
-const different = {...body, scanId:'other-scan-id', answers:['B','B','C','D']};
+const different = {...body, scanId:'other-scan-id', capturedAt:startedAt+60000, answers:['B','B','C','D']};
 const rescan = POST(different);
 assert.equal(rescan.result,'success',rescan.error);
 assert.equal(rescan.diperbarui,true,'physical rescan is update, not append');
@@ -35,7 +36,13 @@ assert.equal(ss.getSheetByName('HasilScan').getLastRow(), afterFirst,
     'same exam+same roster student never creates another row');
 assert.equal(Number(ss.getSheetByName('HasilScan').getRange(2,12).getValue()),75,
     'latest answers and score replace old score');
-const danger = {...body, siswa:{nama:'SISWA LAIN',kelas:'8A'}, scanId:id};
+// A stale older offline retry MUST NOT overwrite a newer correction.
+const oldRetry = POST(body);
+assert.equal(oldRetry.result, 'success', oldRetry.error);
+assert.equal(oldRetry.usang, true, 'older ScanID accepted as no-op');
+assert.equal(Number(ss.getSheetByName('HasilScan').getRange(2,12).getValue()),75,
+    'older replay cannot overwrite newer score');
+const danger = {...different, siswa:{nama:'SISWA LAIN',kelas:'8A'}, scanId:'other-scan-id'};
 ss.getSheetByName('Siswa').appendRow(['2','','0043','SISWA LAIN','8','A','P']);
 assert.ok(POST(danger).error,'ScanID cannot be replayed against another roster student');
 assert.equal(ss.getSheetByName('HasilScan').getLastRow(), afterFirst,
