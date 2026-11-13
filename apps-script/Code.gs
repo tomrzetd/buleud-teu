@@ -325,7 +325,13 @@ function apiSave_(d) {
   var skor = Math.round(benar / u.jumlah * 10000) / 100;
   var nomor = ps.nomor || String(s.nomor || '').replace(/\D/g, '');
   var scanId = String(d.scanId || '').replace(/[^\w-]/g, '').slice(0, 40);
-  var row = [now_(), u.id, u.mapel, u.tingkat || tingkatDariKelas(ps.kelas) || '', ps.kelas, ps.nama, ps.nisn ? "'" + ps.nisn : '', nomor ? "'" + nomor : '',
+  // Waktu pada sheet = saat scan disimpan di HP, bukan waktu antrean terkirim.
+  // Memungkinkan retry offline lama tidak menimpa koreksi yang lebih baru.
+  var tKlien = Number(d.capturedAt);
+  var adaWaktuKlien = isFinite(tKlien) && tKlien > 1577836800000 && tKlien <= Date.now() + 300000;
+  var waktu = adaWaktuKlien
+    ? Utilities.formatDate(new Date(tKlien), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss') : now_();
+  var row = [waktu, u.id, u.mapel, u.tingkat || tingkatDariKelas(ps.kelas) || '', ps.kelas, ps.nama, ps.nisn ? "'" + ps.nisn : '', nomor ? "'" + nomor : '',
     "'" + jw.join(''), benar, u.jumlah, skor, (d.flags || []).map(Number).filter(isFinite).join(','), safe_(String(d.mode || '').slice(0, 30)), safe_(String(d.quality || '').slice(0, 20)), g.nama, scanId];
   var sh = sheet_(SH.HASIL);
   var hasil = rows_(SH.HASIL).filter(function (h) { return h['ID Ujian'] === u.id; });
@@ -340,6 +346,15 @@ function apiSave_(d) {
   var milikSiswa = hasil.filter(function (h) { return samaPesertaHasil_(h, ps); });
   var target = byId || milikSiswa[milikSiswa.length - 1];
   if (target) {
+    // Scan lama yang baru berhasil upload belakangan hanya di-ACK, tidak
+    // menggantikan jawaban terbaru. Semua timestamp dari zona sekolah yang sama.
+    var tersimpanPada = String(target['Waktu'] || '');
+    if (adaWaktuKlien && /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(tersimpanPada) &&
+        tersimpanPada > waktu) {
+      return { result: 'success', benar: Number(target['Benar']) || 0, jumlah: u.jumlah,
+        skor: Number(target['Skor']) || 0, siswa: ps.nama, kelas: ps.kelas,
+        duplikat: !!byId, usang: true };
+    }
     sh.getRange(target._row, 1, 1, row.length).setValues([row]);
     return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor,
       siswa: ps.nama, kelas: ps.kelas, duplikat: !!byId, diperbarui: !byId };
