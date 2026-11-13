@@ -351,7 +351,7 @@ function apiSave_(d) {
     // Scan lama yang baru berhasil upload belakangan hanya di-ACK, tidak
     // menggantikan jawaban terbaru. Semua timestamp dari zona sekolah yang sama.
     var tersimpanPada = String(target['Waktu'] || '');
-    if (adaWaktuKlien && /^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}$/.test(tersimpanPada) &&
+    if (adaWaktuKlien && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(tersimpanPada) &&
         tersimpanPada > waktu) {
       return { result: 'success', benar: Number(target['Benar']) || 0, jumlah: u.jumlah,
         skor: Number(target['Skor']) || 0, siswa: ps.nama, kelas: ps.kelas,
