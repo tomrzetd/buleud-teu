@@ -18,14 +18,14 @@ import java.util.concurrent.TimeUnit
 object ScanSync {
     const val WORK_NAME = "bt-scans-upload-v1"
 
-    fun schedule(ctx: Context) {
+    fun schedule(ctx: Context, force: Boolean = false) {
         val req = OneTimeWorkRequestBuilder<ScanSyncWorker>()
             .setConstraints(Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(ctx.applicationContext)
-            .enqueueUniqueWork(WORK_NAME, ExistingWorkPolicy.KEEP, req)
+            .enqueueUniqueWork(WORK_NAME, if (force) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, req)
     }
 
     fun cancel(ctx: Context) {
