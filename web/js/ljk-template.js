@@ -63,10 +63,10 @@
             out.push(`<line x1="${x}" y1="${fy1 + 3}" x2="${x}" y2="${fy2 - 3}" stroke="${DROP}" stroke-width="0.2"/>`);
         }
         for (let q = 0; q < P.questions; q++) {
-            const p0 = S.bubbleMM(q, 0);
+            const p0 = S.bubbleMM(q, 0, spec);
             T(P.x0 + Math.floor(q / P.rows) * P.blockW + P.numRight, p0.y + 1.05, `${q + 1}.`, 2.6, { anchor: 'end', bold: true });
             for (let o = 0; o < nOpt; o++) {
-                const p = S.bubbleMM(q, o);
+                const p = S.bubbleMM(q, o, spec);
                 out.push(`<circle cx="${p.x}" cy="${p.y}" r="${P.r}" fill="none" stroke="${GRAY}" stroke-width="0.3"/>`);
                 T(p.x, p.y + 0.85, S.LETTERS[o], 2.3, { anchor: 'middle', fill: LIGHT });
             }
