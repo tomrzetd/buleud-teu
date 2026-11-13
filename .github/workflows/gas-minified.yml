@@ -1,0 +1,38 @@
+name: Apps Script - Paket Distribusi Minified
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paket-minified:
+    name: Build & test Apps Script siap tempel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Pasang minifier versi tetap (build-time only)
+        run: npm install --no-save terser@5.44.1
+      - name: Satukan dan minify Apps Script tanpa ubah logic
+        run: node tools/minify_gas.js
+      - name: Validasi semua fungsi server dalam hasil minify
+        env:
+          BT_GAS_BUNDLE: apps-script/dist/BuleudTeu_deploy_min.gs
+        run: |
+          node tools/test/test_appscript.js
+          node tools/test/test_signed_license.js
+          node tools/test/test_roster_license.js
+          node tools/test/test_schema_dapodik.js
+          node tools/test/test_scan_replay.js
+          node tools/test/test_security.js
+      - name: Ambil file deploy (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: BuleudTeu-AppsScript-Siap-Tempel
+          path: apps-script/dist/BuleudTeu_deploy_min.gs
+          if-no-files-found: error
+          retention-days: 30

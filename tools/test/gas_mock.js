@@ -82,9 +82,17 @@ ctx.Utilities.newBlob = bytes => ({
   bytes, getDataAsString: () => Buffer.from(bytes).toString('utf-8')
 });
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Statistik.gs'), 'utf8'), ctx);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Code.gs'), 'utf8'), ctx);
-vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Laporan.gs'), 'utf8'), ctx);
+// Same test suites work with readable sources OR the one-file minified deployment.
+// BT_GAS_BUNDLE is a testing-only path, never sent to the school or mobile API.
+const bundlePath = opt.gasBundle || process.env.BT_GAS_BUNDLE;
+if (bundlePath) {
+    const full = path.resolve(path.join(__dirname, '../..'), bundlePath);
+    vm.runInContext(fs.readFileSync(full, 'utf8'), ctx, { filename: full });
+} else {
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Statistik.gs'), 'utf8'), ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Code.gs'), 'utf8'), ctx);
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '../../apps-script/Laporan.gs'), 'utf8'), ctx);
+}
 const GET = (action) => JSON.parse(ctx.doGet({ parameter: { action } }).getContent());
 const POST = (o) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify(o) } }).getContent());
 return { ctx, ss, created, fetched, drive, GET, POST, mintLicense, doGet: (p) => ctx.doGet({ parameter: p }).getContent(), doPost: (body) => ctx.doPost({ postData: { contents: body } }).getContent() };
