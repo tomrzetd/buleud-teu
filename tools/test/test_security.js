@@ -5,6 +5,8 @@ const { createGas } = require('./gas_mock.js');
 const S = require('../../apps-script/Statistik.gs');
 const { ctx, ss, POST } = createGas();
 ctx.setup();
+// Uji keamanan produksi memakai lisensi terdaftar; mode demo dites terpisah.
+ss.getSheetByName('Sekolah').getRange(10, 2).setValue('Terdaftar');
 const sh = (n) => ss.getSheetByName(n);
 sh('Guru').appendRow(['GURU A', 'a@x.id', '1111', 'IPA', '7A, 7B', 'Ya']);
 sh('Guru').appendRow(['GURU B', '', '2222', 'IPA', '7A', 'Ya']);
