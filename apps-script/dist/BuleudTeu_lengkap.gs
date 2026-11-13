@@ -103,7 +103,9 @@ function lisensiInfo_() {
     var mismatch = 0;
     for (var j = 0; j < expected.length; j++) mismatch |= parts[2].charCodeAt(j) ^ expected.charCodeAt(j);
     if (mismatch) return inactive;
-    var decoded = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[1])).getDataAsString('UTF-8');
+    // Normalisasi padding agar decoder Apps Script menerima token base64url dari Python.
+    var b64payload = parts[1] + '==='.slice(0, (4 - parts[1].length % 4) % 4);
+    var decoded = Utilities.newBlob(Utilities.base64DecodeWebSafe(b64payload)).getDataAsString('UTF-8');
     var payload = JSON.parse(decoded);
     var now = Math.floor(Date.now() / 1000);
     if (payload.v !== 1 || payload.product !== 'buleud-teu' ||
