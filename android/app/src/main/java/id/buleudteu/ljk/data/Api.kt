@@ -29,7 +29,10 @@ class Api(private val store: Store) {
     private val textPlain = "text/plain;charset=utf-8".toMediaType()
 
     suspend fun get(action: String, url: String = store.api): JSONObject = withContext(Dispatchers.IO) {
-        val r = http.newCall(Request.Builder().url("$url?action=$action").build()).execute()
+        // Bypass cache/browser-proxy: perubahan lisensi di sheet harus dibaca ulang.
+        val suffix = if (url.contains("?")) "&" else "?"
+        val fresh = "$url${suffix}action=$action&_bt=${System.currentTimeMillis()}"
+        val r = http.newCall(Request.Builder().url(fresh).header("Cache-Control", "no-cache").build()).execute()
         r.use { parse(it.body?.string() ?: "") }
     }
 
