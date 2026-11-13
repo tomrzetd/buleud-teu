@@ -138,7 +138,8 @@ fun AppRoot(vm: AppViewModel) {
             Card {
                 Text("Mode lain", color = TX2, fontSize = 12.sp)
                 OutlinedButton({ vm.startScan(null, ScanMode.LEGACY) }, Modifier.fillMaxWidth()) { Text("Scan LJK lama 20 / 25 soal (tanpa marker)") }
-                OutlinedButton({ shareTemplate(ctx, "ABCD") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCD (PDF)") }
+                OutlinedButton({ shareLjk25(ctx, vm) }, Modifier.fillMaxWidth()) { Text("🖨 Template F4 25 soal ABCD bermarker (PDF vektor)") }
+                OutlinedButton({ shareTemplate(ctx, "ABCD") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 50 soal ABCD (PDF)") }
                 OutlinedButton({ shareTemplate(ctx, "ABCDE") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCDE (PDF)") }
                 OutlinedButton({ shareTemplate(ctx, "TANPA_MARKER_20_ABCD") }, Modifier.fillMaxWidth()) { Text("Template F4 tanpa marker · 20 soal (PDF)") }
                 OutlinedButton({ shareTemplate(ctx, "TANPA_MARKER_25_ABCD") }, Modifier.fillMaxWidth()) { Text("Template F4 tanpa marker · 25 soal (PDF)") }
@@ -159,6 +160,11 @@ fun AppRoot(vm: AppViewModel) {
             Button({ vm.startScan(u, ScanMode.EXAM) }) { Text("📷 Scan") }
             OutlinedButton({ vm.editExam(u) }) { Text("Edit") }
             OutlinedButton({ vm.openAnalysis(u) }) { Text("Analisis") }
+        }
+        if (u.opsi == "ABCD" && u.jumlah <= 25) {
+            OutlinedButton({ shareLjk25(ctx, vm, u) }, Modifier.fillMaxWidth()) {
+                Text("🖨 Cetak formulir 25 PG bermarker (kunci aktif: ${u.jumlah})")
+            }
         }
     }
 }
