@@ -997,6 +997,7 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
         qScore = Math.round(clamp(qScore, 0, 100));
         ret.quality = { score: qScore, grade: qScore >= 80 ? 'A' : qScore >= 60 ? 'B' : 'C', pxPerMm: +pxPerMm.toFixed(2), residMm: residMm == null ? null : +residMm.toFixed(2), light: +light.toFixed(2), sharp: +sharp.toFixed(2), tilt: +tilt.toFixed(1) };
         ret.geo = { kind: 'mm', spec, H: Hg, blocks: blockFits, scale, pxPerMm, nOpt, active };
+        ret.markerMatch = best.bm;
         ret.debug.grid = grid;
         ret.success = true;
         log(`Ambang ${(dec.thr * 100).toFixed(0)}% (kosong ${(dec.empty * 100).toFixed(0)}%, terisi ${(dec.full * 100).toFixed(0)}%), residu ${residMm == null ? '-' : residMm.toFixed(2) + ' mm'}, kualitas ${qScore}`);
@@ -1009,17 +1010,24 @@ table.t th{color:var(--tx2);font-weight:600;position:sticky;top:0;background:var
     function processMarkerAuto(img, opt = {}) {
         const standard = processMarker(img, Object.assign({}, opt, { spec: SpecMod.SPEC }));
         if (opt.options === 5 || (opt.active || 50) > 25) return standard;
-        const compact = processMarker(img, Object.assign({}, opt, { spec: SpecMod.SPEC25 }));
-        if (!compact.success) return standard;
-        if (!standard.success) return compact;
-        const mmCircles = (standard.debug.cands || []).map(c => standard.geo.H.inv(c.x, c.y));
         let extra = 0;
-        for (let b = 0; b < 5; b++) for (let row = 5; row < 10; row++) for (let o = 0; o < 4; o++) {
-            const p = SpecMod.bubbleMM(b * 10 + row, o, SpecMod.SPEC);
-            if (mmCircles.some(c => Math.hypot(c.x - p.x, c.y - p.y) < 1.1)) extra++;
+        if (standard.success) {
+            const mmCircles = (standard.debug.cands || []).map(c => standard.geo.H.inv(c.x, c.y));
+            for (let b = 0; b < 5; b++) for (let row = 5; row < 10; row++) for (let o = 0; o < 4; o++) {
+                const p = SpecMod.bubbleMM(b * 10 + row, o, SpecMod.SPEC);
+                if (mmCircles.some(c => Math.hypot(c.x - p.x, c.y - p.y) < 1.1)) extra++;
+            }
+            if (extra >= 18) {
+                standard.logs.push('Auto-layout: F4-50-v1, bulatan bawah ' + extra + '/100');
+                return standard;
+            }
         }
-        const selected = extra >= 18 ? standard : compact;
-        selected.logs.push('Auto-layout: ' + selected.geo.spec.id + ', bulatan baris 6-10: ' + extra + '/100');
+        const compact = processMarker(img, Object.assign({}, opt, { spec: SpecMod.SPEC25 }));
+        const selected = compact.success && (!standard.success || compact.markerMatch > standard.markerMatch + 0.12)
+            ? compact : standard;
+        selected.logs.push('Auto-layout: ' + (selected.geo?.spec?.id || '-') +
+            ', bulatan bawah ' + extra + '/100, cocok 50=' + Math.round((standard.markerMatch || 0) * 100) +
+            '%, 25=' + Math.round((compact.markerMatch || 0) * 100) + '%');
         return selected;
     }
 
