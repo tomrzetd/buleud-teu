@@ -56,7 +56,8 @@ object Updater {
      * No exception escapes UI. Without valid manifest, fall back to browser
      * download instead of claiming an APK is already integrity-verified.
      */
-    fun cek(ctx: Context): Info? = try {
+    fun cek(ctx: Context): Info? {
+        return try {
         val release = JSONObject(getText("https://api.github.com/repos/$REPO/releases/latest") ?: return null)
         val tag = release.optString("tag_name") // v4.1.N
         val n = Regex("^v4\\.1\\.(\\d+)$").matchEntire(tag)
@@ -89,6 +90,7 @@ object Updater {
         }
         Info(tag.removePrefix("v"), notes, code, DOWNLOAD, null, 0)
     } catch (_: Exception) { null }
+    }
 
     private fun fileSha256(file: File): String {
         val sha = MessageDigest.getInstance("SHA-256")
