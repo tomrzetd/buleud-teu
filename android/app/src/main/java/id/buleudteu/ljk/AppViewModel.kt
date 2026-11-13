@@ -48,8 +48,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var scanMode by mutableStateOf(ScanMode.EXAM)
     var queueSize by mutableStateOf(store.queue().length())
     var loading by mutableStateOf<String?>(null)        // progres ringan (memuat data) di beranda
-    /** Fail-closed: hanya laporan server mutakhir yang dapat mengaktifkan fitur produksi. */
-    val isDemo: Boolean get() = sekolah?.license != "Terdaftar" || data?.license != "Terdaftar"
+    // Hanya response "exams" terbaru berhak mengaktifkan UI. Status dari
+    // get/config atau SharedPreferences lama tidak boleh menahan aktivasi.
+    var licenseChecked by mutableStateOf(false)
+    val isDemo: Boolean get() = !licenseChecked || data?.licensed != true
 
     companion object { const val WATERMARK = "by : rizalabdurrahman@guru.smp.belajar.id" }
 
@@ -92,7 +94,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         busy = null
     }
     private fun applyConfig(c: JSONObject) { sekolah = Api.sekolah(c); guruList = Api.guruList(c) }
-    fun refreshConfig() = viewModelScope.launch { runCatching { api.get("config") }.onSuccess { store.configJson = it.toString(); applyConfig(it) } }
+    fun refreshConfig() = viewModelScope.launch {
+        runCatching { api.get("config") }.onSuccess {
+            store.configJson = it.toString(); applyConfig(it)
+        }
+    }
 
     fun login(guru: String, pin: String) = viewModelScope.launch {
         loginMsg = "Memeriksa…"; busy = "Masuk…"
@@ -116,14 +122,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { update = withContext(Dispatchers.IO) { Updater.cek(getApplication()) } } }
 
     fun loadExams() = viewModelScope.launch {
-        loading = "Memuat data ujian & siswa dari spreadsheet…"
-        call { api.post(JSONObject().put("action", "exams")) }?.let {
-            store.examsJson = it.toString()
-            data = Api.exams(it)
-            if (!isDemo) flushQueue()
+        // Jangan tampilkan roster lama selama validasi ke server berjalan.
+        if (loading != null) return@launch
+        licenseChecked = false
+        data = null
+        loading = "Memverifikasi koneksi & memuat ujian…"
+        // Refresh konfigurasi dari server lebih dahulu, lalu daftar ujian;
+        // kedua permintaan memakai URL deploy yang sama.
+        val config = call { api.get("config") }
+        if (config != null) {
+            store.configJson = config.toString()
+            applyConfig(config)
+            val response = call { api.post(JSONObject().put("action", "exams")) }
+            if (response != null) {
+                store.examsJson = response.toString()
+                data = Api.exams(response)
+                licenseChecked = true
+                if (!isDemo) flushQueue()
+            }
         }
         loading = null
-        refreshConfig()
     }
     fun studentsOf(u: Ujian?) = data?.siswa?.filter { s ->
         if (u == null) true
