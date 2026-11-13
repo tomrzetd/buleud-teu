@@ -57,7 +57,7 @@ const ctx = {
     PropertiesService: { getScriptProperties: () => ({ getProperty: k => props.get(k) || null, setProperty: (k, v) => props.set(k, v) }) },
     CacheService: { getScriptCache: () => ({ get: k => cache.get(k) || null, put: (k, v) => cache.set(k, v), remove: k => cache.delete(k) }) },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => { } }) },
-    Utilities: { formatDate: (d, tz, f) => f === 'yyMMdd' ? '261103' : (f === 'yyyy-MM-dd' ? '2026-11-03' : '2026-11-03 23:00:' + String(Math.floor(Math.random() * 60)).padStart(2, '0')), getUuid: () => 'tok-' + Math.random().toString(36).slice(2), base64Encode: () => '', base64Decode: () => [], newBlob: () => ({}) },
+    Utilities: { formatDate: (d, tz, f) => f === 'yyMMdd' ? '261103' : (f === 'yyyy-MM-dd' ? '2026-11-03' : new Date(d.getTime() + 7 * 3600000).toISOString().slice(0, 19).replace('T', ' ')), getUuid: () => 'tok-' + Math.random().toString(36).slice(2), base64Encode: () => '', base64Decode: () => [], newBlob: () => ({}) },
     Session: { getScriptTimeZone: () => 'Asia/Jakarta' },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ getContent: () => s, setMimeType() { return this; } }) },
     DriveApp: { getFileById: () => { throw new Error('no drive'); } }, Logger: { log: () => { } }, MimeType: {}, console

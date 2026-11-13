@@ -53,6 +53,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var queueSize by mutableStateOf(store.queue().length())
     var blockedQueueSize by mutableStateOf(0)
     var otherAccountQueueSize by mutableStateOf(0)
+    // Compose snapshot dari SQLite: kode status tidak menunggu refresh roster.
+    var localPendingKeys by mutableStateOf<Set<String>>(emptySet())
+    var localBlockedKeys by mutableStateOf<Set<String>>(emptySet())
+    var localConfirmedKeys by mutableStateOf<Set<String>>(emptySet())
     var loading by mutableStateOf<String?>(null)        // progres ringan (memuat data) di beranda
     // Hanya response "exams" terbaru berhak mengaktifkan UI. Status dari
     // get/config atau SharedPreferences lama tidak boleh menahan aktivasi.
@@ -74,6 +78,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var selKelasFilter by mutableStateOf("")
     var nomorOcr = ""
     private var confirmFlags = false
+    private var confirmRescan = false
     private var scanId = ""
     var analysis by mutableStateOf<JSONObject?>(null)
     var analysisScope by mutableStateOf("tingkat" to "")
@@ -112,14 +117,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun updateQueueCounters() {
-        val endpoint = store.api
-        val teacher = store.guruNama
-        val stats = withContext(Dispatchers.IO) {
-            Triple(outbox.countFor(endpoint, teacher), outbox.blockedFor(endpoint, teacher), outbox.countAll())
+        val stats = withContext(Dispatchers.IO) { outbox.snapshot(store.api, store.guruNama) }
+        queueSize = stats.total
+        blockedQueueSize = stats.blockedTotal
+        otherAccountQueueSize = stats.otherAccountTotal
+        localPendingKeys = stats.pending
+        localBlockedKeys = stats.blocked
+        localConfirmedKeys = stats.confirmed
+    }
+
+    /** uploaded=ACK server; pending=durable lokal; blocked=server menolak. */
+    fun studentScanState(u: Ujian, kelas: String, nama: String): String {
+        val key = ScanOutbox.studentKey(u.id, kelas, nama)
+        return when {
+            key in localBlockedKeys -> "blocked"
+            key in localPendingKeys -> "pending"
+            key in localConfirmedKeys ||
+                u.terscan.any { it.equals(kelas + "|" + nama, ignoreCase = true) } -> "uploaded"
+            else -> "none"
         }
-        queueSize = stats.first
-        blockedQueueSize = stats.second
-        otherAccountQueueSize = (stats.third - stats.first).coerceAtLeast(0)
+    }
+    fun studentScanCounts(u: Ujian): Pair<Int, Int> {
+        var uploaded = 0
+        var pending = 0
+        studentsOf(u).forEach {
+            when (studentScanState(u, it.kelas, it.nama)) {
+                "uploaded" -> uploaded++
+                "pending", "blocked" -> pending++
+            }
+        }
+        return uploaded to pending
     }
 
     /** Sinkronisasi berjalan di WorkManager, bukan di halaman dashboard. */
@@ -277,7 +304,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (scanMode == ScanMode.KEY) { keyFromScan(r); return@launch }
         r.image?.let { image = it }      // LJK lama yang diputar otomatis: potongan identitas & bukti memakai gambar tegak
         result = r; answers.clear(); answers.addAll(r.answers); status.clear(); status.addAll(r.status)
-        confirmFlags = false; scanId = UUID.randomUUID().toString(); match = null; ocrMsg = ""; selSiswa = ""; nomorOcr = ""
+        confirmFlags = false; confirmRescan = false
+        scanId = UUID.randomUUID().toString(); match = null; ocrMsg = ""; selSiswa = ""; nomorOcr = ""
         val kelasList = studentsOf(exam).map { it.kelas }.distinct().sorted()
         selKelas = ""; selKelasFilter = if (kelasList.size == 1) kelasList[0] else ""
         screen = Screen.RESULT
@@ -356,7 +384,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (t.isEmpty()) return all.sortedBy { it.nama }
         return all.map { it to (if (it.nama.contains(t)) 2.0 else LjkIdent.nameSim(t, it.nama)) }.filter { it.second >= 0.5 }.sortedByDescending { it.second }.take(12).map { it.first }
     }
-    fun pickStudent(nama: String, kelas: String) { selSiswa = nama; selKelas = kelas }
+    fun pickStudent(nama: String, kelas: String) {
+        selSiswa = nama; selKelas = kelas
+        confirmRescan = false
+    }
 
     fun tapAnswer(q: Int, l: Char) { answers[q] = if (answers[q] == l) null else l; status[q] = if (answers[q] != null) "ok" else "blank"; confirmFlags = false }
     fun flagged() = status.mapIndexedNotNull { i, s -> if ((s == "double" || s == "weak") && i < (exam?.jumlah ?: lamaN())) i + 1 else null }
@@ -381,6 +412,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (selKelas.isEmpty() || selSiswa.isEmpty()) {
             say("Pilih kelas dan nama siswa dulu"); return@launch
         }
+        val previous = studentScanState(u, selKelas, selSiswa)
+        if (previous != "none" && !confirmRescan) {
+            confirmRescan = true
+            val where = if (previous == "uploaded") "sudah di Spreadsheet" else "sudah tersimpan lokal"
+            say("Siswa ini $where. Simpan ulang akan MEMPERBARUI nilainya. Tekan Simpan sekali lagi untuk konfirmasi.")
+            return@launch
+        }
         val fl = flagged()
         if (fl.isNotEmpty() && !confirmFlags) {
             confirmFlags = true
@@ -396,7 +434,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             .put("flags", JSONArray(fl))
             .put("mode", "marker-android")
             .put("quality", (q?.grade ?: "") + (q?.score ?: ""))
-            .put("scanId", scanId)
+            .put("scanId", scanId).put("capturedAt", System.currentTimeMillis())
         busy = "Menyimpan hasil ke perangkat…"
         val persisted = withContext(Dispatchers.IO) {
             outbox.enqueue(store.api, store.guruNama, body)
