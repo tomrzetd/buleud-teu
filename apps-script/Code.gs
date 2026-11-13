@@ -207,7 +207,10 @@ function siswaInfo_(s) {
     var secondary = String(s['Nama Rombel'] || '').trim().toUpperCase();
     // Graceful import: data CSV lawas kadang sudah punya E=8A F=8,
     // walaupun header baru. Hasil tetap 8A, bukan kelas '8'.
-    if (!/^(1[0-2]|[1-9])$/.test(primary) &&
+    if (!secondary && primary && !/^(1[0-2]|[1-9])$/.test(primary)) {
+      // CSV lama sering hanya mengisi nama kelas lengkap E=7A, F kosong.
+      grade = tingkatKode_(primary); kelas = rombelKode_(primary, grade);
+    } else if (!/^(1[0-2]|[1-9])$/.test(primary) &&
         /^(1[0-2]|[1-9])$/.test(secondary) &&
         tingkatKode_(primary) === secondary) {
       grade = secondary;
