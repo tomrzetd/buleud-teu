@@ -152,7 +152,7 @@ class Processor(private val store: Store, private val api: Api?) {
 }
 
 /** siswa yang mungkin untuk ujian (sama dengan Android studentsOf) */
-fun studentsOf(d: ExamsData?, u: Ujian?): List<Siswa> = d?.siswa?.filter { s -> u == null || (if (u.kelas.isEmpty() || "SEMUA" in u.kelas) (u.tingkat.isEmpty() || s.tingkat == u.tingkat) else s.kelas in u.kelas) } ?: emptyList()
+fun studentsOf(d: ExamsData?, u: Ujian?): List<Siswa> = d?.siswa?.filter { s -> u == null || (if (u.kelas.isEmpty() || "SEMUA" in u.kelas) (u.tingkat.isEmpty() || s.tingkat == u.tingkat) else u.kelas.any { it.equals(s.kelas, ignoreCase = true) || it.equals(s.tingkat, ignoreCase = true) }) } ?: emptyList()
 
 /** pencarian lintas kelas: berisi kata kunci, atau mirip (toleran salah ketik) */
 fun searchStudents(all: List<Siswa>, q: String, kelas: String): List<Siswa> {
