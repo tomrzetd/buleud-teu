@@ -25,9 +25,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -119,14 +116,6 @@ fun AppRoot(vm: AppViewModel) {
 // ---------------------------------------------------------------- beranda
 @Composable fun HomeScreen(vm: AppViewModel) {
     val ctx = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) vm.loadExams()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
     val semua = vm.data?.ujian ?: emptyList()
     val guru = vm.data?.guru
     var mapelAktif by remember(guru?.nama, guru?.mapel) { mutableStateOf(guru?.mapel?.firstOrNull() ?: "") }
@@ -156,12 +145,30 @@ fun AppRoot(vm: AppViewModel) {
             SchoolFooter(vm)
             vm.update?.let { up -> Card {
                 Text("Versi baru tersedia: ${up.versi}", color = Color.White, fontWeight = FontWeight.Bold)
-                Text("Terpasang: ${Updater.versionName(ctx)}. Kirim antrean hasil (bila ada), lalu unduh & pasang.", color = TX2, fontSize = 12.sp)
+                Text("Terpasang: ${Updater.versionName(ctx)}. Pastikan antrean scan terkirim sebelum menghapus aplikasi atau mengganti perangkat.", color = TX2, fontSize = 12.sp)
                 if (up.catatan.isNotEmpty()) Text(up.catatan, color = TX2, fontSize = 12.sp)
                 Button({ runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Updater.DOWNLOAD))) } },
                     Modifier.fillMaxWidth().padding(top = 6.dp), enabled = !vm.isDemo && vm.queueSize == 0) { Text("Unduh pembaruan") }
             } }
-            if (vm.queueSize > 0 && !vm.isDemo) Note("${vm.queueSize} hasil scan menunggu dikirim. Ketuk ↻ untuk mengirim.")
+            if (vm.queueSize > 0) {
+                Card {
+                    Column {
+                        Text("${vm.queueSize} hasil scan tersimpan di HP", color = WARN, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (vm.blockedQueueSize > 0) "${vm.blockedQueueSize} perlu diperiksa (akun, lisensi, atau data siswa). Hasil tidak dihapus."
+                            else "Menunggu jaringan/server. Sinkronisasi otomatis di belakang layar.",
+                            color = TX2, fontSize = 12.sp
+                        )
+                    }
+                    OutlinedButton({ vm.syncPendingScans(retryBlocked = true) }, Modifier.fillMaxWidth()) {
+                        Text("↻ Coba kirim hasil tertunda")
+                    }
+                }
+            }
+            if (vm.otherAccountQueueSize > 0) {
+                Text("${vm.otherAccountQueueSize} hasil lokal milik server/akun lain tetap tersimpan pada perangkat ini.",
+                    color = WARN, fontSize = 11.sp)
+            }
             Card {
                 Text("Mata pelajaran & siswa", color = Color.White, fontWeight = FontWeight.Bold)
                 val daftarMapel = guru?.mapel.orEmpty()
