@@ -525,18 +525,24 @@ object LjkEngine {
     ): LjkResult {
         val old = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.F4_50)
         if (options != 4 || activeIn > 25) return old
-        val compact = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.F4_25)
-        if (!compact.success) return old
-        if (!old.success) return compact
-        val geo = old.geo ?: return compact
-        val mmCircles = old.circles.map { geo.H.inv.map(it.x, it.y) }
+        val geo = old.geo
         var lowerHits = 0
-        for (block in 0 until 5) for (row in 5 until 10) for (option in 0 until 4) {
-            val target = LjkSpec.bubbleMM(block * 10 + row, option)
-            if (mmCircles.any { hypot(it.x - target.x, it.y - target.y) < 1.1 }) lowerHits++
+        if (old.success && geo != null) {
+            val mmCircles = old.circles.map { geo.H.inv.map(it.x, it.y) }
+            for (block in 0 until 5) for (row in 5 until 10) for (option in 0 until 4) {
+                val target = LjkSpec.bubbleMM(block * 10 + row, option)
+                if (mmCircles.any { hypot(it.x - target.x, it.y - target.y) < 1.1 }) lowerHits++
+            }
+            if (lowerHits >= 18) {
+                old.logs.add("Auto-layout: F4-50-v1, bulatan baris 6–10 = $lowerHits/100")
+                return old
+            }
         }
-        val result = if (lowerHits >= 18) old else compact
-        result.logs.add("Auto-layout: ${result.geo?.layout?.id}, bulatan baris 6–10 = $lowerHits/100")
+        val compact = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.F4_25)
+        // Jangan pilih formulir 25 hanya karena sedikit bulatan bawah terdeteksi:
+        // harus ada kenaikan kecocokan bulatan yang bermakna dibanding layout lama.
+        val result = if (compact.success && (!old.success || compact.markerMatch > old.markerMatch + 0.12)) compact else old
+        result.logs.add("Auto-layout: ${result.geo?.layout?.id}, bulatan bawah $lowerHits/100, cocok 50=${(old.markerMatch * 100).toInt()}%, 25=${(compact.markerMatch * 100).toInt()}%")
         return result
     }
 
