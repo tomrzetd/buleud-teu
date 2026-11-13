@@ -76,15 +76,50 @@ function sekolah_() {
     nama: o['Nama Sekolah'] || '', npsn: o['NPSN'] || '', jenjang: (o['Jenjang (SD/SMP/SMA/SMK)'] || '').toUpperCase(),
     alamat: o['Alamat'] || '', kota: o['Kota/Kabupaten'] || '', kepala: o['Kepala Sekolah'] || '', nipKepala: o['NIP Kepala Sekolah'] || '',
     tahun: o['Tahun Pelajaran'] || '', logoId: o['Logo (ID file Google Drive)'] || '',
-    license: String(o['License'] || '').trim().toUpperCase() === 'TERDAFTAR' ? 'Terdaftar' : 'Demo'
+    licenseToken: o['License'] || ''
   };
 }
-/** LICENSE diberlakukan di server. UI disable saja bukan pengaman API.
- * Status missing/kosong/non-'Terdaftar' selalu DEMO (fail-closed).
+/**
+ * Status lisensi ditetapkan SERVER; KODE rahasia (HMAC key) HANYA dalam
+ * Script Properties BT_LICENSE_HMAC_KEY, tidak di source, APK, ataupun Sheet.
+ *
+ * License di sheet Sekolah!B10: BTL1.<base64url(payload)>.<HMAC-SHA256>.
+ * Token lama 'Terdaftar' TIDAK berlaku sebagai lisensi produksi.
+ * Disalin ke sekolah lain, diubah tier/tanggal, atau kadaluarsa -> DEMO.
  */
-function lisensi_() { return sekolah_().license === 'Terdaftar'; }
+function lisensiInfo_() {
+  var inactive = { active: false, tier: 'demo', expiresAt: 0 };
+  var code = String(sekolah_().licenseToken || '').trim();
+  if (!/^BTL1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(code)) return inactive;
+  var key = PropertiesService.getScriptProperties().getProperty('BT_LICENSE_HMAC_KEY');
+  if (!key || key.length < 40) return inactive;
+  try {
+    var parts = code.split('.');
+    var msg = parts[0] + '.' + parts[1];
+    var expected = Utilities.base64EncodeWebSafe(
+      Utilities.computeHmacSha256Signature(msg, key, Utilities.Charset.UTF_8)
+    ).replace(/=+$/, '');
+    if (parts[2].length !== expected.length) return inactive;
+    var mismatch = 0;
+    for (var j = 0; j < expected.length; j++) mismatch |= parts[2].charCodeAt(j) ^ expected.charCodeAt(j);
+    if (mismatch) return inactive;
+    var decoded = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[1])).getDataAsString('UTF-8');
+    var payload = JSON.parse(decoded);
+    var now = Math.floor(Date.now() / 1000);
+    if (payload.v !== 1 || payload.product !== 'buleud-teu' ||
+        payload.sid !== doc_().getId() || !/^(school|pro)$/.test(payload.tier) ||
+        !Number.isFinite(payload.iat) || !Number.isFinite(payload.exp) ||
+        payload.iat > now + 300 || payload.exp <= now ||
+        payload.exp - payload.iat > 3650 * 86400) return inactive;
+    return { active: true, tier: payload.tier, expiresAt: payload.exp };
+  } catch (e) { return inactive; }
+}
+function lisensi_() { return lisensiInfo_().active; }
 function wajibTerdaftar_() {
-  if (!lisensi_()) { var e = new Error('Mode DEMO: simpan, analisis, laporan, dan ubah ujian dinonaktifkan. Isi License = Terdaftar pada sheet Sekolah.'); e.forbidden = true; throw e; }
+  if (!lisensi_()) {
+    var e = new Error('Aktivasi aplikasi belum valid atau masa berlaku telah berakhir. Hubungi administrator.');
+    e.forbidden = true; throw e;
+  }
 }
 function opsiDefault_(jenjang) { return /SMA|SMK|MA\b/.test(String(jenjang).toUpperCase()) ? 'ABCDE' : 'ABCD'; }
 function logoDataUrl_(id) {
@@ -180,7 +215,10 @@ function doGet(e) {
     var sk = sekolah_();
     var guru = rows_(SH.GURU).filter(function (r) { return r['Nama'] && !/^(TIDAK|NO|N)$/i.test(r['Aktif']); })
       .map(function (g) { var i = guruInfo_(g); return { nama: i.nama, mapel: i.mapel }; });
-    return json_({ status: 'connected', version: VERSION, sekolah: { nama: sk.nama, npsn: sk.npsn, jenjang: sk.jenjang, kota: sk.kota, tahun: sk.tahun, kepala: sk.kepala, opsiDefault: opsiDefault_(sk.jenjang), logo: logoDataUrl_(sk.logoId), license: sk.license }, guru: guru });
+    var lic = lisensiInfo_();
+    return json_({ status: 'connected', version: VERSION, sekolah: { nama: sk.nama, npsn: sk.npsn, jenjang: sk.jenjang, kota: sk.kota, tahun: sk.tahun, kepala: sk.kepala, opsiDefault: opsiDefault_(sk.jenjang), logo: logoDataUrl_(sk.logoId),
+      licensed: lic.active, plan: lic.tier, expiresAt: lic.expiresAt,
+      license: lic.active ? 'Terdaftar' : 'Demo' }, guru: guru });
   } catch (err) { return json_({ error: String(err.message || err) }); }
 }
 
@@ -230,7 +268,7 @@ function apiExams_(d) {
   });
   ujian.forEach(function (u) { u.terscan = registered ? Object.keys(cnt[u.id] || {}) : []; delete u._row; });
   var kelasSemua = Array.from(new Set(siswa.map(function (s) { return s.kelas; }).concat(g.kelas))).sort();
-  return { result: 'success', license: registered ? 'Terdaftar' : 'Demo',
+  return { result: 'success', licensed: registered, license: registered ? 'Terdaftar' : 'Demo',
     guru: g, ujian: ujian, siswa: siswa, kelasSemua: kelasSemua, opsiDefault: opsiDefault_(sekolah_().jenjang) };
 }
 

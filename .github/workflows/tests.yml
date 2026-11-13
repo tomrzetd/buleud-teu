@@ -24,6 +24,8 @@ jobs:
         run: node tools/test/test_marker25.js
       - name: Template F4 tanpa marker 20 & 25 soal (10 kondisi foto)
         run: python3 tools/test/test_lama_template.py 20 && python3 tools/test/test_lama_template.py 25
+      - name: Lisensi kriptografis, demo, roster guru dan pembatasan server
+        run: node tools/test/test_signed_license.js && node tools/test/test_roster_license.js
       - name: Statistik vs numpy/scipy
         run: python3 tools/test/test_stats.py
       - name: Apps Script (tiruan layanan Google)

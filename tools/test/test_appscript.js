@@ -2,13 +2,13 @@
 const assert = require('assert');
 
 const { createGas } = require('./gas_mock.js');
-const { ctx, ss, GET, POST, created, fetched, drive } = createGas();
+const { ctx, ss, GET, POST, created, fetched, drive, mintLicense } = createGas();
 // ---------------- skenario
 ctx.setup();
 assert.deepStrictEqual(ss.sheets.map(s => s.name), ['Sekolah', 'Guru', 'Siswa', 'Ujian', 'HasilScan', 'BankSoal']);
 ss.getSheetByName('Sekolah').getRange(1, 2, 3, 1).setValues([['SMPN 2 JALAKSANA'], ['20212345'], ['SMP']]);
 // Fixture produksi: default tanpa License memang DEMO dan wajib ditolak.
-ss.getSheetByName('Sekolah').getRange(10, 2).setValue('Terdaftar');
+ss.getSheetByName('Sekolah').getRange(10, 2).setValue(mintLicense());
 ss.getSheetByName('Guru').appendRow(['NURHAYATI', 'n@x.id', '1234', 'IPA, MTK', '7A, 7B', 'Ya']);
 ss.getSheetByName('Guru').appendRow(['BUDI', '', '9999', 'IPS', '8A', 'Ya']);
 const rnd = (() => { let s = 7; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
