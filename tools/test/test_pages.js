@@ -98,7 +98,7 @@ async function request(url, mode = 'same-origin') {
   assert(!(await request('https://script.google.com/macros/s/xxx/exec')).handled, 'API Apps Script jangan di-cache');
 
   // Jika asset inti hilang saat offline, jangan salah memberi HTML sebagai berkas JS.
-  maps.get('buleudteu-v40-pages2').delete(base + 'js/app.js');
+  maps.get(vm.runInContext('CACHE', context)).delete(base + 'js/app.js');
   await assert.rejects((await request(base + 'js/app.js')).response, /Offline/);
 
   console.log('OK: GitHub Pages paths, asset, pre-cache, offline, isolasi Cikaracak/API');
