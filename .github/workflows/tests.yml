@@ -26,13 +26,6 @@ jobs:
           node tools/test/test_roster_license.js
           node tools/test/test_scan_replay.js
           node tools/test/test_security.js
-      - name: Lampirkan Apps Script siap deploy (hanya jika tes lulus)
-        uses: actions/upload-artifact@v4
-        with:
-          name: buleud-teu-apps-script-minified
-          path: apps-script/dist/BuleudTeu_deploy_min.gs
-          if-no-files-found: error
-          retention-days: 30
       - name: Uji GitHub Pages (rute subpath, isolasi cache, offline Chromium)
         run: node tools/test/test_pages.js && node tools/test/e2e_pages.js
       - name: Render template & buat foto uji
@@ -59,3 +52,10 @@ jobs:
         run: node tools/test/test_roster_license.js
       - name: Uji keamanan & integritas statistik (temuan audit)
         run: node tools/test/test_security.js
+      - name: Lampirkan Apps Script siap deploy (hanya jika tes lulus)
+        uses: actions/upload-artifact@v4
+        with:
+          name: buleud-teu-apps-script-minified
+          path: apps-script/dist/BuleudTeu_deploy_min.gs
+          if-no-files-found: error
+          retention-days: 30
