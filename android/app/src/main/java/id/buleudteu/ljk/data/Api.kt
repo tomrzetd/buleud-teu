@@ -39,7 +39,7 @@ class Api(private val store: Store) {
     suspend fun post(body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
         if (!body.has("token")) body.put("token", store.token)
         val r = http.newCall(Request.Builder().url(store.api).post(body.toString().toRequestBody(textPlain)).build()).execute()
-        r.use { parse(it.body?.string() ?: "") }
+        r.use { parse(it.body?.string() ?: "", it.code) }
     }
 
     private fun parse(t: String, httpCode: Int): JSONObject {
