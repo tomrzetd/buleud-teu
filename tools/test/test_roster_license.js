@@ -1,11 +1,11 @@
 // Regresi struktur siswa impor Dapodik: Kelas=8, Tingkat=A -> rombel 8A.
 const assert = require('node:assert/strict');
 const { createGas } = require('./gas_mock.js');
-const { ctx, ss, POST, GET } = createGas();
+const { ctx, ss, POST, GET, mintLicense } = createGas();
 ctx.setup();
 const sk = ss.getSheetByName('Sekolah');
 sk.getRange(1, 2).setValue('SMPN 2 JALAKSANA');
-sk.getRange(10, 2).setValue('Terdaftar');
+sk.getRange(10, 2).setValue(mintLicense());
 const g = ss.getSheetByName('Guru');
 g.appendRow(['GURU IPA', '', '1111', 'IPA', '8A,8B,9', 'Ya']);
 const students = ss.getSheetByName('Siswa');
