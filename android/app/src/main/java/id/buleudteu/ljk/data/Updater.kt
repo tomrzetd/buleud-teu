@@ -125,7 +125,7 @@ object Updater {
         val digest = info.sha256 ?: error("Release belum memiliki manifest valid, gunakan unduh browser.")
         if (!trustedApkUrl(info.apkUrl)) error("Alamat APK tidak terpercaya")
         val dir = File(ctx.cacheDir, "verified_updates").apply { mkdirs() }
-        val tmp = File(dir, "BuleudTeu.tmp")
+        val tmp = File(dir, "BuleudTeu-pending.apk")
         val apk = File(dir, "BuleudTeu.apk")
         tmp.delete()
         try {
