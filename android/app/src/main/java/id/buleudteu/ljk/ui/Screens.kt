@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -114,57 +116,100 @@ fun AppRoot(vm: AppViewModel) {
 // ---------------------------------------------------------------- beranda
 @Composable fun HomeScreen(vm: AppViewModel) {
     val ctx = LocalContext.current
+    val semua = vm.data?.ujian ?: emptyList()
+    val guru = vm.data?.guru
+    var mapelAktif by remember(guru?.nama, guru?.mapel) { mutableStateOf(guru?.mapel?.firstOrNull() ?: "") }
+    var expandedKelas by remember(vm.data) { mutableStateOf<String?>(null) }
+    val ujianMapel = if (mapelAktif.isBlank()) semua else semua.filter { it.mapel.equals(mapelAktif, true) }
+    val kelasUjian = ujianMapel.flatMap { it.kelas }.map { it.uppercase() }.toSet()
+    val roster = vm.data?.siswa.orEmpty()
+    // Jika pemetaan mapel->kelas belum diberikan di sheet Guru, gunakan kelas guru
+    // yang sudah difilter server. Jangan menyimpulkan semua guru mengajar semua kelas.
+    val siswaMapel = if (ujianMapel.isEmpty()) roster else roster.filter { siswa ->
+        "SEMUA" in kelasUjian || kelasUjian.any { it == siswa.kelas.uppercase() || it == siswa.tingkat.uppercase() }
+    }
+    val rombel = siswaMapel.groupBy { it.kelas }.toSortedMap()
+
     Column(Modifier.fillMaxSize()) {
-        Top("Ujian saya", "${vm.store.guruNama} · ${vm.sekolah?.nama ?: ""}", actions = {
+        Top("Ujian saya", vm.store.guruNama, actions = {
             Text("↻", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.loadExams() }.padding(8.dp))
-            Text("⎋", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.logout() }.padding(8.dp)) })
+            Text("⎋", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.logout() }.padding(8.dp))
+        })
         vm.loading?.let { msg ->
             LinearProgressIndicator(Modifier.fillMaxWidth(), color = PRI)
             Text(msg, color = TX2, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
         }
         LaunchedEffect(Unit) { vm.checkUpdate() }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
+            // Identitas sekolah, tahun, logo & copyright dipindahkan ke ATAS.
+            SchoolFooter(vm)
+            if (vm.isDemo) {
+                Card {
+                    Text("DEMO • BELUM TERDAFTAR", fontWeight = FontWeight.Bold, color = WARN)
+                    Text("Hanya 5 siswa contoh. Pindai tersedia untuk latihan; simpan hasil, analisis, laporan, dan ubah ujian nonaktif. Aktifkan License = Terdaftar di sheet Sekolah.", color = TX2, fontSize = 12.sp)
+                }
+            }
             vm.update?.let { up -> Card {
                 Text("Versi baru tersedia: ${up.versi}", color = Color.White, fontWeight = FontWeight.Bold)
-                Text("Terpasang: ${Updater.versionName(ctx)}. Kirim dulu antrean hasil (bila ada), lalu unduh & pasang — data dan login tetap tersimpan.", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
+                Text("Terpasang: ${Updater.versionName(ctx)}. Kirim antrean hasil (bila ada), lalu unduh & pasang.", color = TX2, fontSize = 12.sp)
                 if (up.catatan.isNotEmpty()) Text(up.catatan, color = TX2, fontSize = 12.sp)
-                Button({ runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Updater.DOWNLOAD))) } }, Modifier.fillMaxWidth().padding(top = 6.dp), enabled = vm.queueSize == 0) {
-                    Text(if (vm.queueSize == 0) "Unduh pembaruan" else "Kirim antrean dulu (${vm.queueSize})") }
+                Button({ runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Updater.DOWNLOAD))) } },
+                    Modifier.fillMaxWidth().padding(top = 6.dp), enabled = !vm.isDemo && vm.queueSize == 0) { Text("Unduh pembaruan") }
             } }
-            if (vm.queueSize > 0) Note("${vm.queueSize} hasil scan menunggu dikirim (offline). Ketuk ↻ untuk mengirim.")
-            val list = vm.data?.ujian ?: emptyList()
-            if (list.isEmpty()) Card { Text("Belum ada ujian aktif. Buat ujian baru, isi kunci, lalu cetak LJK.", color = TX2) }
-            list.forEach { u -> ExamCard(vm, u, ctx) }
+            if (vm.queueSize > 0 && !vm.isDemo) Note("${vm.queueSize} hasil scan menunggu dikirim. Ketuk ↻ untuk mengirim.")
             Card {
-                Text("Mode lain", color = TX2, fontSize = 12.sp)
-                OutlinedButton({ vm.startScan(null, ScanMode.LEGACY) }, Modifier.fillMaxWidth()) { Text("Scan LJK lama 20 / 25 soal (tanpa marker)") }
-                OutlinedButton({ shareLjk25(ctx, vm) }, Modifier.fillMaxWidth()) { Text("🖨 Template F4 25 soal ABCD bermarker (PDF vektor)") }
-                OutlinedButton({ shareTemplate(ctx, "ABCD") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 50 soal ABCD (PDF)") }
-                OutlinedButton({ shareTemplate(ctx, "ABCDE") }, Modifier.fillMaxWidth()) { Text("Template LJK F4 ABCDE (PDF)") }
-                OutlinedButton({ shareTemplate(ctx, "TANPA_MARKER_20_ABCD") }, Modifier.fillMaxWidth()) { Text("Template F4 tanpa marker · 20 soal (PDF)") }
-                OutlinedButton({ shareTemplate(ctx, "TANPA_MARKER_25_ABCD") }, Modifier.fillMaxWidth()) { Text("Template F4 tanpa marker · 25 soal (PDF)") }
-                Text("Untuk menilai & menyimpan LJK lama 20 / 25 soal: buat ujian 20 atau 25 soal ABCD lalu tekan Scan pada kartu ujian (LJK lama dikenali otomatis). Tombol di atas hanya untuk cek cepat. LJK berkop sekolah: cetak dari web app.", color = TX2, fontSize = 12.sp)
+                Text("Mata pelajaran & siswa", color = Color.White, fontWeight = FontWeight.Bold)
+                val daftarMapel = guru?.mapel.orEmpty()
+                if (daftarMapel.isEmpty()) Text("Belum ada mapel terdaftar pada sheet Guru.", color = TX2)
+                else {
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        daftarMapel.forEach { m ->
+                            FilterChip(m.equals(mapelAktif, true), { mapelAktif = m; expandedKelas = null },
+                                { Text(m) }, Modifier.padding(end = 7.dp))
+                        }
+                    }
+                    Text("${siswaMapel.size} siswa · ${rombel.size} rombel", color = TX2, fontSize = 12.sp)
+                    if (ujianMapel.isEmpty()) Text("Belum ada ujian untuk mapel ini. Daftar kelas mengikuti penugasan guru umum; detail mapel per kelas belum tersedia pada sheet Guru.", color = TX2, fontSize = 11.sp)
+                    rombel.forEach { (kelas, siswa) ->
+                        OutlinedButton({ expandedKelas = if (expandedKelas == kelas) null else kelas }, Modifier.fillMaxWidth()) {
+                            Text("Kelas $kelas · ${siswa.size} siswa   ${if (expandedKelas == kelas) "▴" else "▾"}")
+                        }
+                        if (expandedKelas == kelas) {
+                            LazyColumn(Modifier.fillMaxWidth().heightIn(max = 180.dp)) {
+                                items(siswa.sortedBy { it.nama }) { st ->
+                                    Text("• ${st.nama}", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                                }
+                            }
+                        }
+                    }
+                }
             }
-            SchoolFooter(vm)
+            if (ujianMapel.isEmpty()) Card { Text("Belum ada ujian aktif untuk mapel ${mapelAktif.ifBlank { "-" }}.", color = TX2) }
+            ujianMapel.forEach { u -> ExamCard(vm, u, ctx) }
+            // Template PDF dan mode pindai lama tidak lagi memenuhi beranda.
+            // Generator tetap tersedia di web + repository jika diperlukan.
         }
-        Button({ vm.editExam(null) }, Modifier.fillMaxWidth().padding(14.dp).height(52.dp)) { Text("＋ Ujian baru") }
+        Button({ vm.editExam(null) }, Modifier.fillMaxWidth().padding(14.dp).height(52.dp), enabled = !vm.isDemo) {
+            Text(if (vm.isDemo) "Mode Demo — ujian baru nonaktif" else "＋ Ujian baru")
+        }
     }
 }
 @Composable fun ExamCard(vm: AppViewModel, u: Ujian, ctx: Context) {
     val tot = vm.studentsOf(u).size; val done = u.terscan.size
     Card {
-        Row { Column(Modifier.weight(1f)) { Text(u.nama, color = Color.White, fontWeight = FontWeight.Bold); Text("${u.mapel} · ${u.kelas.joinToString()} · ${u.jumlah} soal · ${u.opsi} · KKTP ${u.kktp.toInt()}", color = TX2, fontSize = 12.sp) }
-            Text("$done/$tot", color = Color(0xFFA5B8FF), fontSize = 12.sp) }
-        LinearProgressIndicator(progress = { if (tot > 0) minOf(1f, done.toFloat() / tot) else 0f }, Modifier.fillMaxWidth().padding(vertical = 8.dp), color = OK)
+        Row {
+            Column(Modifier.weight(1f)) {
+                Text(u.nama, color = Color.White, fontWeight = FontWeight.Bold)
+                Text("${u.mapel} · ${u.kelas.joinToString()} · ${u.jumlah} soal · ${u.opsi} · KKTP ${u.kktp.toInt()}", color = TX2, fontSize = 12.sp)
+            }
+            Text("$done/$tot", color = Color(0xFFA5B8FF), fontSize = 12.sp)
+        }
+        LinearProgressIndicator(progress = { if (tot > 0) minOf(1f, done.toFloat() / tot) else 0f },
+            Modifier.fillMaxWidth().padding(vertical = 8.dp), color = OK)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button({ vm.startScan(u, ScanMode.EXAM) }) { Text("📷 Scan") }
-            OutlinedButton({ vm.editExam(u) }) { Text("Edit") }
-            OutlinedButton({ vm.openAnalysis(u) }) { Text("Analisis") }
-        }
-        if (u.opsi == "ABCD" && u.jumlah <= 25) {
-            OutlinedButton({ shareLjk25(ctx, vm, u) }, Modifier.fillMaxWidth()) {
-                Text("🖨 Cetak formulir 25 PG bermarker (kunci aktif: ${u.jumlah})")
-            }
+            OutlinedButton({ vm.editExam(u) }, enabled = !vm.isDemo) { Text("Edit") }
+            OutlinedButton({ vm.openAnalysis(u) }, enabled = !vm.isDemo) { Text("Analisis") }
         }
     }
 }
@@ -282,7 +327,11 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                     if (hasil.isEmpty()) Text("Tidak ada nama yang cocok.", color = TX2, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
                 }
                 val fl = vm.flagged(); if (fl.isNotEmpty()) Note("Perlu dicek: nomor ${fl.joinToString()} (kuning).")
-                Button({ vm.save() }, Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp), colors = ButtonDefaults.buttonColors(containerColor = OK)) { Text("Simpan & scan berikutnya", color = Color(0xFF06210F)) }
+                if (vm.isDemo) Text("DEMO — hasil pindai tidak disimpan.", color = WARN, fontWeight = FontWeight.Bold)
+                Button({ vm.save() }, Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp),
+                    enabled = !vm.isDemo, colors = ButtonDefaults.buttonColors(containerColor = OK)) {
+                    Text(if (vm.isDemo) "🔒 Simpan nonaktif (DEMO)" else "Simpan & scan berikutnya", color = Color(0xFF06210F))
+                }
             }
             Card {
                 Text("LJK digital — ketuk bulatan untuk koreksi", color = TX2, fontSize = 12.sp)
@@ -358,7 +407,7 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
         Row(Modifier.horizontalScroll(rememberScrollState())) { listOf("kelas" to "Kelas, nama", "nama" to "Nama", "skor" to "Skor tertinggi").forEach { (k, t) -> FilterChip(vm.reportUrut == k, { vm.reportUrut = k }, { Text(t) }, Modifier.padding(end = 6.dp)) } }
         Row(Modifier.fillMaxWidth().clickable { vm.reportAnonim = !vm.reportAnonim }, verticalAlignment = Alignment.CenterVertically) {
             Checkbox(vm.reportAnonim, { vm.reportAnonim = it }); Text("Mode anonim (untuk rapat MGMP)", color = Color.White, fontSize = 14.sp) }
-        Button({ vm.makeReport() }, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Buat laporan") }
+        Button({ vm.makeReport() }, Modifier.fillMaxWidth().padding(top = 8.dp), enabled = !vm.isDemo) { Text("Buat laporan") }
         if (vm.reportInfo.isNotEmpty()) Note("Laporan siap: ${vm.reportInfo}", OK)
         vm.reportFile?.let { f ->
             val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
@@ -382,7 +431,7 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
                     FilterChip(vm.analysisScope.first == "tingkat", { vm.analysisScope = "tingkat" to "" }, { Text("Seluruh tingkat ${u.tingkat}") }, Modifier.padding(end = 6.dp))
                     u.kelas.filter { it != "SEMUA" }.forEach { k -> FilterChip(vm.analysisScope.second == k, { vm.analysisScope = "kelas" to k }, { Text("Kelas $k") }, Modifier.padding(end = 6.dp)) }
                 }
-                Button({ vm.runAnalysis() }, Modifier.fillMaxWidth().padding(top = 8.dp)) { Text("Hitung analisis") }
+                Button({ vm.runAnalysis() }, Modifier.fillMaxWidth().padding(top = 8.dp), enabled = !vm.isDemo) { Text("Hitung analisis") }
             }
             vm.analysis?.let { a -> AnalysisDashboard(vm, a) }
             ReportCard(vm)
@@ -406,6 +455,6 @@ fun logoBitmap(dataUrl: String?): Bitmap? = try {
         if (!sk?.nama.isNullOrEmpty()) Text(sk!!.nama, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp))
         if (!sk?.tahun.isNullOrEmpty()) Text("Tahun Pelajaran ${sk!!.tahun}", color = TX2, fontSize = 12.sp)
         Text("Buleud Teu • \"Mun buleud, ku urang dipariksa!\"", color = TX2.copy(alpha = 0.7f), fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
-        Text(AppViewModel.WATERMARK, color = TX2.copy(alpha = 0.85f), fontSize = 11.sp)
+        Text(AppViewModel.WATERMARK, color = TX2.copy(alpha = 0.85f), fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
     }
 }
