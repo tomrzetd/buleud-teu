@@ -118,7 +118,7 @@ assert.strictEqual(demoCfg.sekolah.license, 'Demo');
 const demo = POST({ action: 'exams', token: tokN });
 assert.strictEqual(demo.license, 'Demo');
 assert.strictEqual(demo.siswa.length, 5);
-assert.ok(demo.siswa.every(s => /\\(DEMO\\)/.test(s.nama)));
+assert.ok(demo.siswa.every(s => s.nama.includes('(DEMO)')));
 assert.ok(!JSON.stringify(demo.siswa).includes('SISWA 7A'));
 assert.ok(POST({ action: 'save', token: tokN, examId, siswa: { nama: 'SISWA 7A 01', kelas: '7A' }, answers: [...KEY] }).error);
 assert.ok(POST({ action: 'analyze', token: tokN, examId }).error);
