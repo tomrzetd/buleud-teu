@@ -28,7 +28,20 @@ assert.equal(retry.result,'success',retry.error);
 assert.equal(retry.duplikat,true,'repeated ScanID updates existing row');
 assert.equal(ss.getSheetByName('HasilScan').getLastRow(), afterFirst,'no duplicate when server ACK is lost');
 const different = {...body, scanId:'other-scan-id', answers:['B','B','C','D']};
-assert.equal(POST(different).result,'success');
-assert.equal(ss.getSheetByName('HasilScan').getLastRow(), afterFirst+1,
-    'new physically scanned attempt with new ScanID may be appended');
-console.log('PASS outbox replay: duplicate-safe ScanID and independent subsequent scans');
+const rescan = POST(different);
+assert.equal(rescan.result,'success',rescan.error);
+assert.equal(rescan.diperbarui,true,'physical rescan is update, not append');
+assert.equal(ss.getSheetByName('HasilScan').getLastRow(), afterFirst,
+    'same exam+same roster student never creates another row');
+assert.equal(Number(ss.getSheetByName('HasilScan').getRange(2,12).getValue()),75,
+    'latest answers and score replace old score');
+const danger = {...body, siswa:{nama:'SISWA LAIN',kelas:'8A'}, scanId:id};
+ss.getSheetByName('Siswa').appendRow(['2','','0043','SISWA LAIN','8','A','P']);
+assert.ok(POST(danger).error,'ScanID cannot be replayed against another roster student');
+assert.equal(ss.getSheetByName('HasilScan').getLastRow(), afterFirst,
+    'tampered or swapped identity cannot write');
+const second = POST({...danger,scanId:'different-person'});
+assert.equal(second.result,'success',second.error);
+assert.equal(ss.getSheetByName('HasilScan').getLastRow(),afterFirst+1,
+    'different student may add a new row');
+console.log('PASS outbox replay: same ScanID retry + new ScanID rescan upsert, identity isolation');
