@@ -434,7 +434,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             .put("flags", JSONArray(fl))
             .put("mode", "marker-android")
             .put("quality", (q?.grade ?: "") + (q?.score ?: ""))
-            .put("scanId", scanId)
+            .put("scanId", scanId).put("capturedAt", System.currentTimeMillis())
         busy = "Menyimpan hasil ke perangkat…"
         val persisted = withContext(Dispatchers.IO) {
             outbox.enqueue(store.api, store.guruNama, body)
