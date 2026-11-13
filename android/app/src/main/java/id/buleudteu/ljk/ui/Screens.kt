@@ -240,8 +240,10 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
             Card {
                 val sc = vm.score()
+                val capacity = r.geo?.layout?.QUESTIONS ?: u?.jumlah ?: vm.lamaN()
+                if (sc != null) Text("NILAI PG (SKALA 0–100)", color = TX2, fontSize = 12.sp)
                 Text(sc?.second?.let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() } ?: "${vm.answers.count { it != null }}", color = Color.White, fontSize = 52.sp, fontWeight = FontWeight.Black)
-                Text(sc?.let { "${it.first} benar dari ${u!!.jumlah} soal" } ?: "jawaban terbaca (tanpa kunci)", color = TX2)
+                Text(sc?.let { "${it.first} benar dari ${u!!.jumlah} soal aktif" + (if (capacity > u.jumlah) " · ${capacity} bulatan pada kertas" else "") } ?: "jawaban terbaca (tanpa kunci)", color = TX2)
                 val q = r.quality
                 Text("Kualitas foto ${q?.grade ?: "-"} · ${q?.score ?: "-"}   ·   ${if (r.mode == "marker") "Marker ${r.geo?.layout?.id ?: "F4"}" else "Tanpa marker"}", color = if (q?.grade == "A") OK else WARN, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 r.warnings.forEach { Note(it) }
