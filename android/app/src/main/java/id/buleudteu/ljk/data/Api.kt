@@ -14,7 +14,7 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /** Klien Apps Script Buleud Teu V40 (protokol sama dengan web app). */
-class ApiException(msg: String, val auth: Boolean = false) : Exception(msg)
+class ApiException(msg: String, val auth: Boolean = false, val forbidden: Boolean = false) : Exception(msg)
 
 data class Sekolah(val nama: String, val jenjang: String, val tahun: String, val opsiDefault: String, val logo: String, val licensed: Boolean = false)
 data class Guru(val nama: String, val mapel: List<String>, val kelas: List<String>)
@@ -33,7 +33,7 @@ class Api(private val store: Store) {
         val suffix = if (url.contains("?")) "&" else "?"
         val fresh = "$url${suffix}action=$action&_bt=${System.currentTimeMillis()}"
         val r = http.newCall(Request.Builder().url(fresh).header("Cache-Control", "no-cache").build()).execute()
-        r.use { parse(it.body?.string() ?: "") }
+        r.use { parse(it.body?.string() ?: "", it.code) }
     }
 
     suspend fun post(body: JSONObject): JSONObject = withContext(Dispatchers.IO) {
@@ -42,9 +42,10 @@ class Api(private val store: Store) {
         r.use { parse(it.body?.string() ?: "") }
     }
 
-    private fun parse(t: String): JSONObject {
+    private fun parse(t: String, httpCode: Int): JSONObject {
+        if (httpCode == 429 || httpCode >= 500) throw IOException("Server HTTP $httpCode sedang sibuk")
         val j = try { JSONObject(t) } catch (e: Exception) { throw ApiException("Server membalas halaman, bukan data. Pastikan Web App di-deploy dengan akses \"Siapa saja\".") }
-        if (j.has("error")) throw ApiException(j.getString("error"), j.optBoolean("auth"))
+        if (j.has("error")) throw ApiException(j.getString("error"), j.optBoolean("auth"), j.optBoolean("forbidden"))
         return j
     }
 
