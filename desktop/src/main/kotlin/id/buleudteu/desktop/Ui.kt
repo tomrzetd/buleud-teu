@@ -51,8 +51,13 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
     private var data: ExamsData? = null
     private var exam: Ujian? = null
     private val sheets = ArrayList<Sheet>()
-    private val procPool = Executors.newFixedThreadPool(maxOf(1, minOf(3, Runtime.getRuntime().availableProcessors() / 2))) { Thread(it).apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 } }
-    private val ocrPool = Executors.newFixedThreadPool(3) { Thread(it).apply { isDaemon = true } }
+    // A genuine 32-bit JVM has limited address space; never decode multiple
+    // high-resolution SV600 F4 scans simultaneously on such systems.
+    private val lowMemoryJre = System.getProperty("sun.arch.data.model") == "32"
+    private val procPool = Executors.newFixedThreadPool(
+        if (lowMemoryJre) 1 else maxOf(1, minOf(3, Runtime.getRuntime().availableProcessors() / 2))
+    ) { Thread(it).apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 } }
+    private val ocrPool = Executors.newFixedThreadPool(if (lowMemoryJre) 1 else 3) { Thread(it).apply { isDaemon = true } }
     private val netPool = Executors.newSingleThreadExecutor { Thread(it).apply { isDaemon = true } }
     @Volatile private var running: ScanSource? = null
 
@@ -330,14 +335,26 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         devBox.isVisible = !folder; devRefresh.isVisible = !folder; folderBtn.isVisible = folder
         dpiBox.isEnabled = !folder; duplexChk.isEnabled = !folder
         if (folder) { (s as FolderSource).folder = store.watchDir.ifEmpty { null }?.let { File(it) }; folderBtn.text = s.folder?.let { "Folder: " + it.name } ?: "Pilih folder…" }
-        scanBtn.text = if (folder) "Mulai pantau folder" else "Mulai scan ADF"
+        scanBtn.text = when {
+            s is ScanSnapSv600Source -> "Pantau hasil SV600"
+            folder -> "Mulai pantau folder"
+            else -> "Mulai scan ADF"
+        }
+        if (s is ScanSnapSv600Source) {
+            folderBtn.toolTipText = "Folder tujuan output ScanSnap Home: JPEG/PDF, satu LJK F4 per file."
+            importBtn.toolTipText = "Jika sudah telanjur memindai, impor JPEG/PDF hasil ScanSnap Home di sini."
+        } else {
+            folderBtn.toolTipText = null
+            importBtn.toolTipText = null
+        }
         hint()
         if (!folder && s.available()) loadDevices(s) else devBox.removeAllItems()
     }
     private fun hint() {
         val s = srcBox.selectedItem as? ScanSource ?: return
         hintLbl.text = "<html>" + (if (exam == null) "<b>Pilih ujian dulu.</b> " else "") + (if (!s.available()) "<b>Belum tersedia:</b> " else "") + s.hint() +
-            (if (exam != null) " &nbsp;·&nbsp; <b>Kertas F4 (330 mm)</b>, ${if (exam!!.opsi == "ABCD" && exam!!.jumlah <= 25) "LJK bermarker atau LJK lama ${if (exam!!.jumlah > 20) "25" else "20/25"} soal" else "LJK bermarker"}, ${store.dpi} dpi berwarna." else "") + "</html>"
+            (if (exam != null) " &nbsp;·&nbsp; <b>Kertas F4 (330 mm)</b>, ${if (exam!!.opsi == "ABCD" && exam!!.jumlah <= 25) "LJK bermarker atau LJK lama ${if (exam!!.jumlah > 20) "25" else "20/25"} soal" else "LJK bermarker"}, " +
+                (if (s is ScanSnapSv600Source) "atur 300 dpi pada ScanSnap Home." else "${store.dpi} dpi berwarna.") else "") + "</html>"
     }
     private fun loadDevices(s: ScanSource) {
         devBox.removeAllItems(); devBox.addItem(ScanDevice("", "Mencari scanner…")); devBox.isEnabled = false
@@ -351,7 +368,11 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         }
     }
     private fun pickWatchFolder() {
-        val fc = JFileChooser(store.watchDir.ifEmpty { System.getProperty("user.home") }).apply { fileSelectionMode = JFileChooser.DIRECTORIES_ONLY; dialogTitle = "Folder tujuan simpan software scanner" }
+        val fc = JFileChooser(store.watchDir.ifEmpty { System.getProperty("user.home") }).apply {
+            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+            dialogTitle = if (srcBox.selectedItem is ScanSnapSv600Source)
+                "Pilih folder tujuan ScanSnap Home (JPEG/PDF)" else "Folder tujuan simpan software scanner"
+        }
         if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) { store.watchDir = fc.selectedFile.absolutePath; selectSource(srcBox.selectedItem as ScanSource) }
     }
 
@@ -366,7 +387,11 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         val opt = ScanOptions(store.dpi, duplexChk.isSelected && duplexChk.isEnabled)
         running = s; scanBtn.text = "Berhenti"; scanBtn.isEnabled = true; importBtn.isEnabled = false; srcBox.isEnabled = false
         val before = sheets.size
-        status(if (s is FolderSource) "Memantau folder… tekan tombol scan di scanner / software scanner." else "Memindai dari ADF… (${s.title})", true)
+        status(when (s) {
+            is ScanSnapSv600Source -> "Pantau aktif. Scan LJK di ScanSnap Home; hasil baru akan masuk ke batch secara otomatis."
+            is FolderSource -> "Memantau folder… tekan tombol scan di software scanner."
+            else -> "Memindai dari ADF… (${s.title})"
+        }, true)
         bg {
             val err = try { s.scan(dev, opt, out, { f -> ui { addFiles(listOf(f), u) } }, { m -> ui { status(m, true) } }); null } catch (e: Exception) { e.message ?: "Gagal memindai" }
             ui {

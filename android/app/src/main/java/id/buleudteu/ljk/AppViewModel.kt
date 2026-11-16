@@ -28,7 +28,7 @@ import java.util.UUID
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-enum class Screen { SETUP, LOGIN, HOME, EXAM, SCAN, RESULT, ANALYSIS }
+enum class Screen { SETUP, LOGIN, HOME, SETTINGS, EXAM, SCAN, RESULT, ANALYSIS }
 enum class ScanMode { EXAM, KEY, LEGACY }
 
 class ExamDraft(var id: String = "", var nama: String = "", var mapel: String = "", var kelas: MutableList<String> = mutableListOf(), var opsi: String = "ABCD", var kunci: String = "", var kktp: Double = 75.0)

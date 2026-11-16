@@ -85,8 +85,29 @@ jobs:
           jpackage --type app-image --name BuleudTeu @common --dest build-img
           if ($LASTEXITCODE) { exit 1 }
           Compress-Archive -Path build-img/BuleudTeu -DestinationPath "dist/BuleudTeu-Desktop-$($env:APP_VERSION)-windows-x64-portable.zip"
+          # Portable JVM bytecode bundle for Windows x86 (32-bit). It needs an
+          # installed Java 17 x86 runtime (Azul Zulu); never call it standalone.
+          $source = "desktop/build/install/buleud-teu-desktop"
+          $out = "dist/BuleudTeu-Desktop-$($env:APP_VERSION)-windows-x86-32bit-Java17-required.zip"
+          Compress-Archive -Path $source -DestinationPath $out
           jpackage --type exe --name "Buleud Teu" @common --win-menu --win-menu-group "Buleud Teu" --win-shortcut --win-dir-chooser --win-per-user-install --win-upgrade-uuid 6f1c6a52-6b0e-4b6a-9d55-2f6a1f0b7e11 --dest dist
           if ($LASTEXITCODE) { Write-Host "::warning::Installer .exe gagal dibuat (WiX). Versi portable .zip tetap tersedia." }
           Get-ChildItem dist
+      - name: Pasang JVM Windows x86 (32-bit) untuk uji nyata kode bytecode
+        uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+          architecture: x86
+      - name: Uji engine dengan Java 17 x86 (32-bit)
+        shell: pwsh
+        run: |
+          $props = & java -XshowSettings:properties -version 2>&1 | Out-String
+          if ($props -notmatch 'sun\.arch\.data\.model\s*=\s*32') {
+            throw "Java yang dijalankan bukan JVM x86 32-bit"
+          }
+          $env:JAVA_OPTS = '-Xmx640m'
+          $env:BT_DESKTOP = 'desktop/build/install/buleud-teu-desktop/bin/buleud-teu-desktop.bat'
+          python tools/test/test_desktop_batch.py
       - uses: actions/upload-artifact@v4
         with: { name: buleud-teu-desktop-windows, path: dist/* }

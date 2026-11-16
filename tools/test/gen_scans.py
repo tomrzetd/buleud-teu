@@ -75,6 +75,24 @@ def main():
         pp[0].save(os.path.join(d, 'scan_003.pdf'), save_all=True, append_images=pp[1:], resolution=200, quality=85)
         pages += [dict(label='scan_003.pdf · hal 1', jawaban=sh[2][1]), dict(label='scan_003.pdf · hal 2', jawaban=sh[3][1])]
         meta[f'lama{n}'] = dict(kunci=''.join(L4[k] for k in key), opsi='ABCD', halaman=pages)
+    # ---------- 3) ScanSnap SV600 intermediary workflow (simulated export,
+    # not hardware capture): JPEG and 2-page PDF saved by ScanSnap Home.
+    # Confirms that the same OMR pipeline used by folder watcher reads these
+    # formats/filenames. Actual SV600 imaging must be tested on the school PC.
+    import shutil
+    d = os.path.join(OUT, 'sv600_export'); os.makedirs(d, exist_ok=True)
+    shutil.copyfile(os.path.join(OUT, 'lama25', 'scan_001.jpg'),
+                    os.path.join(d, 'ScanSnapHome_SV600_001.jpg'))
+    shutil.copyfile(os.path.join(OUT, 'lama25', 'scan_003.pdf'),
+                    os.path.join(d, 'ScanSnapHome_SV600_002.pdf'))
+    src = meta['lama25']
+    meta['sv600_export'] = dict(
+        kunci=src['kunci'], opsi=src['opsi'],
+        halaman=[
+            dict(label='ScanSnapHome_SV600_001.jpg', jawaban=src['halaman'][0]['jawaban']),
+            dict(label='ScanSnapHome_SV600_002.pdf · hal 1', jawaban=src['halaman'][2]['jawaban']),
+            dict(label='ScanSnapHome_SV600_002.pdf · hal 2', jawaban=src['halaman'][3]['jawaban'])
+        ])
     json.dump(meta, open(os.path.join(OUT, 'meta.json'), 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
     print('ok', {k: len(v['halaman']) for k, v in meta.items()})
 
