@@ -17,7 +17,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * Official GitHub Release channel for sideload APKs (NOT Google Play update API).
+ * Two update sources: approved school HTTPS mirror (test), then official GitHub Releases.
  * Only trust OTA APKs signed with our pinned certificate and hash-checked against
  * the manifest. Never install silently; the Android system confirms installation.
  */
@@ -25,6 +25,11 @@ object Updater {
     const val REPO = "tomrzetd/buleud-teu"
     const val DOWNLOAD = "https://github.com/$REPO/releases/latest/download/BuleudTeu.apk"
     private const val MANIFEST = "https://github.com/$REPO/releases/latest/download/update-manifest.json"
+    // Quick Tunnel URL is ONLY a test default; operator can replace or clear it
+    // whenever the random trycloudflare.com hostname changes.
+    private const val TEST_SCHOOL_ORIGIN = "https://apartments-hourly-cross-bryant.trycloudflare.com"
+    private const val PREFS = "bt_ota"
+    private const val SOURCE = "school_origin"
     private const val CERT_SHA256 = "28:E6:5A:A1:5F:DC:5C:7D:F9:62:B2:A4:11:29:7A:C5:F0:D7:70:FD:3A:62:9D:2F:7C:91:46:20:98:F8:6F:06"
     private const val MAX_APK = 200L * 1024 * 1024
     private val http = OkHttpClient.Builder()
@@ -32,9 +37,60 @@ object Updater {
 
     class Info(
         val versi: String, val catatan: String, val versionCode: Long,
-        val apkUrl: String, val sha256: String?, val sizeBytes: Long
+        val apkUrl: String, val sha256: String?, val sizeBytes: Long,
+        val sumber: String = "GitHub Releases"
     ) {
         val verifiedAvailable: Boolean get() = sha256 != null
+    }
+
+
+    /** Operator setting; never store an APK signing secret or license token here. */
+    fun serverUrl(ctx: Context): String =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(SOURCE, TEST_SCHOOL_ORIGIN).orEmpty()
+
+    fun saveServerUrl(ctx: Context, value: String): Boolean {
+        val url = value.trim().trimEnd('/')
+        if (url.isNotEmpty() && !validSchoolOrigin(url)) return false
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(SOURCE, url).apply()
+        return true
+    }
+
+    private fun validSchoolOrigin(raw: String): Boolean {
+        val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return false
+        return uri.scheme == "https" && !uri.host.isNullOrBlank() &&
+            uri.host!!.contains('.') && uri.port == -1 &&
+            (uri.path.isNullOrEmpty() || uri.path == "/") &&
+            uri.userInfo == null && uri.query == null && uri.fragment == null
+    }
+
+    private fun schoolMirrorInfo(ctx: Context): Info? {
+        val origin = serverUrl(ctx)
+        if (!validSchoolOrigin(origin)) return null
+        val raw = getText("$origin/update-manifest.json") ?: return null
+        val obj = JSONObject(raw)
+        val apk = obj.getJSONObject("apk")
+        val version = obj.getString("versionName")
+        val code = obj.getLong("versionCode")
+        val digest = apk.getString("sha256").lowercase(Locale.ROOT)
+        val size = apk.getLong("sizeBytes")
+        // A CI manifest may retain a GitHub release URL. At the mirror we
+        // download the same APK bytes locally; digest + pinned signer MUST match.
+        val original = apk.optString("url")
+        if (obj.optString("product") != "buleud-teu" ||
+            obj.optString("channel") != "stable" ||
+            obj.optString("packageName") != ctx.packageName ||
+            obj.optString("certSha256") != CERT_SHA256 ||
+            !Regex("^4\\.1\\.[0-9]+$").matches(version) ||
+            code != 1000L + version.substringAfterLast('.').toLong() ||
+            code <= versionCode(ctx) ||
+            obj.optInt("minSdk", 999) > Build.VERSION.SDK_INT ||
+            !trustedApkUrl(original) ||
+            !Regex("^[a-f0-9]{64}$").matches(digest) ||
+            size !in 1000..MAX_APK
+        ) return null
+        return Info(version, "Update tersedia dari server sekolah", code,
+            "$origin/BuleudTeu.apk", digest, size, "Server sekolah")
     }
 
     fun versionCode(ctx: Context): Long {
@@ -52,11 +108,21 @@ object Updater {
         Regex("^https://github\\.com/tomrzetd/buleud-teu/releases/download/v[0-9]+\\.[0-9]+\\.[0-9]+/BuleudTeu\\.apk$")
             .matches(url)
 
+
+    private fun trustedDownloadUrl(url: String, ctx: Context): Boolean {
+        if (trustedApkUrl(url)) return true
+        val origin = serverUrl(ctx)
+        return validSchoolOrigin(origin) && url == "$origin/BuleudTeu.apk"
+    }
+
     /**
      * No exception escapes UI. Without valid manifest, fall back to browser
      * download instead of claiming an APK is already integrity-verified.
      */
     fun cek(ctx: Context): Info? {
+        // Mirror downtime must never disable the official update path.
+        val school = runCatching { schoolMirrorInfo(ctx) }.getOrNull()
+        if (school != null) return school
         return try {
         val release = JSONObject(getText("https://api.github.com/repos/$REPO/releases/latest") ?: return null)
         val tag = release.optString("tag_name") // v4.1.N
@@ -125,7 +191,7 @@ object Updater {
      */
     fun downloadVerified(ctx: Context, info: Info): File {
         val digest = info.sha256 ?: error("Release belum memiliki manifest valid, gunakan unduh browser.")
-        if (!trustedApkUrl(info.apkUrl)) error("Alamat APK tidak terpercaya")
+        if (!trustedDownloadUrl(info.apkUrl, ctx)) error("Alamat APK tidak terpercaya")
         val dir = File(ctx.cacheDir, "verified_updates").apply { mkdirs() }
         val tmp = File(dir, "BuleudTeu-pending.apk")
         val apk = File(dir, "BuleudTeu.apk")
