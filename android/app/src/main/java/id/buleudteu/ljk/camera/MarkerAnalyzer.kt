@@ -90,7 +90,23 @@ class MarkerAnalyzer(private val legacyLayouts: () -> List<LjkEngine.LegacyLayou
                 // from four independent top+mid anchors and orientation evidence.
                 val regular = LjkEngine.markerHypotheses(squares, gi, sw, sh)
                     .firstOrNull { it.score >= 5.0 && it.mids >= 1 && it.od >= 0.4 }
-                val hyp = regular ?: LjkEngine.partialMarkerHypotheses(squares, gi, sw, sh).firstOrNull()
+                val recovered = LjkEngine.partialMarkerHypotheses(squares, gi, sw, sh)
+                    .firstOrNull()
+                val bottomIntact = recovered?.let { candidate ->
+                    val fit = LjkEngine.fitHomography(candidate.pairs)
+                    val px = candidate.pxPerMm
+                    listOf(2, 3).all { corner ->
+                        val mm = id.buleudteu.ljk.engine.LjkSpec.CORNER_CENTERS[corner]
+                        val p = fit?.map(mm[0], mm[1])
+                        p != null && squares.any {
+                            hypot(it.x - p.x, it.y - p.y) < 3.0 * px &&
+                                it.side >= 5.0 * px && it.side <= 11.0 * px
+                        }
+                    }
+                } ?: true
+                // If lower corners are NOT actually visible, do not trust a
+                // spurious four-corner hypothesis formed from middle squares.
+                val hyp = if (recovered != null && !bottomIntact) recovered else regular
                 if (hyp != null) {
                     val hP = LjkEngine.fitHomography(hyp.pairs)
                     // Always project actual page corners; hyp.pairs on recovery
