@@ -215,11 +215,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     } catch (e: Exception) { say(if (isNetwork(e)) "Offline / server tidak terjangkau" else (e.message ?: "Gagal")); null }
 
     // ---------------- ujian
-    // ---------------- pembaruan aplikasi (GitHub Releases)
+    // ---------------- pembaruan aplikasi: sekolah HTTPS (uji) + GitHub fallback
     var update by mutableStateOf<Updater.Info?>(null)
+    var updateChecking by mutableStateOf(false)
+    var updateNotice by mutableStateOf("")
     private var updateChecked = false
-    fun checkUpdate() { if (updateChecked) return; updateChecked = true
-        viewModelScope.launch { update = withContext(Dispatchers.IO) { Updater.cek(getApplication()) } } }
+    fun checkUpdate(force: Boolean = false) {
+        if (updateChecking || (updateChecked && !force)) return
+        updateChecked = true
+        viewModelScope.launch {
+            updateChecking = true
+            try {
+                update = withContext(Dispatchers.IO) { Updater.cek(getApplication()) }
+                updateNotice = if (force && update == null)
+                    "Belum ditemukan pembaruan terverifikasi. Periksa URL server dan jaringan."
+                else ""
+            } finally {
+                updateChecking = false
+            }
+        }
+    }
 
     fun loadExams() = viewModelScope.launch {
         if (loading != null) return@launch
