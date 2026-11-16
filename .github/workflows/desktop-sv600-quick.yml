@@ -27,6 +27,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
       - run: pip install numpy opencv-python-headless pillow
+      - run: npm i --no-save playwright@1 && npx playwright install --with-deps chromium
       - run: gradle -p desktop installDist --stacktrace
       - name: Generate simulated ScanSnap Home JPG/PDF and batch test
         run: |
