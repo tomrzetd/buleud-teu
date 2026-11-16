@@ -102,7 +102,7 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
         fun onUi(a: () -> Unit) = SwingUtilities.invokeAndWait(a)
         out.mkdirs()
         until("data ujian", 30) { data != null && examBox.itemCount > 1 }
-        onUi { examBox.selectedIndex = 1; selectSource(Scanners.all.first { it is FolderSource }) }
+        onUi { examBox.selectedIndex = 1; selectSource(Scanners.all.first { it.key == "folder" }) }
         log("ujian: ${exam?.nama}; sumber: folder ${store.watchDir}")
         onUi { startScan() }
         File(out, "siap_pantau").writeText("1")             // tanda untuk penguji: salin berkas sekarang
