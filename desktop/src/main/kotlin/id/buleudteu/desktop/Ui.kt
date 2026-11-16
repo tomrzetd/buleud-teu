@@ -51,8 +51,13 @@ class MainFrame : JFrame("$APP_NAME $APP_VERSION") {
     private var data: ExamsData? = null
     private var exam: Ujian? = null
     private val sheets = ArrayList<Sheet>()
-    private val procPool = Executors.newFixedThreadPool(maxOf(1, minOf(3, Runtime.getRuntime().availableProcessors() / 2))) { Thread(it).apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 } }
-    private val ocrPool = Executors.newFixedThreadPool(3) { Thread(it).apply { isDaemon = true } }
+    // A genuine 32-bit JVM has limited address space; never decode multiple
+    // high-resolution SV600 F4 scans simultaneously on such systems.
+    private val lowMemoryJre = System.getProperty("sun.arch.data.model") == "32"
+    private val procPool = Executors.newFixedThreadPool(
+        if (lowMemoryJre) 1 else maxOf(1, minOf(3, Runtime.getRuntime().availableProcessors() / 2))
+    ) { Thread(it).apply { isDaemon = true; priority = Thread.NORM_PRIORITY - 1 } }
+    private val ocrPool = Executors.newFixedThreadPool(if (lowMemoryJre) 1 else 3) { Thread(it).apply { isDaemon = true } }
     private val netPool = Executors.newSingleThreadExecutor { Thread(it).apply { isDaemon = true } }
     @Volatile private var running: ScanSource? = null
 
