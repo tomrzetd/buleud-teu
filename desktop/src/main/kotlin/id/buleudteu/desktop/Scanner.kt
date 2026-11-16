@@ -1,7 +1,6 @@
 package id.buleudteu.desktop
 
 import java.io.File
-import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 data class ScanDevice(val id: String, val name: String, val feeder: Boolean = true, val duplex: Boolean = false) { override fun toString() = name + if (feeder) "  (ADF)" else "" }
@@ -200,7 +199,19 @@ private fun watchLoop(dir: File, seen: MutableSet<String>, alive: () -> Boolean,
     if (finalSweep) repeat(2) { sweep(false); Thread.sleep(150); sweep(true) }
     return n
 }
-private fun canOpen(f: File) = try { Files.newInputStream(f.toPath()).use { it.read() }; true } catch (e: Exception) { false }
+/** Verify a completed image header or parseable PDF, not merely an open file handle. */
+private fun canOpen(f: File): Boolean = runCatching {
+    if (f.extension.equals("pdf", true)) Pdf.available && Pdf.count(f) > 0
+    else javax.imageio.ImageIO.createImageInputStream(f)?.use { stream ->
+        val readers = javax.imageio.ImageIO.getImageReaders(stream)
+        if (!readers.hasNext()) false else readers.next().let { reader ->
+            try {
+                reader.input = stream
+                reader.getWidth(0) > 0 && reader.getHeight(0) > 0
+            } finally { reader.dispose() }
+        }
+    } ?: false
+}.getOrDefault(false)
 
 /** menjalankan proses pemindai sambil memantau folder keluaran */
 private fun watchWhile(out: File, alive: () -> Boolean, onPage: (File) -> Unit, drain: () -> Unit): Int {
