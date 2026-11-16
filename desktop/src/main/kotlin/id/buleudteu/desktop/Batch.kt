@@ -60,6 +60,11 @@ class Processor(private val store: Store, private val api: Api?) {
         if (System.getenv("BT_OMR_DEBUG") == "1") {
             System.err.println("Marker attempt: layout=${m.geo?.layout?.id ?: "-"} success=${m.success} " +
                 "match=${m.markerMatch} error=${m.error} " + m.logs.joinToString(" | "))
+            if (u != null && u.opsi == "ABCD" && u.jumlah <= 25) {
+                val recovery = LjkEngine.processMarker(img,4,u.jumlah,sens,con,layout=id.buleudteu.ljk.engine.MarkerLayouts.PRINTSHOP_F4_25)
+                System.err.println("Printshop candidate: success=${recovery.success} match=${recovery.markerMatch} " +
+                    "error=${recovery.error} " + recovery.logs.joinToString(" | "))
+            }
         }
         val lays = legacyLayouts(u)
         if (!m.success && lays.isNotEmpty()) {
