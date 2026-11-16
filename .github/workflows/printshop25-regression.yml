@@ -1,7 +1,7 @@
 name: Printshop 25-marker recovery (no student scans)
 on:
   push:
-    branches: [fix/printshop-sv600-ljk25-geometric-recovery-20261116]
+    branches: [fix/printshop-sv600-ljk25-geometric-recovery-20261116, fix/android-partial-markers-demo-offline-20261116]
   workflow_dispatch:
 permissions:
   contents: read
