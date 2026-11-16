@@ -1,0 +1,32 @@
+name: Printshop 25-marker recovery (no student scans)
+on:
+  push:
+    branches: [fix/printshop-sv600-ljk25-geometric-recovery-20261116]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pillow
+      - name: Compile desktop + shared native Android OMR engine
+        run: gradle -p desktop installDist --stacktrace
+      - name: "Synthetic printshop layout: 25 fields, one double marked"
+        run: python tools/test/test_printshop25.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: buleud-teu-desktop-printshop25-test
+          path: desktop/build/install/buleud-teu-desktop/
+          retention-days: 14

@@ -48,4 +48,25 @@ object MarkerLayouts {
         PG_FRAME = doubleArrayOf(15.0, 104.0, 200.0, 155.0),
         REGION_VIEW = doubleArrayOf(12.0, 14.0, 203.0, 164.0)
     )
+
+    /**
+     * LJK F4 25 ABCD dari percetakan, diekspor ScanSnap SV600.
+     *
+     * Keempat corner marker + 2 marker tengah menggunakan geometri F4
+     * lama, tetapi kisi 25 bulatannya lebih pendek dan bergeser ke bawah
+     * dibanding F4-25-ABCD-v1. Nilai empiris berikut berasal dari kalibrasi
+     * geometris sampel cetak 16 November 2026 (tanpa data/identitas siswa).
+     *
+     * Jangan gunakan sebagai default: engine memilih profil ini HANYA bila
+     * kecocokan posisi 100 bulatan unggul dengan margin yang besar.
+     */
+    val PRINTSHOP_F4_25 = MarkerLayout(
+        id = "F4-25-ABCD-PRINTSHOP-v1",
+        QUESTIONS = 25, BLOCKS = 5, ROWS = 5,
+        X0 = 24.5, BLOCK_W = 34.1,
+        OPT_OFFSET = 11.0, OPT_PITCH = 5.3,
+        Y0 = 137.0, ROW_PITCH = 6.65, R = 2.0,
+        PG_FRAME = doubleArrayOf(15.0, 124.0, 200.0, 169.0),
+        REGION_VIEW = doubleArrayOf(12.0, 14.0, 203.0, 177.0)
+    )
 }
