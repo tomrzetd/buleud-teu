@@ -43,15 +43,44 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-val BG = Color(0xFF0B1220); val CARD = Color(0xFF131C2E); val LINE = Color(0xFF26344F); val TX2 = Color(0xFF9FB0CC)
-val PRI = Color(0xFF4F7CFF); val OK = Color(0xFF22C55E); val BAD = Color(0xFFEF4444); val WARN = Color(0xFFF59E0B)
+// Clean school-update-center skin: readable daylight default, classic night optional.
+private val CalmDay = lightColorScheme(
+    primary = Color(0xFF0D8F83), onPrimary = Color.White,
+    primaryContainer = Color(0xFF1E507D), onPrimaryContainer = Color.White,
+    background = Color(0xFFF2F6FA), onBackground = Color(0xFF19314B),
+    surface = Color.White, onSurface = Color(0xFF19314B),
+    onSurfaceVariant = Color(0xFF556B80), outlineVariant = Color(0xFFDDE7EF),
+    surfaceVariant = Color(0xFFEDF3F7)
+)
+private val ClassicNight = darkColorScheme(
+    primary = Color(0xFF6B9BFF), onPrimary = Color(0xFF101B33),
+    primaryContainer = Color(0xFF0B1220), onPrimaryContainer = Color.White,
+    background = Color(0xFF0B1220), onBackground = Color(0xFFE8F0FA),
+    surface = Color(0xFF131C2E), onSurface = Color(0xFFE8F0FA),
+    onSurfaceVariant = Color(0xFF9FB0CC), outlineVariant = Color(0xFF26344F),
+    surfaceVariant = Color(0xFF0A1222)
+)
+val BG: Color @Composable get() = MaterialTheme.colorScheme.background
+val CARD: Color @Composable get() = MaterialTheme.colorScheme.surface
+val LINE: Color @Composable get() = MaterialTheme.colorScheme.outlineVariant
+val TX2: Color @Composable get() = MaterialTheme.colorScheme.onSurfaceVariant
+val TXT: Color @Composable get() = MaterialTheme.colorScheme.onSurface
+val PRI: Color @Composable get() = MaterialTheme.colorScheme.primary
+val HEADER: Color @Composable get() = MaterialTheme.colorScheme.primaryContainer
+val OK = Color(0xFF0D9488); val BAD = Color(0xFFDC2626); val WARN = Color(0xFFD97706)
 
 @Composable
 fun AppRoot(vm: AppViewModel) {
-    MaterialTheme(colorScheme = darkColorScheme(primary = PRI, background = BG, surface = CARD)) {
+    val ctx = LocalContext.current
+    val settings = remember(ctx) { ctx.getSharedPreferences("bt_visual", Context.MODE_PRIVATE) }
+    var night by remember { mutableStateOf(settings.getBoolean("dark_theme", false)) }
+    MaterialTheme(colorScheme = if (night) ClassicNight else CalmDay) {
         Box(Modifier.fillMaxSize().background(BG)) {
             when (vm.screen) {
-                Screen.SETUP -> SetupScreen(vm); Screen.LOGIN -> LoginScreen(vm); Screen.HOME -> HomeScreen(vm)
+                Screen.SETUP -> SetupScreen(vm); Screen.LOGIN -> LoginScreen(vm); Screen.HOME -> HomeScreen(vm, night) {
+                    night = !night
+                    settings.edit().putBoolean("dark_theme", night).apply()
+                }
                 Screen.EXAM -> ExamScreen(vm); Screen.SCAN -> ScanScreen(vm); Screen.RESULT -> ResultScreen(vm); Screen.ANALYSIS -> AnalysisScreen(vm)
             }
             vm.busy?.let { Box(Modifier.fillMaxSize().background(Color(0xBB000000)), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text(it, color = Color.White, modifier = Modifier.padding(top = 12.dp)) } } }
@@ -64,14 +93,14 @@ fun AppRoot(vm: AppViewModel) {
 }
 
 @Composable fun Top(title: String, sub: String = "", onBack: (() -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().background(BG).padding(top = 34.dp, start = 14.dp, end = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().background(HEADER).padding(top = 34.dp, start = 14.dp, end = 14.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         if (onBack != null) Text("←", color = Color.White, fontSize = 24.sp, modifier = Modifier.clickable { onBack() }.padding(end = 12.dp))
-        Column(Modifier.weight(1f)) { Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1); if (sub.isNotEmpty()) Text(sub, color = TX2, fontSize = 12.sp, maxLines = 1) }
+        Column(Modifier.weight(1f)) { Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1); if (sub.isNotEmpty()) Text(sub, color = Color(0xFFE3EEF7), fontSize = 12.sp, maxLines = 1) }
         actions()
     }
 }
 @Composable fun Card(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp).clip(RoundedCornerShape(14.dp)).background(CARD).border(1.dp, LINE, RoundedCornerShape(14.dp)).padding(14.dp), content = content)
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp).clip(RoundedCornerShape(18.dp)).background(CARD).border(1.dp, LINE, RoundedCornerShape(18.dp)).padding(18.dp), content = content)
 }
 @Composable fun Note(t: String, c: Color = WARN) { Text(t, color = c, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clip(RoundedCornerShape(10.dp)).background(c.copy(alpha = 0.12f)).padding(10.dp)) }
 
@@ -81,7 +110,7 @@ fun AppRoot(vm: AppViewModel) {
     Column(Modifier.fillMaxSize()) {
         Top("Buleud Teu", "\"Buleud teu? Mun buleud, ku urang dipariksa!\"")
         Column(Modifier.padding(14.dp)) { Card {
-            Text("Hubungkan ke spreadsheet sekolah", color = Color.White, fontWeight = FontWeight.Bold)
+            Text("Hubungkan ke spreadsheet sekolah", color = TXT, fontWeight = FontWeight.Bold)
             Text("Tempel URL Web App Apps Script sekolah (berakhiran /exec).", color = TX2, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
             OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("https://script.google.com/macros/s/…/exec") })
             if (vm.setupMsg.isNotEmpty()) Note(vm.setupMsg, BAD)
@@ -117,11 +146,13 @@ fun AppRoot(vm: AppViewModel) {
 }
 
 // ---------------------------------------------------------------- beranda
-@Composable fun HomeScreen(vm: AppViewModel) {
+@Composable fun HomeScreen(vm: AppViewModel, isDark: Boolean, onToggleTheme: () -> Unit) {
     val ctx = LocalContext.current
     val updateScope = rememberCoroutineScope()
     var updating by remember { mutableStateOf(false) }
     var updateStatus by remember { mutableStateOf("") }
+    var showUpdateSettings by remember { mutableStateOf(false) }
+    var updateUrlDraft by remember { mutableStateOf(Updater.serverUrl(ctx)) }
     val semua = vm.data?.ujian ?: emptyList()
     val guru = vm.data?.guru
     var mapelAktif by remember(guru?.nama, guru?.mapel) { mutableStateOf(guru?.mapel?.firstOrNull() ?: "") }
@@ -138,6 +169,8 @@ fun AppRoot(vm: AppViewModel) {
 
     Column(Modifier.fillMaxSize()) {
         Top("Ujian saya", vm.store.guruNama, actions = {
+            Text(if (isDark) "☀" else "☾", color = Color.White, fontSize = 22.sp,
+                modifier = Modifier.clickable(onClick = onToggleTheme).padding(8.dp))
             Text("↻", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.loadExams() }.padding(8.dp))
             Text("⎋", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.logout() }.padding(8.dp))
         })
@@ -148,16 +181,50 @@ fun AppRoot(vm: AppViewModel) {
         LaunchedEffect(Unit) { vm.checkUpdate() }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
             // Identitas sekolah, tahun, logo & copyright dipindahkan ke ATAS.
+
             SchoolFooter(vm)
+            Card {
+                Text("Pembaruan aplikasi", color = TXT, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Versi terpasang ${Updater.versionName(ctx)} · Server sekolah, cadangan GitHub.",
+                    color = TX2, fontSize = 12.sp)
+                OutlinedButton(onClick = { vm.checkUpdate(force = true) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 7.dp), enabled = !vm.updateChecking) {
+                    Text(if (vm.updateChecking) "Memeriksa…" else "↻ Cek versi terbaru")
+                }
+                if (vm.updateNotice.isNotBlank())
+                    Text(vm.updateNotice, color = TX2, fontSize = 12.sp)
+                Text("⚙ Atur server pembaruan", color = PRI,
+                    modifier = Modifier.clickable { showUpdateSettings = !showUpdateSettings }
+                        .padding(vertical = 10.dp), fontSize = 13.sp)
+                if (showUpdateSettings) {
+                    Text("Alamat HTTPS. Kosongkan untuk hanya memakai GitHub.",
+                        color = TX2, fontSize = 12.sp)
+                    OutlinedTextField(
+                        value = updateUrlDraft, onValueChange = { updateUrlDraft = it },
+                        modifier = Modifier.fillMaxWidth(), singleLine = true,
+                        label = { Text("URL server sekolah") },
+                        placeholder = { Text("https://...trycloudflare.com") }
+                    )
+                    Button(onClick = {
+                        if (Updater.saveServerUrl(ctx, updateUrlDraft)) {
+                            updateStatus = "Alamat tersimpan. Memeriksa pembaruan…"
+                            vm.checkUpdate(force = true)
+                        } else updateStatus = "Alamat harus HTTPS tanpa path, parameter, atau port."
+                    }, modifier = Modifier.fillMaxWidth().padding(top = 7.dp)) {
+                        Text("Simpan sumber update")
+                    }
+                }
+            }
             vm.update?.let { up -> Card {
-                Text("Versi baru tersedia: ${up.versi}", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("🔔 Versi baru ${up.versi} tersedia!", color = TXT, fontWeight = FontWeight.Bold)
+                Text("Sumber: ${up.sumber}", color = TX2, fontSize = 12.sp)
                 Text("Terpasang: ${Updater.versionName(ctx)}. Pastikan antrean scan terkirim sebelum menghapus aplikasi atau mengganti perangkat.", color = TX2, fontSize = 12.sp)
                 if (up.catatan.isNotEmpty()) Text(up.catatan, color = TX2, fontSize = 12.sp)
                 if (updateStatus.isNotBlank()) Text(updateStatus, color = WARN, fontSize = 12.sp)
                 Button(onClick = {
                     when {
                         !up.verifiedAvailable -> runCatching {
-                            ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(Updater.DOWNLOAD)))
+                            ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(up.apkUrl)))
                         }.onFailure { updateStatus = "Tidak dapat membuka unduhan: ${it.message}" }
                         Updater.needsInstallPermission(ctx) -> runCatching {
                             ctx.startActivity(Updater.installPermissionIntent(ctx))
@@ -206,7 +273,7 @@ fun AppRoot(vm: AppViewModel) {
                     color = WARN, fontSize = 11.sp)
             }
             Card {
-                Text("Mata pelajaran & siswa", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Mata pelajaran & siswa", color = TXT, fontWeight = FontWeight.Bold)
                 val daftarMapel = guru?.mapel.orEmpty()
                 if (daftarMapel.isEmpty()) Text("Belum ada mapel terdaftar pada sheet Guru.", color = TX2)
                 else {
@@ -249,10 +316,10 @@ fun AppRoot(vm: AppViewModel) {
     Card {
         Row {
             Column(Modifier.weight(1f)) {
-                Text(u.nama, color = Color.White, fontWeight = FontWeight.Bold)
+                Text(u.nama, color = TXT, fontWeight = FontWeight.Bold)
                 Text("${u.mapel} · ${u.kelas.joinToString()} · ${u.jumlah} soal · ${u.opsi} · KKTP ${u.kktp.toInt()}", color = TX2, fontSize = 12.sp)
             }
-            Text("$uploaded/$tot", color = Color(0xFFA5B8FF), fontSize = 12.sp)
+            Text("$uploaded/$tot", color = PRI, fontSize = 12.sp)
         }
         LinearProgressIndicator(progress = { if (tot > 0) minOf(1f, uploaded.toFloat() / tot) else 0f },
             Modifier.fillMaxWidth().padding(vertical = 8.dp), color = OK)
@@ -291,7 +358,7 @@ fun shareTemplate(ctx: Context, v: String) {
                 Row { listOf("ABCD", "ABCDE").forEach { o -> FilterChip(opsi == o, { opsi = o }, { Text(if (o == "ABCD") "ABCD (SD–SMP)" else "ABCDE (SMA)") }, Modifier.padding(end = 6.dp)) } }
             }
             Card {
-                Text("Kunci jawaban · ${kunci.length} soal (maks. 50)", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("Kunci jawaban · ${kunci.length} soal (maks. 50)", color = TXT, fontWeight = FontWeight.Bold)
                 OutlinedTextField(kunci, { kunci = it.uppercase().filter { c -> c in "ABCDE-" }.take(50) }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("ABCD…") })
                 OutlinedButton({ sync(); vm.startScan(null, ScanMode.KEY) }, Modifier.padding(top = 8.dp)) { Text("📷 Scan LJK kunci") }
                 LjkDigital(50, opsi, kunci.map { if (it in "ABCDE") it else null }, null, null, null, 10) { q, l ->
@@ -308,7 +375,7 @@ fun shareTemplate(ctx: Context, v: String) {
 fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status: List<String>?, suggest: List<String?>?, rows: Int, total: Int = if (rows == 10) 50 else 20, onTap: (Int, Char) -> Unit) {
     Column(Modifier.padding(top = 8.dp)) {
         (0 until total / rows).chunked(2).forEach { pair -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            pair.forEach { b -> Column(Modifier.weight(1f).padding(bottom = 8.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFF0A1222)).border(1.dp, LINE, RoundedCornerShape(10.dp)).padding(4.dp)) {
+            pair.forEach { b -> Column(Modifier.weight(1f).padding(bottom = 8.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surfaceVariant).border(1.dp, LINE, RoundedCornerShape(10.dp)).padding(4.dp)) {
                 for (r in 0 until rows) { val q = b * rows + r; val off = q >= n
                     val st = status?.getOrNull(q); val flag = !off && (st == "double" || st == "weak")
                     Row(Modifier.fillMaxWidth().background(if (flag) WARN.copy(alpha = 0.2f) else Color.Transparent).padding(vertical = 1.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -338,7 +405,7 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                 val sc = vm.score()
                 val capacity = r.geo?.layout?.QUESTIONS ?: u?.jumlah ?: vm.lamaN()
                 if (sc != null) Text("NILAI PG (SKALA 0–100)", color = TX2, fontSize = 12.sp)
-                Text(sc?.second?.let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() } ?: "${vm.answers.count { it != null }}", color = Color.White, fontSize = 52.sp, fontWeight = FontWeight.Black)
+                Text(sc?.second?.let { if (it % 1 == 0.0) it.toInt().toString() else it.toString() } ?: "${vm.answers.count { it != null }}", color = TXT, fontSize = 52.sp, fontWeight = FontWeight.Black)
                 Text(sc?.let { "${it.first} benar dari ${u!!.jumlah} soal aktif" + (if (capacity > u.jumlah) " · ${capacity} bulatan pada kertas" else "") } ?: "jawaban terbaca (tanpa kunci)", color = TX2)
                 val q = r.quality
                 Text("Kualitas foto ${q?.grade ?: "-"} · ${q?.score ?: "-"}   ·   ${if (r.mode == "marker") "Marker ${r.geo?.layout?.id ?: "F4"}" else "Tanpa marker"}", color = if (q?.grade == "A") OK else WARN, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
@@ -365,7 +432,7 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                     "blocked" -> "⚠ ${vm.selSiswa} (${vm.selKelas}) — upload perlu diperiksa."
                     else -> if (vm.selSiswa.isBlank()) "Belum ada siswa dipilih" else "${vm.selSiswa} (${vm.selKelas})"
                 }
-                Text(selectedText, color = if (selectedState == "uploaded") OK else if (selectedState == "none" && vm.selSiswa.isNotBlank()) Color.White else WARN,
+                Text(selectedText, color = if (selectedState == "uploaded") OK else if (selectedState == "none" && vm.selSiswa.isNotBlank()) TXT else WARN,
                     fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 8.dp))
                 // cari manual (lintas kelas, toleran salah ketik) + saring kelas
                 val sts = vm.studentsOf(u)
@@ -388,7 +455,7 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                         Row(Modifier.fillMaxWidth().clickable { vm.pickStudent(st.nama, st.kelas); q = "" }
                             .background(if (sel) PRI.copy(alpha = 0.2f) else Color.Transparent)
                             .padding(vertical = 8.dp, horizontal = 6.dp)) {
-                            Text(prefix + st.nama, color = if (state == "pending" || state == "blocked") WARN else Color.White,
+                            Text(prefix + st.nama, color = if (state == "pending" || state == "blocked") WARN else TXT,
                                 modifier = Modifier.weight(1f))
                             Text(st.kelas, color = TX2)
                         }
@@ -463,19 +530,19 @@ fun evidence(vm: AppViewModel, foto: Boolean, kisi: Boolean, dark: Boolean): Bit
 @Composable fun ReportCard(vm: AppViewModel) {
     val ctx = LocalContext.current
     Card {
-        Text("Laporan", color = Color.White, fontWeight = FontWeight.Bold)
+        Text("Laporan", color = TXT, fontWeight = FontWeight.Bold)
         Text("Lingkup mengikuti pilihan di atas. Simpel: pilihan jawaban, jumlah benar, skor. Lengkap: ditambah statistik tes dan analisis butir.", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
         Row { listOf("simpel" to "Simpel", "lengkap" to "Lengkap").forEach { (k, t) -> FilterChip(vm.reportMode == k, { vm.setReportModeTo(k) }, { Text(t) }, Modifier.padding(end = 6.dp)) } }
         AppViewModel.Laporan.BAGIAN.forEach { (k, t) ->
             Row(Modifier.fillMaxWidth().clickable { vm.toggleBagian(k) }, verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(k in vm.reportBagian, { vm.toggleBagian(k) }); Text(t, color = Color.White, fontSize = 14.sp) }
+                Checkbox(k in vm.reportBagian, { vm.toggleBagian(k) }); Text(t, color = TXT, fontSize = 14.sp) }
         }
         Text("Format", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
         Row(Modifier.horizontalScroll(rememberScrollState())) { listOf("pdf" to "PDF (F4)", "xlsx" to "Excel", "sheet" to "Google Sheet").forEach { (k, t) -> FilterChip(vm.reportFormat == k, { vm.reportFormat = k }, { Text(t) }, Modifier.padding(end = 6.dp)) } }
         Text("Urutan siswa", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
         Row(Modifier.horizontalScroll(rememberScrollState())) { listOf("kelas" to "Kelas, nama", "nama" to "Nama", "skor" to "Skor tertinggi").forEach { (k, t) -> FilterChip(vm.reportUrut == k, { vm.reportUrut = k }, { Text(t) }, Modifier.padding(end = 6.dp)) } }
         Row(Modifier.fillMaxWidth().clickable { vm.reportAnonim = !vm.reportAnonim }, verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(vm.reportAnonim, { vm.reportAnonim = it }); Text("Mode anonim (untuk rapat MGMP)", color = Color.White, fontSize = 14.sp) }
+            Checkbox(vm.reportAnonim, { vm.reportAnonim = it }); Text("Mode anonim (untuk rapat MGMP)", color = TXT, fontSize = 14.sp) }
         Button({ vm.makeReport() }, Modifier.fillMaxWidth().padding(top = 8.dp), enabled = !vm.isDemo) { Text("Buat laporan") }
         if (vm.reportInfo.isNotEmpty()) Note("Laporan siap: ${vm.reportInfo}", OK)
         vm.reportFile?.let { f ->
@@ -521,7 +588,7 @@ fun logoBitmap(dataUrl: String?): Bitmap? = try {
     val logo = remember(sk?.logo) { logoBitmap(sk?.logo) }
     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (logo != null) Image(logo.asImageBitmap(), "logo sekolah", Modifier.size(70.dp), contentScale = ContentScale.Fit)
-        if (!sk?.nama.isNullOrEmpty()) Text(sk!!.nama, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp))
+        if (!sk?.nama.isNullOrEmpty()) Text(sk!!.nama, color = TXT, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(top = 6.dp))
         if (!sk?.tahun.isNullOrEmpty()) Text("Tahun Pelajaran ${sk!!.tahun}", color = TX2, fontSize = 12.sp)
         Text("Buleud Teu • \"Mun buleud, ku urang dipariksa!\"", color = TX2.copy(alpha = 0.7f), fontSize = 11.sp, modifier = Modifier.padding(top = 10.dp))
         Text(AppViewModel.WATERMARK, color = TX2.copy(alpha = 0.85f), fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
