@@ -116,6 +116,11 @@ fun AppRoot(vm: AppViewModel) {
             OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), singleLine = true, placeholder = { Text("https://script.google.com/macros/s/…/exec") })
             if (vm.setupMsg.isNotEmpty()) Note(vm.setupMsg, BAD)
             Button({ vm.connect(url) }, Modifier.fillMaxWidth().padding(top = 10.dp)) { Text("Sambungkan") }
+            OutlinedButton({ vm.startDemo() }, Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                Text("Coba Mode Demo — tanpa database")
+            }
+            Text("Mode demo berisi guru dan siswa fiktif. Scan dan koreksi jawaban aktif; simpan nilai/nonaktif.",
+                color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
         } }
     }
 }
@@ -162,6 +167,15 @@ fun AppRoot(vm: AppViewModel) {
     Column(Modifier.fillMaxSize()) {
         Top("Pengaturan", "Tampilan dan pembaruan aplikasi", onBack = { vm.screen = Screen.HOME })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
+            Card {
+                Text("Koneksi sekolah", color = TXT, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(if (vm.demoActive) "Mode Demo offline — tanpa Apps Script" else "Terhubung ke konfigurasi sekolah",
+                    color = TX2, fontSize = 12.sp)
+                OutlinedButton(onClick = { vm.screen = Screen.SETUP },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Text("Hubungkan ke database sekolah")
+                }
+            }
             Card {
                 Text("Tampilan", color = TXT, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text("Pilih warna yang nyaman. Tidak mempengaruhi hasil scan atau data siswa.",
@@ -266,11 +280,15 @@ fun AppRoot(vm: AppViewModel) {
     val rombel = siswaMapel.groupBy { it.kelas }.toSortedMap()
 
     Column(Modifier.fillMaxSize()) {
-        Top("Ujian saya", vm.store.guruNama, actions = {
+        Top(if (vm.isDemo) "Latihan LJK — DEMO" else "Ujian saya",
+            if (vm.demoActive) "GURU DEMO · OFFLINE" else vm.store.guruNama, actions = {
             Text(if (vm.update != null) "⚙ •" else "⚙", color = Color.White, fontSize = 21.sp,
                 modifier = Modifier.clickable { vm.screen = Screen.SETTINGS }.padding(8.dp))
             Text("↻", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.loadExams() }.padding(8.dp))
-            Text("⎋", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.logout() }.padding(8.dp))
+            Text(if (vm.demoActive) "↗" else "⎋", color = Color.White, fontSize = 22.sp,
+                modifier = Modifier.clickable {
+                    if (vm.demoActive) vm.screen = Screen.SETUP else vm.logout()
+                }.padding(8.dp))
         })
         vm.loading?.let { msg ->
             LinearProgressIndicator(Modifier.fillMaxWidth(), color = PRI)
@@ -281,7 +299,18 @@ fun AppRoot(vm: AppViewModel) {
             // Identitas sekolah, tahun, logo & copyright dipindahkan ke ATAS.
 
             SchoolFooter(vm)
-            if (vm.queueSize > 0) {
+            if (vm.demoActive) {
+                Card {
+                    Text("MODE DEMO · OFFLINE", color = PRI, fontWeight = FontWeight.Bold)
+                    Text("Pilih mapel latihan → Scan LJK → lihat bulatan, jawaban, dan koreksi. Guru dan siswa hanya data contoh. Tidak ada penyimpanan nilai.",
+                        color = TX2, fontSize = 13.sp)
+                    OutlinedButton(onClick = { vm.screen = Screen.SETUP },
+                        modifier = Modifier.fillMaxWidth().padding(top = 7.dp)) {
+                        Text("Hubungkan sekolah asli")
+                    }
+                }
+            }
+            if (!vm.demoActive && vm.queueSize > 0) {
                 Card {
                     Column {
                         Text("${vm.queueSize} hasil scan tersimpan di HP", color = WARN, fontWeight = FontWeight.Bold)
@@ -296,7 +325,7 @@ fun AppRoot(vm: AppViewModel) {
                     }
                 }
             }
-            if (vm.otherAccountQueueSize > 0) {
+            if (!vm.demoActive && vm.otherAccountQueueSize > 0) {
                 Text("${vm.otherAccountQueueSize} hasil lokal milik server/akun lain tetap tersimpan pada perangkat ini.",
                     color = WARN, fontSize = 11.sp)
             }
@@ -332,8 +361,9 @@ fun AppRoot(vm: AppViewModel) {
             // Template PDF dan mode pindai lama tidak lagi memenuhi beranda.
             // Generator tetap tersedia di web + repository jika diperlukan.
         }
-        Button({ vm.editExam(null) }, Modifier.fillMaxWidth().padding(14.dp).height(52.dp), enabled = !vm.isDemo) {
-            Text(if (vm.isDemo) "Mode Demo — ujian baru nonaktif" else "＋ Ujian baru")
+        if (!vm.demoActive) {
+            Button({ vm.editExam(null) }, Modifier.fillMaxWidth().padding(14.dp).height(52.dp),
+                enabled = !vm.isDemo) { Text("＋ Ujian baru") }
         }
     }
 }
