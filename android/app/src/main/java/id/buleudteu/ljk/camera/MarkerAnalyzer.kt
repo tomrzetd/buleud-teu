@@ -27,7 +27,7 @@ import kotlin.math.sqrt
 class MarkerAnalyzer(private val legacyLayouts: () -> List<LjkEngine.LegacyLayout>, private val onResult: (Detection?) -> Unit) : ImageAnalysis.Analyzer {
     class Detection(
         val corners: List<Pt>, val ready: Boolean, val tooFar: Boolean,
-        val legacy: Boolean = false, val bubbles: List<Pt> = emptyList(), val filled: List<Boolean> = emptyList(), val bubbleR: Double = 0.0
+        val legacy: Boolean = false, val bubbles: List<Pt> = emptyList(), val filled: List<Boolean> = emptyList(), val bubbleR: Double = 0.0, val partial: Boolean = false
     )
 
     private var last: List<Pt>? = null
@@ -86,11 +86,24 @@ class MarkerAnalyzer(private val legacyLayouts: () -> List<LjkEngine.LegacyLayou
             }
             var det: Detection? = null
             if (squares.size >= 4) {
-                val hyp = LjkEngine.markerHypotheses(squares, gi, sw, sh).firstOrNull()
-                if (hyp != null && hyp.score >= 3) {
-                    val pts = hyp.pairs.map { rot(it.x / sw, it.y / sh, rotDeg) }
-                    val tooFar = hyp.pxPerMm / s < 2.3
-                    det = Detection(pts, settle(pts, tooFar), tooFar)
+                // Camera preview must NOT fake bottom markers: only project them
+                // from four independent top+mid anchors and orientation evidence.
+                val regular = LjkEngine.markerHypotheses(squares, gi, sw, sh)
+                    .firstOrNull { it.score >= 5.0 && it.mids >= 1 && it.od >= 0.4 }
+                val hyp = regular ?: LjkEngine.partialMarkerHypotheses(squares, gi, sw, sh).firstOrNull()
+                if (hyp != null) {
+                    val hP = LjkEngine.fitHomography(hyp.pairs)
+                    // Always project actual page corners; hyp.pairs on recovery
+                    // contain two TOP and two MID anchors, not bottom corners.
+                    val corners = hP?.let { fit -> id.buleudteu.ljk.engine.LjkSpec.CORNER_CENTERS.map { c -> fit.map(c[0],c[1]) } }
+                    if (corners != null && corners.all { it.x.isFinite() && it.y.isFinite() }) {
+                        val pts = corners.map { rot(it.x / sw, it.y / sh, rotDeg) }
+                        val tooFar = hyp.pxPerMm / s < 2.3
+                        // Recovery is manual capture only. Never automatically
+                        // commit scores based on extrapolated lower positions.
+                        det = Detection(pts, if (hyp.partial) false else settle(pts, tooFar),
+                            tooFar, partial = hyp.partial)
+                    }
                 }
             }
 
