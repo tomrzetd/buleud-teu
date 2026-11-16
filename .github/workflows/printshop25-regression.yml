@@ -23,7 +23,7 @@ jobs:
       - run: pip install pillow
       - name: Compile desktop + shared native Android OMR engine
         run: gradle -p desktop installDist --stacktrace
-      - name: Synthetic printshop layout: 25 fields, one double marked
+      - name: "Synthetic printshop layout: 25 fields, one double marked"
         run: python tools/test/test_printshop25.py
       - uses: actions/upload-artifact@v4
         with:
