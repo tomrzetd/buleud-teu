@@ -148,30 +148,52 @@ class SaneSource : ScanSource("sane", "SANE — scanimage (Linux)") {
  * Untuk scanner yang punya tombol/aplikasi sendiri (Epson Scan 2, Canon IJ Scan Utility, Brother ControlCenter, scan-to-folder jaringan):
  * arahkan simpanan ke satu folder; setiap berkas baru (JPG/PNG/TIFF/PDF) langsung diproses.
  */
-class FolderSource : ScanSource("folder", "Folder pantau — software scanner bawaan / scan-to-folder") {
+open class FolderSource(
+    key: String = "folder",
+    title: String = "Folder pantau — software scanner bawaan / scan-to-folder"
+) : ScanSource(key, title) {
     var folder: File? = null
     override fun available() = true
-    override fun hint() = "Atur software scanner (Epson Scan 2 / Canon IJ Scan Utility / Brother ControlCenter) menyimpan ke folder ini, lalu tekan tombol scan di scanner."
+    override fun hint() = "Atur aplikasi scanner menyimpan JPG/PNG/PDF/TIFF ke folder yang dipantau. Hanya hasil baru atau perubahan berkas yang diproses."
     override fun devices() = emptyList<ScanDevice>()
     override fun cancel() { cancelled = true }
     override fun scan(dev: ScanDevice?, opt: ScanOptions, out: File, onPage: (File) -> Unit, onMsg: (String) -> Unit): Int {
         begin(); val dir = folder ?: throw IllegalStateException("Pilih folder dulu.")
-        val seen = HashSet<String>(dir.listFiles()?.map { it.absolutePath } ?: emptyList())
-        onMsg("Memantau ${dir.absolutePath} — berkas yang sudah ada diabaikan.")
+        val seen = HashSet<String>((dir.listFiles() ?: emptyArray()).filter { Imaging.supported(it) }.map(::scanSnapshotKey))
+        onMsg("Memantau ${dir.absolutePath} — hasil scan baru diproses; berkas lama bisa diimpor lewat tombol Impor.")
         return watchLoop(dir, seen, { !cancelled }, onPage)
     }
 }
 
+/**
+ * ScanSnap SV600 has a proprietary ScanSnap Home driver. It cannot be acquired
+ * via TWAIN/WIA or NAPS2. Scan to a chosen directory, then Buleud Teu processes
+ * ScanSnap Home's completed JPEG/PDF outputs through the shared OMR engine.
+ */
+class ScanSnapSv600Source : FolderSource("sv600", "ScanSnap SV600 — lewat ScanSnap Home") {
+    override fun available() = isWindows
+    override fun hint() =
+        "ScanSnap SV600 bukan TWAIN/WIA. Di ScanSnap Home, buat profil: JPEG (disarankan) " +
+        "atau PDF, warna 300 dpi, kertas F4 penuh, Auto Crop/Deskew aktif, simpan ke folder ini. " +
+        "Tekan 'Pantau hasil SV600' SEBELUM memindai dari ScanSnap Home. Hindari mode buku / potong dua halaman."
+}
+
 // ------------------------------------------------------------------------------------------ util pantau berkas
-/** berkas dianggap selesai ditulis bila ukurannya tetap selama >= 1,2 detik */
+/** Distinguish overwritten scans from existing files while avoiding duplicates. */
+internal fun scanSnapshotKey(f: File): String = "${f.absolutePath}|${f.length()}|${f.lastModified()}"
+
+/** Stable for at least 2.4 seconds before import: large ScanSnap Home PDFs may take time. */
 private fun watchLoop(dir: File, seen: MutableSet<String>, alive: () -> Boolean, onPage: (File) -> Unit, finalSweep: Boolean = false): Int {
-    val sizes = HashMap<String, Pair<Long, Long>>(); var n = 0
+    val sizes = HashMap<String, Pair<String, Long>>(); var n = 0
     fun sweep(force: Boolean) {
         val now = System.currentTimeMillis()
-        (dir.listFiles() ?: emptyArray()).filter { Imaging.supported(it) && it.absolutePath !in seen }.sortedBy { it.name }.forEach { f ->
-            val len = f.length(); val prev = sizes[f.absolutePath]
-            if (prev == null || prev.first != len) sizes[f.absolutePath] = len to now
-            else if ((force || now - prev.second >= 1200) && len > 0 && canOpen(f)) { seen += f.absolutePath; sizes -= f.absolutePath; n++; onPage(f) }
+        (dir.listFiles() ?: emptyArray()).filter { Imaging.supported(it) && scanSnapshotKey(it) !in seen }
+            .sortedBy { it.name }.forEach { f ->
+            val stamp = scanSnapshotKey(f); val prev = sizes[f.absolutePath]
+            if (prev == null || prev.first != stamp) sizes[f.absolutePath] = stamp to now
+            else if ((force || now - prev.second >= 2400) && f.length() > 0 && canOpen(f)) {
+                seen += stamp; sizes -= f.absolutePath; n++; onPage(f)
+            }
         }
     }
     while (alive()) { sweep(false); Thread.sleep(400) }
@@ -183,11 +205,11 @@ private fun canOpen(f: File) = try { Files.newInputStream(f.toPath()).use { it.r
 /** menjalankan proses pemindai sambil memantau folder keluaran */
 private fun watchWhile(out: File, alive: () -> Boolean, onPage: (File) -> Unit, drain: () -> Unit): Int {
     val t = Thread(drain).apply { isDaemon = true; start() }
-    val n = watchLoop(out, HashSet(out.listFiles()?.map { it.absolutePath } ?: emptyList()), alive, onPage, finalSweep = true)
+    val n = watchLoop(out, HashSet((out.listFiles() ?: emptyArray()).filter { Imaging.supported(it) }.map(::scanSnapshotKey)), alive, onPage, finalSweep = true)
     t.join(2000); return n
 }
 
 object Scanners {
-    val all: List<ScanSource> by lazy { listOf(WiaSource(), Naps2Source(), SaneSource(), FolderSource()) }
+    val all: List<ScanSource> by lazy { listOf(WiaSource(), Naps2Source(), ScanSnapSv600Source(), SaneSource(), FolderSource()) }
     fun usable() = all.filter { it.available() || it is Naps2Source && isWindows }
 }
