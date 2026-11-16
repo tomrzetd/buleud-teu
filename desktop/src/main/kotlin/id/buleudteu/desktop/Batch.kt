@@ -57,6 +57,10 @@ class Processor(private val store: Store, private val api: Api?) {
         val m = if (u.opsi == "ABCD" && u.jumlah <= 25) {
             LjkEngine.processMarkerAuto(img, u.opsi.length, u.jumlah, sens, con)
         } else LjkEngine.processMarker(img, u.opsi.length, u.jumlah, sens, con)
+        if (System.getenv("BT_OMR_DEBUG") == "1") {
+            System.err.println("Marker attempt: layout=${m.geo?.layout?.id ?: "-"} success=${m.success} " +
+                "match=${m.markerMatch} error=${m.error} " + m.logs.joinToString(" | "))
+        }
         val lays = legacyLayouts(u)
         if (!m.success && lays.isNotEmpty()) {
             val l = LjkEngine.processMarkerlessAuto(img, sens, con, lays)
