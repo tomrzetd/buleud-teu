@@ -477,8 +477,13 @@ object LjkEngine {
         }
         var best: Hyp? = null; var bestFp: HPair? = null; var bestBm = 0.0; var bestTotal = 0.0
         for (h in hyps) {
-            val fp = fitPair(h.pairs + h.midPts) ?: continue
+            val fp = fitPair(h.pairs + h.midPts)
+            if (fp == null) {
+                if (h.partial) ret.logs.add("Part-4 fitPair gagal")
+                continue
+            }
             val bm = bubbleMatch(fp.inv)
+            if (h.partial) ret.logs.add("Part-4 candidate: kecocokan ${jsRound(bm*100)}%, skala ${jsRound(h.pxPerMm*100)/100.0}, origin ${jsRound(h.pairs[0].x)}x${jsRound(h.pairs[0].y)}")
             if (h.partial && bm < 0.82) continue // four good markers do not alone prove OMR layout
             val total = h.score + bm * 4
             if (best == null || total > bestTotal) { best = h; bestFp = fp; bestBm = bm; bestTotal = total }
