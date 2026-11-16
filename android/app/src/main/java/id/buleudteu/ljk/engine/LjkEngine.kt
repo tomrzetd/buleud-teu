@@ -541,8 +541,27 @@ object LjkEngine {
         val compact = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.F4_25)
         // Jangan pilih formulir 25 hanya karena sedikit bulatan bawah terdeteksi:
         // harus ada kenaikan kecocokan bulatan yang bermakna dibanding layout lama.
-        val result = if (compact.success && (!old.success || compact.markerMatch > old.markerMatch + 0.12)) compact else old
-        result.logs.add("Auto-layout: ${result.geo?.layout?.id}, bulatan bawah $lowerHits/100, cocok 50=${(old.markerMatch * 100).toInt()}%, 25=${(compact.markerMatch * 100).toInt()}%")
+        val canonical = if (compact.success && (!old.success || compact.markerMatch > old.markerMatch + 0.12)) compact else old
+        // Fast path: template resmi yang cocok kuat tidak perlu diuji dengan
+        // profil khusus. Ini mempertahankan performa scan kamera/ADF normal.
+        if (canonical.success && canonical.markerMatch >= 0.80) {
+            canonical.logs.add("Auto-layout: ${canonical.geo?.layout?.id}, cocok 50=${(old.markerMatch * 100).toInt()}%, 25=${(compact.markerMatch * 100).toInt()}%")
+            return canonical
+        }
+
+        // LJK cetak massal 25 ABCD: sudut/penanda sama, tetapi posisi kisi
+        // lebih bawah dan pitch lebih sempit daripada formulir resmi.
+        // HANYA terima jika >=82% dari 100 bulatan cocok DAN lebih baik
+        // setidaknya 18 poin persentase dibanding kandidat normal.
+        // Hindari false-positive dan jangan mengganti template yang sudah OK.
+        val printshop = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.PRINTSHOP_F4_25)
+        val strongPrintshop = printshop.success && printshop.markerMatch >= 0.82 &&
+            (!canonical.success || printshop.markerMatch > canonical.markerMatch + 0.18)
+        val result = if (strongPrintshop) printshop else canonical
+        if (strongPrintshop) {
+            result.warnings.add("Profil LJK percetakan terdeteksi; periksa nomor ganda/kosong sebelum simpan. OCR identitas tetap perlu dikonfirmasi.")
+        }
+        result.logs.add("Auto-layout: ${result.geo?.layout?.id}, cocok 50=${(old.markerMatch * 100).toInt()}%, 25=${(compact.markerMatch * 100).toInt()}%, percetakan=${(printshop.markerMatch * 100).toInt()}%")
         return result
     }
 
