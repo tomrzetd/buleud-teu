@@ -109,7 +109,7 @@ fun AppRoot(vm: AppViewModel) {
 @Composable fun SetupScreen(vm: AppViewModel) {
     var url by remember { mutableStateOf(vm.store.api) }
     Column(Modifier.fillMaxSize()) {
-        Top("Buleud Teu", "\"Buleud teu? Mun buleud, ku urang dipariksa!\"")
+        Top("Buleud Teu", "\"Buleud teu? Mun buleud, ku urang dipariksa!\"", onBack = { vm.screen = if (vm.demoActive || vm.store.token.isNotEmpty()) Screen.HOME else Screen.LOGIN })
         Column(Modifier.padding(14.dp)) { Card {
             Text("Hubungkan ke spreadsheet sekolah", color = TXT, fontWeight = FontWeight.Bold)
             Text("Tempel URL Web App Apps Script sekolah (berakhiran /exec).", color = TX2, fontSize = 13.sp, modifier = Modifier.padding(vertical = 8.dp))
@@ -280,7 +280,7 @@ fun AppRoot(vm: AppViewModel) {
     val rombel = siswaMapel.groupBy { it.kelas }.toSortedMap()
 
     Column(Modifier.fillMaxSize()) {
-        Top(if (vm.isDemo) "Latihan LJK — DEMO" else "Ujian saya",
+        Top(if (vm.demoActive) "Latihan LJK — DEMO" else "Ujian saya",
             if (vm.demoActive) "GURU DEMO · OFFLINE" else vm.store.guruNama, actions = {
             Text(if (vm.update != null) "⚙ •" else "⚙", color = Color.White, fontSize = 21.sp,
                 modifier = Modifier.clickable { vm.screen = Screen.SETTINGS }.padding(8.dp))
@@ -521,10 +521,18 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                     if (hasil.isEmpty()) Text("Tidak ada nama yang cocok.", color = TX2, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
                 }
                 val fl = vm.flagged(); if (fl.isNotEmpty()) Note("Perlu dicek: nomor ${fl.joinToString()} (kuning).")
-                if (vm.isDemo) Text("DEMO — hasil pindai tidak disimpan.", color = WARN, fontWeight = FontWeight.Bold)
-                Button({ vm.save() }, Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp),
-                    enabled = !vm.isDemo, colors = ButtonDefaults.buttonColors(containerColor = OK)) {
-                    Text(if (vm.isDemo) "🔒 Simpan nonaktif (DEMO)" else "Simpan & scan berikutnya", color = Color(0xFF06210F))
+                if (vm.isDemo) {
+                    Text("MODE DEMO — hanya latihan. Data dan hasil scan tidak disimpan.",
+                        color = WARN, fontWeight = FontWeight.Bold)
+                    OutlinedButton({ vm.screen = Screen.SCAN },
+                        Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp)) {
+                        Text("📷 Pindai LJK lain")
+                    }
+                } else {
+                    Button({ vm.save() }, Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = OK)) {
+                        Text("Simpan & scan berikutnya", color = Color(0xFF06210F))
+                    }
                 }
             }
             Card {
