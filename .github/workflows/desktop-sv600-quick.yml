@@ -1,0 +1,81 @@
+name: Desktop SV600 + x86 quick verification
+
+on:
+  push:
+    branches: [feat/settings-screen-scansnap-sv600-20261116]
+    paths:
+      - 'desktop/**'
+      - 'tools/test/gen_scans.py'
+      - 'tools/test/test_desktop_batch.py'
+      - '.github/workflows/desktop-sv600-quick.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.11.1' }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: pip install numpy opencv-python-headless pillow
+      - run: gradle -p desktop installDist --stacktrace
+      - name: Generate simulated ScanSnap Home JPG/PDF and batch test
+        run: |
+          node tools/render_templates.js 200
+          python tools/test/gen_scans.py
+          BT_DESKTOP=desktop/build/install/buleud-teu-desktop/bin/buleud-teu-desktop python tools/test/test_desktop_batch.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: simulated-sv600-inputs
+          path: tools/test/scans
+          retention-days: 2
+
+  windows-x86:
+    needs: engine
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.11.1' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - run: gradle -p desktop installDist --stacktrace
+      - name: Bundle experimental x86 ZIP (no bundled JRE)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path 'desktop/build/install/buleud-teu-desktop' -DestinationPath 'dist/BuleudTeu-Desktop-windows-x86-32bit-needs-Zulu17.zip'
+      - uses: actions/download-artifact@v4
+        with:
+          name: simulated-sv600-inputs
+          path: tools/test/scans
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: '17'
+          architecture: x86
+      - name: Verify 32-bit JVM and ScanSnap Home import engine
+        shell: pwsh
+        run: |
+          $props = & java -XshowSettings:properties -version 2>&1 | Out-String
+          if ($props -notmatch 'sun\.arch\.data\.model\s*=\s*32') { throw 'JVM bukan Windows 32-bit!' }
+          $env:JAVA_OPTS = '-Xmx640m'
+          $env:BT_DESKTOP = 'desktop/build/install/buleud-teu-desktop/bin/buleud-teu-desktop.bat'
+          python tools/test/test_desktop_batch.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BuleudTeu-Desktop-Windows-x86-EXPERIMENTAL
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 30
