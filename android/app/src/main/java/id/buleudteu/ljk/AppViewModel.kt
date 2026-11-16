@@ -79,6 +79,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var selKelasFilter by mutableStateOf("")
     var nomorOcr = ""
     private var confirmFlags = false
+    private var confirmRecovered = false
     private var confirmRescan = false
     private var scanId = ""
     var analysis by mutableStateOf<JSONObject?>(null)
@@ -335,7 +336,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (scanMode == ScanMode.KEY) { keyFromScan(r); return@launch }
         r.image?.let { image = it }      // LJK lama yang diputar otomatis: potongan identitas & bukti memakai gambar tegak
         result = r; answers.clear(); answers.addAll(r.answers); status.clear(); status.addAll(r.status)
-        confirmFlags = false; confirmRescan = false
+        confirmFlags = false; confirmRecovered = false; confirmRescan = false
         scanId = UUID.randomUUID().toString(); match = null; ocrMsg = ""; selSiswa = ""; nomorOcr = ""
         val kelasList = studentsOf(exam).map { it.kelas }.distinct().sorted()
         selKelas = ""; selKelasFilter = if (kelasList.size == 1) kelasList[0] else ""
@@ -448,6 +449,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             confirmRescan = true
             val where = if (previous == "uploaded") "sudah di Spreadsheet" else "sudah tersimpan lokal"
             say("Siswa ini $where. Simpan ulang akan MEMPERBARUI nilainya. Tekan Simpan sekali lagi untuk konfirmasi.")
+            return@launch
+        }
+        // Lower corners inferred from upper/mid markers: never silently
+        // persist an official score without a deliberate second confirmation.
+        if (result?.warnings?.any { it.startsWith("Marker bawah terpotong") } == true &&
+            !confirmRecovered) {
+            confirmRecovered = true
+            say("Marker bawah dipulihkan. Periksa 25 nomor + identitas siswa pada bukti deteksi, lalu tekan Simpan lagi untuk konfirmasi.")
             return@launch
         }
         val fl = flagged()
