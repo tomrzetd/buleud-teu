@@ -153,6 +153,12 @@ fun AppRoot(vm: AppViewModel) {
     var updateStatus by remember { mutableStateOf("") }
     var showUpdateSettings by remember { mutableStateOf(false) }
     var updateUrlDraft by remember { mutableStateOf(Updater.serverUrl(ctx)) }
+    val otaPrefs = remember(ctx) { ctx.getSharedPreferences("bt_visual", Context.MODE_PRIVATE) }
+    var dismissedUpdate by remember { mutableStateOf(otaPrefs.getString("dismissed_update", "").orEmpty()) }
+    fun dismissUpdate(version: String) {
+        dismissedUpdate = version
+        otaPrefs.edit().putString("dismissed_update", version).apply()
+    }
     val semua = vm.data?.ujian ?: emptyList()
     val guru = vm.data?.guru
     var mapelAktif by remember(guru?.nama, guru?.mapel) { mutableStateOf(guru?.mapel?.firstOrNull() ?: "") }
@@ -167,6 +173,25 @@ fun AppRoot(vm: AppViewModel) {
     }
     val rombel = siswaMapel.groupBy { it.kelas }.toSortedMap()
 
+    vm.update?.let { available ->
+        if (dismissedUpdate != available.versi) {
+            AlertDialog(
+                onDismissRequest = { dismissUpdate(available.versi) },
+                title = { Text("🔔 Pembaruan Buleud Teu") },
+                text = {
+                    Text("Versi ${available.versi} tersedia dari ${available.sumber}. " +
+                         "Selesaikan sinkronisasi hasil scan sebelum memperbarui. " +
+                         "Instalasi tetap meminta persetujuan Android.")
+                },
+                confirmButton = {
+                    TextButton(onClick = { dismissUpdate(available.versi) }) { Text("Lihat di beranda") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { dismissUpdate(available.versi) }) { Text("Nanti") }
+                }
+            )
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         Top("Ujian saya", vm.store.guruNama, actions = {
             Text(if (isDark) "☀" else "☾", color = Color.White, fontSize = 22.sp,
