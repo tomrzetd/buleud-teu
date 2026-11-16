@@ -460,6 +460,7 @@ object LjkEngine {
         val recoveredHyps = if (layout.id == MarkerLayouts.PRINTSHOP_F4_25.id)
             partialMarkerHypotheses(squares, g, W, H) else emptyList()
         val hyps = canonicalHyps.take(4) + recoveredHyps.take(6)
+        ret.logs.add("Geom candidates: normal=${canonicalHyps.size}, recovered=${recoveredHyps.size}, squares=${squares.size}")
         if (hyps.isEmpty()) return fail("Marker belum cocok. Pastikan dua sudut atas dan kedua marker tengah terlihat; pindai seluruh lembar.")
 
         val rPx = layout.R * hyps[0].pxPerMm
