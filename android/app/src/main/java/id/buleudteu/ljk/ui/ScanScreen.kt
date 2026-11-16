@@ -70,7 +70,7 @@ fun ScanScreen(vm: AppViewModel) {
             override fun onError(e: ImageCaptureException) { ContextCompat.getMainExecutor(ctx).execute { vm.say("Gagal memotret: ${e.message}"); shooting = false; analyzer.paused = false } }
         })
     }
-    LaunchedEffect(det) { val d = det; if (auto && d != null && d.ready) shoot() }
+    LaunchedEffect(det) { val d = det; if (auto && d != null && d.ready && !d.partial) shoot() }
 
     val gallery = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) ctx.contentResolver.openInputStream(uri)?.use { s -> BitmapFactory.decodeStream(s)?.let { b: Bitmap -> vm.process(b, 0) } }
@@ -136,6 +136,7 @@ fun ScanScreen(vm: AppViewModel) {
                 when {
                     det == null -> if (vm.scanMode == ScanMode.LEGACY) "Masukkan seluruh tabel pilihan ganda ke layar…" else "Cari LJK… (F4: 4 kotak hitam di sudut)"
                     det!!.tooFar -> "Dekatkan kamera sedikit"
+                    det!!.partial -> "Marker bawah terpotong · tekan tombol FOTO, lalu periksa hasil satu per satu"
                     det!!.ready -> "Tahan… mengambil foto"
                     det!!.legacy -> "LJK lama terdeteksi · ${det!!.filled.count { it }} bulatan terisi — tahan HP tetap diam"
                     else -> "LJK F4 terdeteksi — tahan HP tetap diam"
