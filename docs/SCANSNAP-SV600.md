@@ -9,17 +9,27 @@ dan https://www.pfu.ricoh.com/global/scanners/scansnap/sv600/index.html
 
 ## Sistem operasi: apa yang sudah dan belum
 
-- **Buleud Teu Desktop** CI saat ini mengemas **Windows x64 (64-bit)** dan Linux x64.
-  Engine Kotlin/JVM sama untuk scan dari file. Paket **Windows x86 32-bit
-  belum dibuat/diuji**. Jangan menamai APK Android sebagai versi Windows.
+- **Windows x64 (64-bit)**: paket portable dan installer EXE menyertakan
+  runtime Java dan merupakan jalur utama.
+- **Windows x86 32-bit**: branch ini menyiapkan ZIP *eksperimental*
+  `windows-x86-32bit-Java17-required.zip` berisi JVM bytecode portable,
+  **tanpa runtime**. Pengguna perlu memasang **Azul Zulu Java 17 x86**.
+  CI akan menguji aplikasi lewat JVM x86 di runner Windows; pengujian di
+  **PC Windows 10 32-bit nyata** tetap diperlukan sebelum klaim produksi.
+- **Linux x64**: paket terpisah. APK Android bukan versi Windows.
 - **ScanSnap Home SV600** menurut Ricoh mendukung Windows 10 32/64-bit dan
   Windows 11; lihat dukungan driver resmi untuk versi Windows yang dipakai.
   **Kompatibilitas driver ≠ kompatibilitas paket Buleud Teu.**
 - Jangan memakai scanner SV600 dengan jalur WIA/TWAIN/NAPS2 Buleud Teu;
   ia tidak akan muncul dalam daftar perangkat TWAIN/ISIS.
-- Untuk 32-bit diperlukan paket Java dan pengujian terpisah; JVM 32-bit
-  cenderung kekurangan memori untuk dokumen F4 resolusi tinggi.
-  Tidak ada klaim kompatibilitas x86 asli sampai diuji pada komputer 32-bit.
+- Kebutuhan Java x86: https://www.azul.com/downloads/?architecture=x86-32-bit&os=windows&package=jre
+  pilih **Java 17 / Windows x86 32-bit**. Jalankan file
+  `buleud-teu-desktop/bin/buleud-teu-desktop.bat` setelah memasangnya.
+- JVM 32-bit memiliki keterbatasan RAM. Engine memproses gambar F4 dan OCR
+  **satu per satu** pada JVM 32-bit; jangan membuka PDF ratusan halaman
+  sekaligus. Ini jalur uji awal, tidak menyertakan Java yang dipaketkan.
+- Dukungan driver SV600 pada Windows 10 x86 dan pembacaan file Buleud Teu
+  adalah dua hal yang berbeda; kompatibilitas nyata belum terverifikasi.
 
 ## Workflow operasional paling sederhana
 
