@@ -463,11 +463,18 @@ object LjkEngine {
         ret.logs.add("Geom candidates: normal=${canonicalHyps.size}, recovered=${recoveredHyps.size}, squares=${squares.size}")
         if (hyps.isEmpty()) return fail("Marker belum cocok. Pastikan dua sudut atas dan kedua marker tengah terlihat; pindai seluruh lembar.")
 
-        val rPx = layout.R * hyps[0].pxPerMm
+        // Ordinary four-corner hypotheses can be distorted when the two lower
+        // squares are missing. Estimate bubble radius from the intact TOP+MID
+        // anchor quadrilateral rather than from a spurious four-corner fit.
+        val safePx = if (recoveredHyps.isNotEmpty())
+            recoveredHyps.maxOf { it.pxPerMm } else hyps[0].pxPerMm
+        val rPx = layout.R * safePx
+        ret.logs.add("Bubble radius ${jsRound(rPx*100)/100.0}px; hyps normal=${canonicalHyps.size}, partial=${recoveredHyps.size}")
         val binC = adaptiveThreshold(g, W, H, max(5, jsRound(rPx * 3).toInt()), contrast, I)
         val cc = components(binC, W, H)
         val circles = removeNested(circleCandidates(cc.lab, cc.comps, W, H, rPx * 0.6, rPx * 1.6))
         ret.totalCircles = circles.size; ret.circles = circles
+        ret.logs.add("Circle candidates: ${circles.size}")
 
         fun bubbleMatch(inv: Homography): Double {
             val mm = circles.map { inv.map(it.x, it.y) }
