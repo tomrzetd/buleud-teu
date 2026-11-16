@@ -38,7 +38,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val api = Api(store)
     private val outbox = ScanOutbox(app)
 
-    var screen by mutableStateOf(if (store.api.isEmpty()) Screen.SETUP else if (store.token.isEmpty()) Screen.LOGIN else Screen.HOME)
+    var screen by mutableStateOf(if (store.api.isEmpty()) Screen.HOME else if (store.token.isEmpty()) Screen.LOGIN else Screen.HOME)
+    var demoActive by mutableStateOf(store.api.isEmpty())
     var toast by mutableStateOf<String?>(null)
     var busy by mutableStateOf<String?>(null)
     var setupMsg by mutableStateOf("")
@@ -61,7 +62,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // Hanya response "exams" terbaru berhak mengaktifkan UI. Status dari
     // get/config atau SharedPreferences lama tidak boleh menahan aktivasi.
     var licenseChecked by mutableStateOf(false)
-    val isDemo: Boolean get() = !licenseChecked || data?.licensed != true
+    val isDemo: Boolean get() = demoActive || !licenseChecked || data?.licensed != true
 
     companion object { const val WATERMARK = "by : rizalabdurrahman@guru.smp.belajar.id" }
 
@@ -89,7 +90,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        if (store.configJson.isNotEmpty()) runCatching { applyConfig(JSONObject(store.configJson)) }
+        if (demoActive) startDemo()
+        if (!demoActive && store.configJson.isNotEmpty()) runCatching { applyConfig(JSONObject(store.configJson)) }
         // Roster dan hak akses adalah snapshot yang diterima dari SERVER pada login sebelumnya.
         // Ini hanya untuk UI/offline. Server tetap memverifikasi lisensi SETIAP operasi tulis.
         if (screen == Screen.HOME && store.examsJson.isNotEmpty()) {
@@ -155,12 +157,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             if (retryBlocked) outbox.retryBlocked(store.api, store.guruNama)
         }
         updateQueueCounters()
-        if (store.token.isNotBlank() && queueSize > 0) ScanSync.schedule(getApplication(), force = retryBlocked)
+        if (!isDemo && store.token.isNotBlank() && queueSize > 0) ScanSync.schedule(getApplication(), force = retryBlocked)
     }
 
     fun say(m: String) { toast = m }
 
     // ---------------- setup & login
+    fun startDemo() {
+        // No API request and no outbox/school identity modifications.
+        demoActive = true
+        sekolah = DemoFixtures.school
+        guruList = listOf("GURU DEMO")
+        data = DemoFixtures.sample()
+        licenseChecked = true
+        exam = null
+        setupMsg = ""
+        screen = Screen.HOME
+    }
+
     fun connect(url: String) = viewModelScope.launch {
         val u = url.trim()
         if (!Regex("^https://script\\.google\\.com/macros/s/[^/]+/exec$").matches(u)) { setupMsg = "URL harus https://script.google.com/macros/s/…/exec"; return@launch }
@@ -176,6 +190,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 licenseChecked = false
                 ScanSync.cancel(getApplication())
             }
+            demoActive = false
             store.api = u; store.configJson = c.toString(); applyConfig(c); setupMsg = ""; screen = Screen.LOGIN
         } catch (e: Exception) { setupMsg = if (isNetwork(e)) "Tidak bisa dihubungi. Cek internet & akses Web App \"Siapa saja\"." else e.message ?: "Gagal" }
         busy = null
@@ -188,6 +203,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun login(guru: String, pin: String) = viewModelScope.launch {
+        demoActive = false
         loginMsg = "Memeriksa…"; busy = "Masuk…"
         try {
             val r = api.post(JSONObject().put("action", "login").put("guru", guru).put("pin", pin).put("token", ""))
@@ -237,7 +253,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadExams() = viewModelScope.launch {
-        if (loading != null) return@launch
+        if (demoActive || loading != null) return@launch
         // Jangan reset dashboard ketika server sibuk. Simpan snapshot valid sebelumnya.
         // Entitlement diambil dari response server pada login / tombol Refresh saja.
         loading = "Memperbarui daftar ujian…"
