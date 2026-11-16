@@ -45,6 +45,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix="bt-printshop-fixture-") as d:
         env = os.environ.copy()
         env["JAVA_TOOL_OPTIONS"] = "-Djava.awt.headless=true"
+        env["BT_OMR_DEBUG"] = "1"
         for clipped in [False, True]:
             picture = Path(d) / ("printshop25-clipped-bottom.png" if clipped else "printshop25-complete.png")
             fixture(picture, clipped=clipped)
