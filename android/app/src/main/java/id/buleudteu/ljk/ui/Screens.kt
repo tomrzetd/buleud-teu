@@ -77,7 +77,8 @@ fun AppRoot(vm: AppViewModel) {
     MaterialTheme(colorScheme = if (night) ClassicNight else CalmDay) {
         Box(Modifier.fillMaxSize().background(BG)) {
             when (vm.screen) {
-                Screen.SETUP -> SetupScreen(vm); Screen.LOGIN -> LoginScreen(vm); Screen.HOME -> HomeScreen(vm, night) {
+                Screen.SETUP -> SetupScreen(vm); Screen.LOGIN -> LoginScreen(vm); Screen.HOME -> HomeScreen(vm)
+                Screen.SETTINGS -> SettingsScreen(vm, night) {
                     night = !night
                     settings.edit().putBoolean("dark_theme", night).apply()
                 }
@@ -145,69 +146,30 @@ fun AppRoot(vm: AppViewModel) {
         DropdownMenu(open, { open = false }) { options.forEach { o -> DropdownMenuItem(text = { Text(o) }, onClick = { open = false; onPick(o) }) } } }
 }
 
-// ---------------------------------------------------------------- beranda
-@Composable fun HomeScreen(vm: AppViewModel, isDark: Boolean, onToggleTheme: () -> Unit) {
+
+/**
+ * Separate preferences screen. The initial dashboard deliberately contains
+ * NO update cards, settings forms, or mandatory popups.
+ */
+@Composable fun SettingsScreen(vm: AppViewModel, isDark: Boolean, onToggleTheme: () -> Unit) {
     val ctx = LocalContext.current
     val updateScope = rememberCoroutineScope()
     var updating by remember { mutableStateOf(false) }
     var updateStatus by remember { mutableStateOf("") }
     var showUpdateSettings by remember { mutableStateOf(false) }
     var updateUrlDraft by remember { mutableStateOf(Updater.serverUrl(ctx)) }
-    val otaPrefs = remember(ctx) { ctx.getSharedPreferences("bt_visual", Context.MODE_PRIVATE) }
-    var dismissedUpdate by remember { mutableStateOf(otaPrefs.getString("dismissed_update", "").orEmpty()) }
-    fun dismissUpdate(version: String) {
-        dismissedUpdate = version
-        otaPrefs.edit().putString("dismissed_update", version).apply()
-    }
-    val semua = vm.data?.ujian ?: emptyList()
-    val guru = vm.data?.guru
-    var mapelAktif by remember(guru?.nama, guru?.mapel) { mutableStateOf(guru?.mapel?.firstOrNull() ?: "") }
-    var expandedKelas by remember(vm.data) { mutableStateOf<String?>(null) }
-    val ujianMapel = if (mapelAktif.isBlank()) semua else semua.filter { it.mapel.equals(mapelAktif, true) }
-    val kelasUjian = ujianMapel.flatMap { it.kelas }.map { it.uppercase() }.toSet()
-    val roster = vm.data?.siswa.orEmpty()
-    // Jika pemetaan mapel->kelas belum diberikan di sheet Guru, gunakan kelas guru
-    // yang sudah difilter server. Jangan menyimpulkan semua guru mengajar semua kelas.
-    val siswaMapel = if (ujianMapel.isEmpty()) roster else roster.filter { siswa ->
-        "SEMUA" in kelasUjian || kelasUjian.any { it == siswa.kelas.uppercase() || it == siswa.tingkat.uppercase() }
-    }
-    val rombel = siswaMapel.groupBy { it.kelas }.toSortedMap()
 
-    vm.update?.let { available ->
-        if (dismissedUpdate != available.versi) {
-            AlertDialog(
-                onDismissRequest = { dismissUpdate(available.versi) },
-                title = { Text("🔔 Pembaruan Buleud Teu") },
-                text = {
-                    Text("Versi ${available.versi} tersedia dari ${available.sumber}. " +
-                         "Selesaikan sinkronisasi hasil scan sebelum memperbarui. " +
-                         "Instalasi tetap meminta persetujuan Android.")
-                },
-                confirmButton = {
-                    TextButton(onClick = { dismissUpdate(available.versi) }) { Text("Lihat di beranda") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { dismissUpdate(available.versi) }) { Text("Nanti") }
-                }
-            )
-        }
-    }
     Column(Modifier.fillMaxSize()) {
-        Top("Ujian saya", vm.store.guruNama, actions = {
-            Text(if (isDark) "☀" else "☾", color = Color.White, fontSize = 22.sp,
-                modifier = Modifier.clickable(onClick = onToggleTheme).padding(8.dp))
-            Text("↻", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.loadExams() }.padding(8.dp))
-            Text("⎋", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.logout() }.padding(8.dp))
-        })
-        vm.loading?.let { msg ->
-            LinearProgressIndicator(Modifier.fillMaxWidth(), color = PRI)
-            Text(msg, color = TX2, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
-        }
-        LaunchedEffect(Unit) { vm.checkUpdate() }
+        Top("Pengaturan", "Tampilan dan pembaruan aplikasi", onBack = { vm.screen = Screen.HOME })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
-            // Identitas sekolah, tahun, logo & copyright dipindahkan ke ATAS.
-
-            SchoolFooter(vm)
+            Card {
+                Text("Tampilan", color = TXT, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text("Pilih warna yang nyaman. Tidak mempengaruhi hasil scan atau data siswa.",
+                    color = TX2, fontSize = 13.sp)
+                OutlinedButton(onClick = onToggleTheme, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    Text(if (isDark) "☀ Gunakan tema Cerah Tenang" else "☾ Gunakan tema Gelap Klasik")
+                }
+            }
             Card {
                 Text("Pembaruan aplikasi", color = TXT, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 Text("Versi terpasang ${Updater.versionName(ctx)} · Server sekolah, cadangan GitHub.",
@@ -278,6 +240,47 @@ fun AppRoot(vm: AppViewModel) {
                     Text(if (updating) "Mengunduh…" else if (up.verifiedAvailable) "Unduh, verifikasi & perbarui" else "Buka unduhan resmi")
                 }
             } }
+
+            if (vm.queueSize > 0) {
+                Note("${vm.queueSize} hasil scan masih tersimpan di HP. Sinkronkan sebelum memperbarui.", WARN)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- beranda
+@Composable fun HomeScreen(vm: AppViewModel) {
+    val ctx = LocalContext.current
+    val semua = vm.data?.ujian ?: emptyList()
+    val guru = vm.data?.guru
+    var mapelAktif by remember(guru?.nama, guru?.mapel) { mutableStateOf(guru?.mapel?.firstOrNull() ?: "") }
+    var expandedKelas by remember(vm.data) { mutableStateOf<String?>(null) }
+    val ujianMapel = if (mapelAktif.isBlank()) semua else semua.filter { it.mapel.equals(mapelAktif, true) }
+    val kelasUjian = ujianMapel.flatMap { it.kelas }.map { it.uppercase() }.toSet()
+    val roster = vm.data?.siswa.orEmpty()
+    // Jika pemetaan mapel->kelas belum diberikan di sheet Guru, gunakan kelas guru
+    // yang sudah difilter server. Jangan menyimpulkan semua guru mengajar semua kelas.
+    val siswaMapel = if (ujianMapel.isEmpty()) roster else roster.filter { siswa ->
+        "SEMUA" in kelasUjian || kelasUjian.any { it == siswa.kelas.uppercase() || it == siswa.tingkat.uppercase() }
+    }
+    val rombel = siswaMapel.groupBy { it.kelas }.toSortedMap()
+
+    Column(Modifier.fillMaxSize()) {
+        Top("Ujian saya", vm.store.guruNama, actions = {
+            Text(if (vm.update != null) "⚙ •" else "⚙", color = Color.White, fontSize = 21.sp,
+                modifier = Modifier.clickable { vm.screen = Screen.SETTINGS }.padding(8.dp))
+            Text("↻", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.loadExams() }.padding(8.dp))
+            Text("⎋", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.logout() }.padding(8.dp))
+        })
+        vm.loading?.let { msg ->
+            LinearProgressIndicator(Modifier.fillMaxWidth(), color = PRI)
+            Text(msg, color = TX2, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp))
+        }
+        LaunchedEffect(Unit) { vm.checkUpdate() }
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
+            // Identitas sekolah, tahun, logo & copyright dipindahkan ke ATAS.
+
+            SchoolFooter(vm)
             if (vm.queueSize > 0) {
                 Card {
                     Column {
