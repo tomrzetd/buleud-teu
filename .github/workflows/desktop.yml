@@ -103,7 +103,7 @@ jobs:
         shell: pwsh
         run: |
           $props = & java -XshowSettings:properties -version 2>&1 | Out-String
-          if ($props -notmatch 'sun\\.arch\\.data\\.model\\s*=\\s*32') {
+          if ($props -notmatch 'sun\.arch\.data\.model\s*=\s*32') {
             throw "Java yang dijalankan bukan JVM x86 32-bit"
           }
           $env:JAVA_OPTS = '-Xmx640m'
