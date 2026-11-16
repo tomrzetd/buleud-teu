@@ -307,7 +307,7 @@ object LjkEngine {
         return out
     }
 
-    class Hyp(val score: Double, val pairs: List<Corr>, val midPts: List<Corr>, val pxPerMm: Double, val mids: Int, val od: Double, val odm: Double)
+    class Hyp(val score: Double, val pairs: List<Corr>, val midPts: List<Corr>, val pxPerMm: Double, val mids: Int, val od: Double, val odm: Double, val partial: Boolean = false)
 
     fun markerHypotheses(cands: List<Square>, g: IntArray, W: Int, H: Int): List<Hyp> {
         val pool = cands.sortedByDescending { it.n }.take(14)
@@ -348,6 +348,69 @@ object LjkEngine {
             }
         }
         return hyps.sortedByDescending { it.score }
+    }
+
+
+    /**
+     * Recovery for print-shop sheets whose BOTTOM corners are severed during
+     * trimming. Geometry from TOP corner squares (8 mm) + MIDDLE side squares
+     * (6 mm). This is NEVER sufficient for scoring on its own: processMarker()
+     * also demands a strong (>=82%) independent bubble-grid match.
+     *
+     * Unlike a 3-corner guess, four non-collinear real reference markers
+     * produce a projective transform; missing bottom corners are projected.
+     */
+    fun partialMarkerHypotheses(cands: List<Square>, g: IntArray, W: Int, H: Int): List<Hyp> {
+        val pool = cands.sortedByDescending { it.n }.take(12)
+        val out = ArrayList<Hyp>()
+        val top = LjkSpec.CORNER_CENTERS
+        val mids = LjkSpec.MID_CENTERS
+        if (pool.size < 4) return out
+        for (i in pool.indices) for (j in i+1 until pool.size)
+            for (k in j+1 until pool.size) for (l in k+1 until pool.size) {
+                val q0 = listOf(pool[i],pool[j],pool[k],pool[l])
+                val cx = q0.sumOf { it.x }/4.0
+                val cy = q0.sumOf { it.y }/4.0
+                val q = q0.sortedBy { atan2(it.y-cy,it.x-cx) }
+                for (rot in 0 until 4) {
+                    val tl = q[rot]; val tr = q[(rot+1)%4]
+                    val mr = q[(rot+2)%4]; val ml = q[(rot+3)%4]
+                    val wt = hypot(tr.x-tl.x,tr.y-tl.y)
+                    val wm = hypot(mr.x-ml.x,mr.y-ml.y)
+                    if (wt < W*0.12 || wm < W*0.12 || wm/wt !in 0.65..1.5) continue
+                    val topdx = tr.x-tl.x; val topdy = tr.y-tl.y
+                    // Distance from TOP row to MID row: ~155/195 of top width.
+                    val ht = abs(topdx*(ml.y-tl.y)-topdy*(ml.x-tl.x))/wt
+                    if (ht/wt !in 0.48..1.16) continue
+                    val dot = (topdx*(mr.x-ml.x)+topdy*(mr.y-ml.y))/(wt*wm)
+                    if (dot < 0.70) continue
+                    val corners = (tl.side+tr.side)/2.0
+                    val centers = (ml.side+mr.side)/2.0
+                    if (centers < 1.0 || corners/centers !in 0.95..2.2) continue
+                    val px = (wt/195.0+wm/198.0)/2.0
+                    val pairs = listOf(
+                        Corr(top[0][0],top[0][1],tl.x,tl.y),
+                        Corr(top[1][0],top[1][1],tr.x,tr.y),
+                        Corr(mids[1][0],mids[1][1],mr.x,mr.y),
+                        Corr(mids[0][0],mids[0][1],ml.x,ml.y)
+                    )
+                    val fit = fitHomography(pairs) ?: continue
+                    val bl = fit.map(top[3][0],top[3][1])
+                    val br = fit.map(top[2][0],top[2][1])
+                    if (listOf(bl,br).any {
+                        !it.x.isFinite() || !it.y.isFinite() ||
+                        it.x < -W*0.15 || it.x > W*1.15 ||
+                        it.y < -H*0.15 || it.y > H*1.15
+                    }) continue
+                    val ori = fit.map(LjkSpec.ORIENT_CENTER[0], LjkSpec.ORIENT_CENTER[1])
+                    val mir = fit.map(LjkSpec.PAGE_W-LjkSpec.ORIENT_CENTER[0], LjkSpec.ORIENT_CENTER[1])
+                    val od = squareDark(g,W,H,ori.x,ori.y,LjkSpec.ORIENT_SIZE/2*px)
+                    val odm = squareDark(g,W,H,mir.x,mir.y,LjkSpec.ORIENT_SIZE/2*px)
+                    if (od < 0.46 || odm > 0.42) continue
+                    out.add(Hyp(4.0+3.0+od-odm,pairs,emptyList(),px,2,od,odm,true))
+                }
+            }
+        return out.sortedByDescending { it.score }.take(10)
     }
 
     class Shift(val dx: Double, val dy: Double, val hits: Int, val tot: Int)
@@ -391,8 +454,13 @@ object LjkEngine {
         val squares = solidSquares(components(binM, W, H).comps, W, H)
         ret.logs.add("Gambar ${W}x$H, kotak padat ${squares.size}")
         if (squares.size < 4) return fail("Marker sudut tidak ditemukan. Pastikan keempat kotak hitam di sudut LJK masuk bingkai.")
-        val hyps = markerHypotheses(squares, g, W, H)
-        if (hyps.isEmpty()) return fail("Susunan 4 marker sudut tidak cocok dengan LJK F4. Foto seluruh halaman.")
+        val canonicalHyps = markerHypotheses(squares, g, W, H)
+        // Bottom markers are optional ONLY for a 25 ABCD printshop layout.
+        // Other layouts retain strict four-corner recognition.
+        val recoveredHyps = if (layout.id == MarkerLayouts.PRINTSHOP_F4_25.id)
+            partialMarkerHypotheses(squares, g, W, H) else emptyList()
+        val hyps = canonicalHyps.take(4) + recoveredHyps.take(6)
+        if (hyps.isEmpty()) return fail("Marker belum cocok. Pastikan dua sudut atas dan kedua marker tengah terlihat; pindai seluruh lembar.")
 
         val rPx = layout.R * hyps[0].pxPerMm
         val binC = adaptiveThreshold(g, W, H, max(5, jsRound(rPx * 3).toInt()), contrast, I)
@@ -407,12 +475,15 @@ object LjkEngine {
             return if (tot > 0) hit.toDouble() / tot else 0.0
         }
         var best: Hyp? = null; var bestFp: HPair? = null; var bestBm = 0.0; var bestTotal = 0.0
-        for (h in hyps.take(4)) {
+        for (h in hyps) {
             val fp = fitPair(h.pairs + h.midPts) ?: continue
-            val bm = bubbleMatch(fp.inv); val total = h.score + bm * 4
+            val bm = bubbleMatch(fp.inv)
+            if (h.partial && bm < 0.82) continue // four good markers do not alone prove OMR layout
+            val total = h.score + bm * 4
             if (best == null || total > bestTotal) { best = h; bestFp = fp; bestBm = bm; bestTotal = total }
         }
-        if (best == null || bestBm < 0.25) return fail("Marker ditemukan tapi bulatan jawaban tidak cocok. Foto ulang lebih dekat/terang.")
+        if (best == null || bestBm < 0.25) return fail("Marker atau kisi bulatan tidak cocok. Coba ambil foto seluruh halaman dengan jelas.")
+        if (best.partial) ret.warnings.add("Marker bawah terpotong: geometri dipulihkan memakai penanda atas/tengah. WAJIB periksa seluruh jawaban sebelum simpan.")
         if (best.od < 0.4) ret.warnings.add("Penanda arah (kotak kecil kiri atas) tidak jelas; arah LJK ditebak dari pola bulatan.")
         val Hg = bestFp!!; val pxPerMm = best.pxPerMm
         ret.markers = best.pairs + best.midPts
