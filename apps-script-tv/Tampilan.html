@@ -135,7 +135,8 @@
 </div>
 <div class="err" id="err"></div>
 <script>
-  var KEY = <?= JSON.stringify(kunci) ?>, TFILTER = <?= JSON.stringify(tingkat) ?>, HAL = <?= JSON.stringify(hal) ?>;
+  // Apps Script meng-escape nilai di dalam <script> menjadi literal JavaScript (aman, sudah bertanda kutip)
+  var KEY = <?= kunci ?>, TFILTER = <?= tingkat ?>, HAL = <?= hal ?>;
   var D = null, page = 0, paused = false, PAGE_MS = 20000, pageStart = Date.now(), lastOk = 0;
   var PAGES = ['Progres pemindaian per rombel × mapel', 'Nilai rata-rata & ketuntasan KKTP', 'Status ujian per guru', 'Jadwal & progres harian'];
   var HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
