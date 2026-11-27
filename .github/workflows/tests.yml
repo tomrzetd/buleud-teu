@@ -28,6 +28,12 @@ jobs:
           node tools/test/test_security.js
           node tools/test/test_ujian_bersama.js
           node tools/test/test_asas.js
+      - name: Simpan bundel Apps Script minified yang lulus uji
+        uses: actions/upload-artifact@v4
+        with:
+          name: BuleudTeu-AppsScript-Siap-Tempel
+          path: apps-script/dist/BuleudTeu_deploy_min.gs
+          retention-days: 30
       - name: Uji GitHub Pages (rute subpath, isolasi cache, offline Chromium)
         run: node tools/test/test_pages.js && node tools/test/e2e_pages.js
       - name: Render template & buat foto uji
