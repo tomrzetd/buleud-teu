@@ -29,6 +29,8 @@ jobs:
           node tools/test/test_schema_dapodik.js
           node tools/test/test_scan_replay.js
           node tools/test/test_security.js
+          node tools/test/test_ujian_bersama.js
+          node tools/test/test_asas.js
       - name: Ambil file deploy (artifact)
         uses: actions/upload-artifact@v4
         with:

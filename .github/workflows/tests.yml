@@ -26,6 +26,8 @@ jobs:
           node tools/test/test_roster_license.js
           node tools/test/test_scan_replay.js
           node tools/test/test_security.js
+          node tools/test/test_ujian_bersama.js
+          node tools/test/test_asas.js
       - name: Uji GitHub Pages (rute subpath, isolasi cache, offline Chromium)
         run: node tools/test/test_pages.js && node tools/test/e2e_pages.js
       - name: Render template & buat foto uji
@@ -36,6 +38,8 @@ jobs:
         run: node tools/test/test_marker25.js
       - name: LJK percetakan SMPN 2 (marker bergeser, kotak bawah terpotong; 13 kondisi foto)
         run: python3 tools/test/gen_percetakan.py sintetis /tmp/percetakan && node tools/test/test_percetakan.js /tmp/percetakan
+      - name: Ujian bersama (multi-guru, sumber)
+        run: node tools/test/test_ujian_bersama.js
       - name: Dashboard TV Pokja (agregat tanpa data pribadi)
         run: node tools/test/test_tv.js
       - name: Pembuat ujian ASAS massal + Dashboard ASAS (sumber)

@@ -36,7 +36,7 @@ function opsiLaporan_(o) {
     mode: mode, bagian: bagian, format: ['pdf', 'xlsx', 'sheet'].indexOf(o.format) >= 0 ? o.format : 'pdf',
     urut: ['nama', 'skor', 'kelas'].indexOf(o.urut) >= 0 ? o.urut : 'kelas',
     lingkup: o.lingkup === 'kelas' ? 'kelas' : 'tingkat', kelas: String(o.kelas || '').toUpperCase(), orientasi: o.orientasi || 'auto',
-    anonim: o.anonim === true || o.anonim === 'true'
+    anonim: o.anonim === true || o.anonim === 'true', guruNama: String(o.guruNama || '')
   };
 }
 
@@ -84,7 +84,7 @@ function dataLaporan_(examId, o) {
   var sheets = [], utama = { nama: has('nilai') || has('jawaban') ? 'Nilai' : 'Ringkasan', blok: kop.slice() };
   if (has('identitas')) utama.blok.push({ jenis: 'kv', baris: [
     ['Mata pelajaran', u.mapel], ['Kelas / lingkup', lingkupTeks], ['Jumlah soal', u.jumlah + ' (opsi ' + u.opsi + ')'], ['KKTP', u.kktp],
-    ['Guru', u.guru || '-'], ['Tanggal ujian', u.tanggal || '-'], ['Jumlah siswa', siswa.length + (o.anonim ? ' (anonim)' : '')]] });
+    ['Guru', daftarGuru_(u.guru).join(', ') || '-'], ['Tanggal ujian', u.tanggal || '-'], ['Jumlah siswa', siswa.length + (o.anonim ? ' (anonim)' : '')]] });
   if (has('rekap')) utama.blok.push({ jenis: 'kv', judul: 'Rekap nilai', baris: [
     ['Rata-rata', R.rataRata], ['Tertinggi / terendah', R.max + ' / ' + R.min], ['Median', R.median], ['Simpangan baku', R.sd],
     ['Tuntas (≥ ' + u.kktp + ')', R.tuntas + ' siswa (' + R.persenTuntas + '%)'], ['Belum tuntas', (siswa.length - R.tuntas) + ' siswa']] });
@@ -103,7 +103,7 @@ function dataLaporan_(examId, o) {
     utama.blok.push({ jenis: 'tabel', judul: has('nilai') ? (jw ? 'Daftar nilai & pilihan jawaban' : 'Daftar nilai') : 'Pilihan jawaban siswa', kepala: head, baris: rows, warna: warna, sempit: jw ? 4 : 99 });
   }
   if (has('ttd')) utama.blok.push({ jenis: 'ttd', kiri: ['Mengetahui,', 'Kepala Sekolah', '', '', '', sk.kepala || '........................', sk.nipKepala ? 'NIP. ' + sk.nipKepala : 'NIP. ................'],
-    kanan: [(sk.kota || '..........') + ', ' + tanggalIndo_(new Date()), 'Guru Mata Pelajaran', '', '', '', u.guru || '........................', 'NIP. ................'] });
+    kanan: [(sk.kota || '..........') + ', ' + tanggalIndo_(new Date()), 'Guru Mata Pelajaran', '', '', '', o.guruNama || daftarGuru_(u.guru)[0] || '........................', 'NIP. ................'] });
   if (utama.blok.length > kop.length || !analisis) sheets.push(utama);   // tanpa halaman pertama kosong bila hanya bagian analisis dipilih
 
   if (has('statistik') || has('butir')) {
@@ -261,6 +261,7 @@ function apiReport_(d) {
   wajibTerdaftar_();
   assertPemilik_(g, getUjian_(d.examId));
   var guru = rows_(SH.GURU).filter(function (r) { return r['Nama'] === g.nama; })[0];
+  d.guruNama = g.nama;   // ujian bersama: tanda tangan = guru yang membuat laporan
   return buatLaporan(d.examId, d, guru && /@/.test(guru['Email']) ? String(guru['Email']).trim() : '');
 }
 

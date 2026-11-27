@@ -70,8 +70,12 @@ function parseKktp_(v) {
 function safe_(v) { v = String(v == null ? '' : v); return /^[=+\-@\t\r]/.test(v) ? "'" + v : v; }
 function normNama_(v) { return String(v || '').toUpperCase().replace(/\s+/g, ' ').trim(); }
 /** hanya pemilik ujian yang boleh menyimpan, menganalisis, mengirim ke bank, dan membuat laporan */
+/** Ujian bersama: kolom Guru boleh berisi beberapa nama dipisah titik koma (soal & kunci sama satu tingkat,
+ *  guru pengampu/pemeriksa berbeda). Nama guru sendiri boleh mengandung koma ("Sahudin, S.Pd."). */
+function daftarGuru_(s) { return String(s || '').split(/\s*[;\n]\s*/).map(function (x) { return x.trim(); }).filter(String); }
+function guruBoleh_(u, nama) { var n = String(nama || '').toUpperCase().trim(); return daftarGuru_(u.guru).some(function (x) { return x.toUpperCase() === n; }); }
 function assertPemilik_(g, u) {
-  if (String(u.guru).toUpperCase() !== String(g.nama).toUpperCase()) { var e = new Error('Ujian ini milik guru lain (' + u.guru + '). Akses ditolak.'); e.forbidden = true; throw e; }
+  if (!guruBoleh_(u, g.nama)) { var e = new Error('Ujian ini milik guru lain (' + u.guru + '). Akses ditolak.'); e.forbidden = true; throw e; }
 }
 
 // ---------------------------------------------------------------- konfigurasi sekolah
@@ -303,7 +307,7 @@ function withLock_(fn) {
 
 function apiExams_(d) {
   var g = auth_(d.token);
-  var ujian = rows_(SH.UJIAN).map(ujianRow_).filter(function (u) { return u.guru.toUpperCase() === g.nama.toUpperCase() && u.status !== 'Arsip'; });
+  var ujian = rows_(SH.UJIAN).map(ujianRow_).filter(function (u) { return guruBoleh_(u, g.nama) && u.status !== 'Arsip'; });
   var registered = lisensi_();
   var siswa;
   if (!registered) {
@@ -338,7 +342,8 @@ function apiSaveExam_(d) {
   if (x.id) {
     var ex = rows_(SH.UJIAN).filter(function (r) { return r['ID'] === x.id; })[0];
     if (!ex) throw new Error('Ujian tidak ditemukan.');
-    if (ex['Guru'].toUpperCase() !== g.nama.toUpperCase()) throw new Error('Ujian ini milik guru lain.');
+    if (!guruBoleh_({ guru: ex['Guru'] }, g.nama)) throw new Error('Ujian ini milik guru lain.');
+    row[5] = ex['Guru'];   // ujian bersama: daftar guru tidak berubah saat salah satu guru mengedit kunci
     row[12] = ex['Dibuat'] || now_();
     sh.getRange(ex._row, 1, 1, row.length).setValues([row]);
   } else {
@@ -352,7 +357,7 @@ function apiSaveExam_(d) {
 function apiArchiveExam_(d) {
   var g = auth_(d.token); wajibTerdaftar_();
   var u = getUjian_(d.id);
-  if (u.guru.toUpperCase() !== g.nama.toUpperCase()) throw new Error('Ujian ini milik guru lain.');
+  if (!guruBoleh_(u, g.nama)) throw new Error('Ujian ini milik guru lain.');
   sheet_(SH.UJIAN).getRange(u._row, 12).setValue('Arsip');
   return { result: 'success' };
 }
