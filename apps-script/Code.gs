@@ -523,6 +523,7 @@ function cekUraian_(u, arr) {
 }
 function simpanScan_(g, u, ps, d, s) {
   var uraianBaru = cekUraian_(u, d.uraian);
+  if (uraianBaru && uraianBaru.join('') === '') uraianBaru = null;   // semua kosong = pertahankan skor uraian lama
   var jw = (d.answers || []).slice(0, u.jumlah).map(function (a) { a = String(a || '-').toUpperCase(); return u.opsi.indexOf(a) >= 0 ? a : '-'; });
   while (jw.length < u.jumlah) jw.push('-');
   var benar = 0; for (var i = 0; i < u.jumlah; i++) if (jw[i] === u.kunci.charAt(i)) benar++;

@@ -120,10 +120,10 @@
         $('examList').innerHTML = list.map((u, i) => {
             const tot = examStudents(u).length, done = (u.terscan || []).length, pct = tot ? Math.min(100, Math.round(done / tot * 100)) : 0;
             return `<div class="card exam"><div class="row" style="align-items:flex-start"><div style="flex:1"><div class="t">${esc(u.nama)}</div>
-                <div class="m">${esc(u.mapel)} · ${esc(u.kelas.join(', ') || 'Tingkat ' + u.tingkat)} · ${u.jumlah} soal · ${u.opsi} · KKTP ${u.kktp}</div></div>
+                <div class="m">${esc(u.mapel)} · ${esc(u.kelas.join(', ') || 'Tingkat ' + u.tingkat)} · ${u.jumlah} soal · ${u.opsi} · KKTP ${u.kktp}${(u.uraianMaks || []).length ? ' · +' + u.uraianMaks.length + ' uraian' : ''}</div></div>
                 <span class="badge b-info">${done}/${tot}</span></div><div class="bar"><i style="width:${pct}%"></i></div>
                 <div class="row"><button class="btn pri sm" onclick="App.startScan(${i},'exam')">📷 Scan</button><button class="btn sm" onclick="App.editExam(${i})">Edit</button>
-                <button class="btn sm" onclick="App.openPrint(${i})">Cetak LJK</button><button class="btn sm" onclick="App.openAnalysis(${i})">Analisis</button></div></div>`;
+                <button class="btn sm" onclick="App.openPrint(${i})">Cetak LJK</button><button class="btn sm" onclick="App.openAnalysis(${i})">Analisis</button>${(u.uraianMaks || []).length ? `<button class="btn sm" onclick="App.essayOpen(${i})">✍️ Uraian</button>` : ''}</div></div>`;
         }).join('');
     }
 
@@ -139,6 +139,7 @@
         $('exKelas').onclick = (e) => { const k = e.target.dataset && e.target.dataset.k; if (!k) return; const a = S.editing.kelas, ix = a.indexOf(k); if (ix >= 0) a.splice(ix, 1); else a.push(k); e.target.classList.toggle('on'); };
         $('btnArchive').style.display = u ? '' : 'none';
         $('examMsg').innerHTML = '';
+        $('exPoin').value = S.editing.poinPG || ''; $('exUraian').value = (S.editing.uraianMaks || []).join(',');
         $('exKunci').value = S.editing.kunci; setOpsi(S.editing.opsi); go('exam');
     }
     function setOpsi(o) {
@@ -149,12 +150,25 @@
     function keyTyped() {
         const raw = $('exKunci').value.toUpperCase().replace(/[^A-E?-]/g, '').slice(0, 50);
         if (raw !== $('exKunci').value) $('exKunci').value = raw;
-        S.editing.kunci = raw; $('keyCount').textContent = raw.length + ' soal';
+        S.editing.kunci = raw; $('keyCount').textContent = raw.length + ' soal'; nilaiTyped();
         renderLjk($('keyGrid'), { n: 50, opsi: S.editing.opsi, answers: [...raw].map(c => /[A-E]/.test(c) ? c : null), keyMode: true, onTap: (q, L) => {
             const arr = [...S.editing.kunci.padEnd(Math.max(S.editing.kunci.length, q + 1), '-')];
             arr[q] = arr[q] === L ? '-' : L;
             $('exKunci').value = arr.join('').replace(/-+$/, ''); keyTyped();
         } });
+    }
+    // komposisi nilai: PG benar × poin + Σ uraian = 100 (kosongkan keduanya = skor PG murni 0–100)
+    function nilaiForm() {
+        const poin = Number(String($('exPoin').value).replace(',', '.')) || 0;
+        const maks = String($('exUraian').value).split(/[;,\s]+/).map(x => Number(x.replace(',', '.'))).filter(x => Number.isFinite(x) && x > 0);
+        const n = (S.editing && S.editing.kunci.length) || 0, tot = Math.round((n * poin + maks.reduce((a, b) => a + b, 0)) * 100) / 100;
+        return { poin, maks, n, tot, aktif: poin > 0 || maks.length > 0 };
+    }
+    function nilaiTyped() {
+        if (!$('nilaiTotal')) return;
+        const f = nilaiForm();
+        $('nilaiTotal').innerHTML = !f.aktif ? '<span class="muted">Tanpa uraian: skor = persentase PG benar (0–100).</span>'
+            : `${f.n} PG × ${f.poin || '?'}${f.maks.length ? ' + uraian ' + f.maks.join(' + ') : ''} = <b style="color:${Math.abs(f.tot - 100) < 0.01 ? '#22c55e' : '#ef4444'}">${f.tot}</b>${Math.abs(f.tot - 100) < 0.01 ? ' ✓' : ' (harus 100)'}`;
     }
     function keyClear() { $('exKunci').value = ''; keyTyped(); }
     async function saveExam() {
@@ -168,6 +182,10 @@
         if (/[-?]/.test(k)) return msg('Ada nomor kunci yang kosong di tengah (tanda -). Lengkapi atau hapus.');
         if (e.opsi === 'ABCD' && /E/.test(k)) return msg('Kunci berisi E, padahal opsi ABCD.');
         if (!Number.isFinite(e.kktp) || e.kktp < 0 || e.kktp > 100) return msg('KKTP harus angka 0–100.');
+        const f = nilaiForm();
+        if (f.aktif && !(f.poin > 0)) return msg('Isi poin per PG benar bila memakai soal uraian.');
+        if (f.aktif && Math.abs(f.tot - 100) > 0.01) return msg(`Total nilai harus 100 (sekarang ${f.tot}). Sesuaikan poin PG atau skor maks uraian.`);
+        e.poinPG = f.aktif ? f.poin : 0; e.uraian = f.aktif ? f.maks : [];
         busy(true, 'Menyimpan ujian…');
         try { await apiPost({ action: 'saveExam', exam: e }); toast('Ujian tersimpan (' + k.length + ' soal)'); go('home'); await loadExams(true); }
         catch (err) { msg(err.message); } finally { busy(false); }
@@ -371,6 +389,9 @@
         stopLoopOnly();
         const r = S.res, u = S.exam;
         go('result');
+        const um = (u && u.uraianMaks) || [];
+        $('uraianIn').innerHTML = um.length ? `<label class="l" style="margin-top:8px">Skor uraian (boleh diisi nanti di menu ✍️ Uraian)</label><div class="ur">${um.map((m, k) =>
+            `<span class="small">U${k + 1}</span><input class="in" id="ur${k}" type="number" min="0" max="${m}" step="0.5" placeholder="0–${m}">`).join('')}</div>` : '';
         $('resTitle').innerHTML = esc(u ? u.nama : 'LJK lama') + `<span class="sub">${esc(u ? u.mapel + ' · ' + u.jumlah + ' soal' : lamaN() + ' soal · tanpa marker')}</span>`;
         renderAnswers();
         const q = r.quality || {};
@@ -574,10 +595,18 @@
         const st = examStudents(u).find(s => s.kelas === kelas && s.nama === nama) || {};
         const payload = { action: 'save', examId: u.id, siswa: { nama, kelas, nomor: st.nomor || (S.ident && S.ident.nomor) || '', nisn: st.nisn || '' },
             answers: S.answers.slice(0, u.jumlah).map(a => a || '-'), flags: fl, mode: S.res.mode, quality: S.res.quality ? S.res.quality.grade + S.res.quality.score : '', scanId: S.scanId };
+        const um = u.uraianMaks || [];
+        if (um.length) {
+            const ur = um.map((m, k) => { const v = ($('ur' + k) || {}).value; return v === '' || v == null ? '' : Number(String(v).replace(',', '.')); });
+            const salah = ur.findIndex((v, k) => v !== '' && !(v >= 0 && v <= um[k]));
+            if (salah >= 0) return toast(`Skor uraian nomor ${salah + 1} harus 0–${um[salah]}`);
+            if (ur.some(v => v !== '')) payload.uraian = ur;   // kosong semua = skor uraian lama (jika ada) dipertahankan
+        }
         $('btnSave').disabled = true; busy(true, `Menyimpan hasil ${nama} ke database…`);
         try {
             const r = await apiPost(payload);
-            toast(`✅ Tersimpan — ${nama}: ${r.skor} (${r.benar}/${r.jumlah})`);
+            toast(um.length ? `✅ Tersimpan — ${nama}: PG ${r.benar}/${r.jumlah}` + (r.nilaiAkhir != null ? ` · nilai akhir ${r.nilaiAkhir}` : ' · nilai akhir menunggu uraian')
+                : `✅ Tersimpan — ${nama}: ${r.skor} (${r.benar}/${r.jumlah})`);
             markScanned(u, kelas, nama);
         } catch (e) {
             if (/fetch|network|Load failed/i.test(e.message) || !navigator.onLine) {
@@ -780,6 +809,47 @@
         $('cariHasil').addEventListener('click', (e) => { const d = e.target.closest('.hit'); if (d) pickStudent(d.dataset.n, d.dataset.k); });
         $('selSiswa').addEventListener('change', showPicked); $('selKelas').addEventListener('change', showPicked);
     });
-    window.App = { go, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, makeReport, anPick, anFilter, anSort, anEditKey, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
+    // ------------------------------------------------------------ nilai uraian (per rombel)
+    async function essayOpen(i) {
+        S.essay = { u: S.data.ujian[i], list: [] };
+        $('esSub').textContent = S.essay.u.nama + ' · ' + S.essay.u.mapel;
+        go('essay'); await essayLoad();
+    }
+    async function essayLoad() {
+        const E = S.essay; if (!E) return;
+        $('esTabel').innerHTML = '<tr><td class="muted">Memuat…</td></tr>';
+        try {
+            const r = await apiPost({ action: 'essayList', examId: E.u.id });
+            E.list = r.siswa; E.info = r.ujian;
+            const ks = [...new Set(E.list.map(x => x.kelas))].sort(), cur = $('esKelas').value;
+            $('esKelas').innerHTML = ks.map(k => `<option ${k === cur ? 'selected' : ''}>${esc(k)}</option>`).join('');
+            essayRender();
+        } catch (e) { $('esTabel').innerHTML = `<tr><td class="muted">${esc(e.message)} (butuh koneksi internet)</td></tr>`; }
+    }
+    function essayRender() {
+        const E = S.essay; if (!E || !E.info) return;
+        const I = E.info, kls = $('esKelas').value, L = E.list.map((x, ix) => Object.assign({ ix }, x)).filter(x => x.kelas === kls);
+        const sudah = L.filter(x => x.nilaiAkhir != null).length, pg = L.filter(x => x.adaPG).length;
+        $('esInfo').innerHTML = `${I.jumlah} PG × ${I.poinPG} + uraian ${I.uraianMaks.join(' + ')} = ${I.nilaiMaks} · KKTP ${I.kktp}<br>${kls}: ${pg}/${L.length} PG terpindai · ${sudah} nilai akhir lengkap. Isi skor lalu tekan Enter / pindah kolom — tersimpan otomatis.`;
+        $('esTabel').innerHTML = `<tr><th>No</th><th style="text-align:left">Nama</th><th>PG</th>${I.uraianMaks.map((m, k) => `<th>U${k + 1}<br><span class="muted small">/${m}</span></th>`).join('')}<th>Nilai</th></tr>` +
+            L.map((x, j) => `<tr id="es${x.ix}" class="${x.nilaiAkhir == null ? '' : x.nilaiAkhir >= I.kktp ? 'ok' : 'lo'}"><td>${j + 1}</td><td class="nm">${esc(x.nama)}</td><td>${x.adaPG ? x.skorPG : '<span class="muted">belum scan</span>'}</td>` +
+                I.uraianMaks.map((m, k) => `<td><input type="number" min="0" max="${m}" step="0.5" ${x.adaPG ? '' : 'disabled'} value="${x.uraian[k] === '' ? '' : x.uraian[k]}" data-i="${x.ix}" onchange="App.essaySave(${x.ix})" onkeydown="if(event.key==='Enter')this.blur()"></td>`).join('') +
+                `<td class="na ${x.nilaiAkhir == null ? 'wt' : ''}">${x.nilaiAkhir == null ? (x.adaPG ? '…' : '-') : x.nilaiAkhir}</td></tr>`).join('');
+    }
+    async function essaySave(ix) {
+        const E = S.essay, x = E.list[ix], I = E.info, tr = $('es' + ix);
+        const ins = [...tr.querySelectorAll('input')], nilai = ins.map(el => el.value === '' ? '' : Number(String(el.value).replace(',', '.')));
+        let ok = true; ins.forEach((el, k) => { const bad = nilai[k] !== '' && !(nilai[k] >= 0 && nilai[k] <= I.uraianMaks[k]); el.classList.toggle('bad', bad); if (bad) ok = false; });
+        if (!ok) return toast('Skor melebihi batas maksimal soal');
+        const na = tr.querySelector('.na'); na.textContent = '⏳';
+        try {
+            const r = await apiPost({ action: 'essay', examId: E.u.id, siswa: { nama: x.nama, kelas: x.kelas, nisn: x.nisn || '' }, nilai });
+            x.uraian = r.uraian; x.nilaiAkhir = r.nilaiAkhir;
+            na.textContent = r.nilaiAkhir == null ? '…' : r.nilaiAkhir; na.classList.toggle('wt', r.nilaiAkhir == null);
+            tr.className = r.nilaiAkhir == null ? '' : r.nilaiAkhir >= I.kktp ? 'ok' : 'lo';
+        } catch (e) { na.textContent = '⚠'; toast('Gagal simpan ' + x.nama + ': ' + e.message, 5000); }
+    }
+
+    window.App = { go, nilaiTyped, essayOpen, essayLoad, essayRender, essaySave, saveApi, logout, loadExams, flushQueue, editExam, setOpsi, keyTyped, keyClear, saveExam, archiveExam, startScan, stopScan, setAuto, capture, fromFile, backToScan, save, fillStudents, openAnalysis, runAnalysis, saveBank, makeReport, anPick, anFilter, anSort, anEditKey, openPrint, renderPrint, toggleTuning, param, reprocess, setOcr, _S: S };
     document.addEventListener('DOMContentLoaded', init);
 })();

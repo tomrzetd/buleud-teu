@@ -1,0 +1,45 @@
+// E2E web: form nilai uraian (total 100) + layar ✍️ Uraian. Pemakaian: node tools/test/e2e_uraian.js (butuh playwright)
+const path = require('path'), assert = require('assert');
+const { chromium } = require('playwright');
+const ROOT = path.join(__dirname, '..', '..');
+const { createGas } = require('./gas_mock.js');
+const API = 'https://script.google.com/macros/s/UJI_BULEUD/exec';
+(async () => {
+  const gas = createGas(); const { ss } = gas; gas.ctx.setup();
+  ss.getSheetByName('Sekolah').getRange(10, 2).setValue(gas.mintLicense());
+  ss.getSheetByName('Guru').appendRow(['NURHAYATI', '', '1234', 'IPA', '9A', 'Ya']);
+  for (const n of ['AAN', 'BUDI', 'CICI']) ss.getSheetByName('Siswa').appendRow(['00' + n.length + n.charCodeAt(0), '', '', n, '9', '9A', 'L']);
+  const browser = await chromium.launch(); const page = await browser.newPage({ viewport: { width: 412, height: 915 } });
+  const errs = []; page.on('pageerror', e => errs.push(e.message));
+  await page.route('https://script.google.com/**', async (route, req) => {
+    const u = new URL(req.url()); const body = req.method() === 'GET' ? gas.doGet(Object.fromEntries(u.searchParams)) : gas.doPost(req.postData());
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body });
+  });
+  await page.goto('file://' + ROOT + '/web/index.html');
+  await page.fill('#inApi', API); await page.click('text=Sambungkan'); await page.waitForSelector('#scr-login.on');
+  for (const k of '1234') await page.click(`#pinPad [data-k="${k}"]`);
+  await page.waitForSelector('#scr-home.on');
+  await page.click('text=＋ Ujian baru');
+  await page.fill('#exNama', 'ASAS IPA'); await page.fill('#exMapel', 'IPA'); await page.click('#exKelas [data-k="9A"]');
+  await page.click('[data-opsi="ABCD"]'); await page.fill('#exKunci', 'ABCD'.repeat(5)); await page.dispatchEvent('#exKunci', 'input');
+  await page.fill('#exPoin', '3'); await page.fill('#exUraian', '10,10');
+  assert.ok(/harus 100/.test(await page.textContent('#nilaiTotal')));
+  await page.click('text=Simpan ujian'); assert.ok(/Total nilai harus 100/.test(await page.textContent('#examMsg')));
+  await page.fill('#exUraian', '20,20'); assert.ok(/✓/.test(await page.textContent('#nilaiTotal')));
+  await page.screenshot({ path: path.join(__dirname, 'shots', 'uraian_1_form.png'), fullPage: true });
+  await page.click('text=Simpan ujian'); await page.waitForSelector('#scr-home.on'); await page.waitForSelector('text=✍️ Uraian');
+  const id = JSON.parse(gas.doPost(JSON.stringify({ action: 'exams', token: JSON.parse(gas.doPost(JSON.stringify({ action: 'login', guru: 'NURHAYATI', pin: '1234' }))).token }))).ujian[0].id;
+  const tk = JSON.parse(gas.doPost(JSON.stringify({ action: 'login', guru: 'NURHAYATI', pin: '1234' }))).token;
+  for (const n of ['AAN', 'BUDI']) gas.doPost(JSON.stringify({ action: 'save', token: tk, examId: id, siswa: { nama: n, kelas: '9A' }, answers: 'ABCD'.repeat(4).split('') }));
+  await page.screenshot({ path: path.join(__dirname, 'shots', 'uraian_2_home.png') });
+  await page.click('text=✍️ Uraian'); await page.waitForSelector('#scr-essay.on'); await page.waitForSelector('#esTabel input');
+  const row = '#esTabel tr:has-text("AAN")';
+  const ins = await page.$$(row + ' input'); await ins[0].fill('15'); await ins[0].press('Enter');
+  await page.waitForFunction(() => /…/.test(document.querySelector('#esTabel tr:nth-child(2) .na').textContent));
+  await ins[1].fill('18'); await ins[1].press('Enter');
+  await page.waitForFunction(() => document.querySelector('#esTabel tr:nth-child(2) .na').textContent === '81');
+  assert.ok(await page.$('#esTabel tr:has-text("CICI") input[disabled]'));
+  await page.screenshot({ path: path.join(__dirname, 'shots', 'uraian_3_uraian.png'), fullPage: true });
+  assert.deepStrictEqual(errs, []);
+  await browser.close(); console.log('E2E uraian OK');
+})().catch(e => { console.error(e); process.exit(1); });
