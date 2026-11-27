@@ -100,6 +100,15 @@
   .day h3 span { color: var(--acc); font-size: .75em; margin-left: .5em; }
   .day .it { margin: calc(var(--u) * .55) 0; font-size: calc(var(--u) * 1.05); }
   .day .it div { display: flex; justify-content: space-between; }
+  /* rekap nilai (mode rapat) */
+  table.rk { width: 100%; border-collapse: collapse; table-layout: fixed; font-variant-numeric: tabular-nums; }
+  .rk th { color: var(--mut); font-weight: 600; font-size: calc(var(--u) * .9); text-align: center; padding: 0 0 calc(var(--u) * .2); border-bottom: 1px solid var(--line); }
+  .rk td { text-align: center; font-size: var(--rkf, calc(var(--u) * 1)); padding: 0 .2em; border-bottom: 1px solid #1a2540; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: var(--rkh, 1.6em); line-height: 1; }
+  .rk td.nm { text-align: left; font-weight: 600; }
+  .rk td.lo { color: #fca5a5; } .rk td.ok { color: #86efac; } .rk td.no { color: var(--dim); }
+  .rk td.rt { color: var(--acc); font-weight: 700; } .rk td.rn { color: var(--mut); }
+  .rk tr.top td.rn { color: #fde047; font-weight: 700; }
+  .rapat { background: var(--bad2); color: #fecaca; border: 1px solid var(--bad); border-radius: 999px; padding: .2em .8em; font-size: calc(var(--u) * .95); font-weight: 700; }
   footer { display: grid; grid-template-columns: auto 1fr auto; gap: calc(var(--u) * 1); align-items: center; color: var(--mut); font-size: calc(var(--u) * .95); }
   .tick { overflow: hidden; white-space: nowrap; mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); }
   .tick > div { display: inline-block; padding-left: 100%; animation: run 45s linear infinite; }
@@ -126,6 +135,7 @@
     <div class="page" id="p1"></div>
     <div class="page" id="p2"></div>
     <div class="page" id="p3"></div>
+    <div id="rk"></div>
   </main>
   <footer>
     <div>Scan terbaru:</div>
@@ -136,9 +146,9 @@
 <div class="err" id="err"></div>
 <script>
   // Apps Script meng-escape nilai di dalam <script> menjadi literal JavaScript (aman, sudah bertanda kutip)
-  var KEY = <?= kunci ?>, TFILTER = <?= tingkat ?>, HAL = <?= hal ?>;
+  var KEY = <?= kunci ?>, TFILTER = <?= tingkat ?>, HAL = <?= hal ?>, MODE = <?= mode ?>;
   var D = null, page = 0, paused = false, PAGE_MS = 20000, pageStart = Date.now(), lastOk = 0;
-  var PAGES = ['Progres pemindaian per rombel × mapel', 'Nilai rata-rata & ketuntasan KKTP', 'Status ujian per guru', 'Jadwal & progres harian'];
+  var PAGES0 = ['Progres pemindaian per rombel × mapel', 'Nilai rata-rata & ketuntasan KKTP', 'Status ujian per guru', 'Jadwal & progres harian'], PAGES = PAGES0.slice();
   var HARI = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
   var BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   function $(i) { return document.getElementById(i); }
@@ -158,8 +168,14 @@
     }
     if (lastOk && Date.now() - lastOk > 5 * 60000) $('live').className = 'live off';
   }
-  function go(i) { page = (i + PAGES.length) % PAGES.length; pageStart = Date.now(); show(); }
+  function go(i) { page = (i + PAGES.length) % PAGES.length; pageStart = Date.now(); if (MODE === 'rekap' && D) renderRekap(D); else show(); }
   function show() {
+    if (MODE === 'rekap') {
+      for (var j = 0; j < RB.length; j++) { var el = $('r' + j); if (el) el.className = 'page' + (j === page ? ' on' : ''); }
+      $('pTitle').innerHTML = esc(PAGES[page] || 'Rekap nilai') + '<span>' + (page + 1) + ' / ' + RB.length + '</span>';
+      $('dots').innerHTML = paused ? '<span style="color:var(--run)">jeda</span>' : '';
+      return;
+    }
     for (var i = 0; i < PAGES.length; i++) $('p' + i).className = 'page' + (i === page ? ' on' : '');
     $('pTitle').innerHTML = esc(PAGES[page]) + (TFILTER ? '<span>Tingkat ' + esc(TFILTER) + '</span>' : '');
     $('dots').innerHTML = PAGES.map(function (_, i) { return '<b class="' + (i === page ? 'on' : '') + '"></b>'; }).join('') + (paused ? ' <span style="color:var(--run);margin-left:.5em">jeda</span>' : '');
@@ -181,6 +197,7 @@
     var next = d.jadwal.filter(function (j) { return j.tanggal > d.hariIni; })[0];
     $('today').innerHTML = hari.length ? '<span class="lbl">Hari ini</span>' + hari.map(function (m) { return '<span class="chip">' + esc(m.mapel) + '<i>' + m.masuk + '/' + m.target + '</i></span>'; }).join('')
       : next ? '<span class="lbl">Berikutnya ' + tglIndo(next.tanggal, true) + '</span>' + next.mapel.map(function (m) { return '<span class="chip">' + esc(m.mapel) + '</span>'; }).join('') : '';
+    if (MODE === 'rekap' && d.rekap) { renderRekap(d); tickerSet(d); return; }
     var k = d.kpi;
     $('kpi').innerHTML =
       '<div class="card"><small>Lembar jawaban masuk</small><div class="big">' + k.masuk.toLocaleString('id-ID') + ' <em>/ ' + k.target.toLocaleString('id-ID') + ' · ' + String(k.persen).replace('.', ',') + '%</em></div><div class="bar"><div style="width:' + Math.min(100, k.persen) + '%"></div></div></div>' +
@@ -219,7 +236,7 @@
             (x.n ? 'rata ' + String(x.rata).replace('.', ',') + ' · tuntas ' + x.tuntas + '%' : '<span style="color:var(--dim)">belum ada</span>') + '</span></div>'; }).join('') : '<div class="tg"><b></b><div class="hb"></div><span>belum ada</span></div>') +
         '</div></div>'; }).join('') + '</div>' : '<div class="empty">Belum ada nilai.</div>';
     // P2 guru (tidak lengkap dulu; maksimal 48 kartu)
-    var gl = d.guru.filter(function (g) { return !TFILTER || g.tingkat === TFILTER; }).map(function (g) { if (g.status === 'jalan' && g.target && g.n >= g.target) g.status = 'selesai'; return g; });
+    var gl = d.guru.filter(function (g) { return !TFILTER || g.tingkat === TFILTER; });
     var ST = { telat: 'Belum scan', kunci: 'Kunci belum diisi', belum: 'Belum mulai', jalan: 'Berjalan', selesai: 'Selesai' };
     $('p2').innerHTML = gl.length ? '<div class="gr">' + gl.slice(0, 55).map(function (g) {
       return '<div class="g ' + g.status + '"><div><b>' + esc(namaGuru(g.guru)) + '</b><small>' + esc(g.mapel) + ' · ' + esc(g.tingkat) + (g.tanggal ? ' · ' + tglIndo(g.tanggal) : '') + '</small></div><div class="st">' +
@@ -232,8 +249,46 @@
         var p = pct(m.masuk, m.target);
         return '<div class="it"><div><b>' + esc(m.mapel) + '</b><span>' + m.masuk + '/' + m.target + ' · ' + p + '%</span></div><div class="bar"><div style="width:' + p + '%"></div></div></div>'; }).join('') + '</div>'; }).join('') + '</div>'
       : '<div class="empty">Tanggal ujian belum diisi di sheet Ujian.</div>';
+    tickerSet(d);
+    show();
+  }
+  function tickerSet(d) {
     // ticker (tanpa nama siswa)
     $('tick').innerHTML = d.terbaru.length ? d.terbaru.map(function (t) { return '<b>' + esc(t.w.slice(11, 16)) + '</b>' + esc(t.mapel) + ' · ' + esc(t.rombel); }).join(' &nbsp;│&nbsp; ') : 'Belum ada lembar yang dipindai.';
+  }
+  // ---------------- MODE REKAP NILAI (kunci REKAP_KEY) — berisi data pribadi siswa
+  var RB = [];
+  function renderRekap(d) {
+    RB = d.rombel.filter(function (r) { return !TFILTER || r.t === TFILTER; }).map(function (r) { return r.r; });
+    PAGES = RB.map(function (r) { return 'Rekap nilai rombel ' + r; });
+    PAGE_MS = 15000;
+    if (page >= PAGES.length) page = 0;
+    $('today').innerHTML = '<span class="rapat">MODE RAPAT · memuat nama & nilai siswa — jangan ditampilkan di ruang umum</span>';
+    var html = '';
+    RB.forEach(function (rb, i) {
+      var L = (d.rekap.rombel[rb] || []), t = (d.rombel.filter(function (x) { return x.r === rb; })[0] || {}).t;
+      var mp = d.mapel.filter(function (m) { return d.sel[m.mapel + '|' + rb]; });
+      var rowU = Math.min(2.2, 35 / (L.length + 1.6)), fU = Math.min(1.05, rowU * 0.74);   // 1u ≈ 1/56 tinggi layar: tabel muat ±33u
+      var h = '<table class="rk" style="--rkh:calc(var(--u) * ' + rowU.toFixed(3) + ');--rkf:calc(var(--u) * ' + fU.toFixed(3) + ')"><colgroup><col style="width:3%"><col style="width:7%"><col style="width:22%">' +
+        mp.map(function () { return '<col>'; }).join('') + '<col style="width:6%"><col style="width:5%"></colgroup><thead><tr><th>No</th><th>No. Peserta</th><th style="text-align:left">Nama</th>' +
+        mp.map(function (m) { return '<th>' + esc(pendek(m.mapel)) + '</th>'; }).join('') + '<th>Rata</th><th>Rank</th></tr></thead><tbody>';
+      L.forEach(function (x, j) {
+        h += '<tr class="' + (x.rank && x.rank <= 3 ? 'top' : '') + '"><td class="rn">' + (j + 1) + '</td><td class="rn">' + esc(x.no) + '</td><td class="nm">' + esc(x.nama) + '</td>' + mp.map(function (m) {
+          var v = x.n[m.mapel], kk = d.rekap.kktp[m.mapel + '|' + t] || 75;
+          return v == null ? '<td class="no">·</td>' : '<td class="' + (v >= kk ? 'ok' : 'lo') + '">' + String(v).replace('.', ',') + '</td>'; }).join('') +
+          '<td class="rt">' + (x.rata == null ? '' : String(x.rata).replace('.', ',')) + '</td><td class="rn">' + (x.rank || '') + '</td></tr>';
+      });
+      html += '<div class="page" id="r' + i + '">' + h + '</tbody></table></div>';
+    });
+    $('rk').innerHTML = html;
+    var L = d.rekap.rombel[RB[page]] || [], ada = L.filter(function (x) { return x.rata != null; });
+    var rata = ada.length ? Math.round(ada.reduce(function (s, x) { return s + x.rata; }, 0) / ada.length * 10) / 10 : null;
+    var nm = d.mapel.filter(function (m) { return d.sel[m.mapel + '|' + RB[page]]; }).length;
+    $('kpi').innerHTML = '<div class="card"><small>Rombel</small><div class="big">' + esc(RB[page] || '-') + ' <em>' + L.length + ' siswa</em></div></div>' +
+      '<div class="card"><small>Nilai lengkap semua mapel</small><div class="big">' + L.filter(function (x) { return x.c >= nm; }).length + ' <em>/ ' + L.length + '</em></div></div>' +
+      '<div class="card"><small>Rata-rata rombel</small><div class="big">' + (rata == null ? '–' : String(rata).replace('.', ',')) + '</div></div>' +
+      '<div class="card"><small>Peringkat 1</small><div class="big" style="font-size:calc(var(--u)*1.25);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc((L.filter(function (x) { return x.rank === 1; })[0] || {}).nama || '–') + '</div></div>' +
+      '<div class="card warn"><small>Rombel</small><div class="big">' + (page + 1) + ' <em>/ ' + RB.length + '</em></div></div>';
     show();
   }
   function fail(e) {
@@ -242,7 +297,7 @@
     $('err').style.display = 'block';
   }
   function load() { google.script.run.withSuccessHandler(render).withFailureHandler(fail).tvData(KEY); }
-  if (HAL) page = Math.max(0, Math.min(PAGES.length - 1, Number(HAL) - 1));
+  if (HAL) page = Math.max(0, Number(HAL) - 1);
   show(); load(); setInterval(load, 60000); setInterval(tick, 500); tick();
 </script>
 </body>

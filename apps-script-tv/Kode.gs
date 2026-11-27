@@ -18,24 +18,29 @@ var TV_DEFAULT = {
 
 function doGet(e) {
   var p = (e && e.parameter) || {};
-  if (!kunciOk_(p.k)) {
+  var mode = modeKunci_(p.k);
+  if (!mode) {
     return HtmlService.createHtmlOutput('<body style="background:#0b1220;color:#e5e7eb;font:28px sans-serif;display:grid;place-items:center;height:95vh">Akses ditolak — tambahkan <code>?k=…</code> pada alamat.</body>');
   }
   var t = HtmlService.createTemplateFromFile('Tampilan');
-  t.kunci = String(p.k || ''); t.tingkat = String(p.tingkat || ''); t.hal = String(p.hal || '');
+  t.kunci = String(p.k || ''); t.tingkat = String(p.tingkat || ''); t.hal = String(p.hal || ''); t.mode = mode;
   return t.evaluate().setTitle('Dashboard ' + TV_DEFAULT.namaUjian + ' — Buleud Teu')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
-function kunciOk_(k) {
-  var want = PropertiesService.getScriptProperties().getProperty('TV_KEY');
-  return !want || String(k || '') === want;
+/** 'tv' (angka gabungan) | 'rekap' (nilai per siswa, kunci REKAP_KEY khusus rapat) | '' (ditolak) */
+function modeKunci_(k) {
+  var P = PropertiesService.getScriptProperties(), tv = P.getProperty('TV_KEY'), rk = P.getProperty('REKAP_KEY');
+  k = String(k || '');
+  if (rk && k === rk) return 'rekap';
+  return !tv || k === tv ? 'tv' : '';
 }
 
 /** dipanggil halaman TV (google.script.run) tiap ±60 detik */
 function tvData(k) {
-  if (!kunciOk_(k)) throw new Error('Akses ditolak');
-  var cache = CacheService.getScriptCache(), hit = cache.get('tv_v1');
+  var mode = modeKunci_(k);
+  if (!mode) throw new Error('Akses ditolak');
+  var cache = CacheService.getScriptCache(), ck = 'tv_v2_' + mode, hit = cache.get(ck);
   if (hit) return JSON.parse(hit);
   var id = PropertiesService.getScriptProperties().getProperty('SHEET_ID');
   if (!id) throw new Error('Properti skrip SHEET_ID belum diisi.');
@@ -49,14 +54,14 @@ function tvData(k) {
   var shS = ss.getSheetByName('Sekolah');
   if (shS && shS.getLastRow()) shS.getRange(1, 1, shS.getLastRow(), 2).getDisplayValues().forEach(function (r) { sek[r[0]] = r[1]; });
   var tz = Session.getScriptTimeZone();
-  var out = hitungTv_({ ujian: tab('Ujian'), siswa: tab('Siswa'), hasil: tab('HasilScan'), sekolah: sek },
-    Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm:ss'), TV_DEFAULT);
-  try { cache.put('tv_v1', JSON.stringify(out), TV_DEFAULT.cacheDetik); } catch (e) {}
+  var out = hitungTv_({ ujian: tab('Ujian'), siswa: tab('Siswa'), hasil: tab('HasilScan'), guru: tab('Guru'), sekolah: sek },
+    Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm:ss'), TV_DEFAULT, mode === 'rekap');
+  try { cache.put(ck, JSON.stringify(out), TV_DEFAULT.cacheDetik); } catch (e) {}   // >100 KB tidak di-cache: dihitung ulang
   return out;
 }
 
 /** Perhitungan murni (diuji di Node): tabel -> agregat untuk layar TV. */
-function hitungTv_(T, hariIni, sekarang, cfg) {
+function hitungTv_(T, hariIni, sekarang, cfg, rekap) {
   var up = function (s) { return String(s || '').trim().toUpperCase(); };
   var tingkatDari = function (r) { var m = /^(\d{1,2})/.exec(r); return m ? m[1] : ''; };
   // --- rombel & jumlah siswa
@@ -137,13 +142,62 @@ function hitungTv_(T, hariIni, sekarang, cfg) {
     return { tanggal: d, mapel: jadwal[d].map(function (mp) { return { mapel: mp, masuk: perMapel[mp].masuk, target: perMapel[mp].target }; }) };
   });
   // --- status per ujian (guru) — tanpa data siswa
-  var guru = Object.keys(byId).map(function (id) {
-    var u = byId[id], target = u.rombel.reduce(function (s, rb) { return s + (jml[rb] || 0); }, 0);
-    var status = u.kunciKosong ? 'kunci' : u.n ? 'jalan' : (u.tanggal && u.tanggal <= hariIni ? 'telat' : 'belum');
-    return { guru: u.guru, mapel: u.mapel, tingkat: u.tingkat, n: u.n, target: target, status: status, tanggal: u.tanggal };
-  }).sort(function (a, b) { var o = { telat: 0, kunci: 1, belum: 2, jalan: 3 }; return (o[a.status] - o[b.status]) || a.mapel.localeCompare(b.mapel) || a.tingkat.localeCompare(b.tingkat); });
+  // rombel diampu per guru (sheet Guru) -> progres per guru dalam ujian bersama
+  var ampu = {};
+  (T.guru || []).forEach(function (g) {
+    var nm = up(g['Nama']); if (!nm) return;
+    var ks = String(g['Tingkat/Rombel Diampu (pisah koma)'] || g['Kelas (pisah koma)'] || '').split(/[,;.]/).map(up).filter(String);
+    var mp = String(g['Mapel (pisah koma)'] || '').split(/[,;]/).map(up).filter(String);
+    var a = ampu[nm] = ampu[nm] || [];
+    a.push({ mapel: mp, rombel: ks.reduce(function (o, x) { return o.concat(/^\d{1,2}$/.test(x) ? (rombelT[x] || []) : [x]); }, []) });
+  });
+  var scanRb = {};   // id|rombel -> siswa unik
+  T.hasil.forEach(function (h) {
+    var u = byId[h['ID Ujian']]; if (!u) return;
+    var k = u.id + '|' + up(h['Nama Rombel'] || h['Kelas']);
+    (scanRb[k] = scanRb[k] || {})[String(h['NISN'] || '').replace(/\D/g, '') || up(h['Nama'])] = 1;
+  });
+  var guru = [];
+  Object.keys(byId).forEach(function (id) {
+    var u = byId[id], daftar = String(u.guru || '').split(/\s*[;\n]\s*/).filter(String);
+    daftar.forEach(function (g) {
+      var tugas = (ampu[up(g)] || []).filter(function (a) { return !a.mapel.length || a.mapel.some(function (m) { return m === u.mapel || u.mapel.indexOf(m) >= 0 || m.indexOf(u.mapel) >= 0; }); });
+      var rbs = u.rombel.filter(function (rb) { return !tugas.length || tugas.some(function (a) { return a.rombel.indexOf(rb) >= 0; }); });
+      if (!rbs.length) rbs = u.rombel;
+      var n = 0, target = 0;
+      rbs.forEach(function (rb) { target += jml[rb] || 0; n += Math.min(jml[rb] || 0, Object.keys(scanRb[id + '|' + rb] || {}).length); });
+      var status = u.kunciKosong ? 'kunci' : n ? (target && n >= target ? 'selesai' : 'jalan') : (u.tanggal && u.tanggal <= hariIni ? 'telat' : 'belum');
+      guru.push({ guru: g, mapel: u.mapel, tingkat: u.tingkat, rombel: rbs.length === u.rombel.length && daftar.length === 1 ? '' : rbs.join(' '), n: n, target: target, status: status, tanggal: u.tanggal, bersama: daftar.length });
+    });
+  });
+  guru = guru.sort(function (a, b) { var o = { telat: 0, kunci: 1, belum: 2, jalan: 3, selesai: 4 }; return (o[a.status] - o[b.status]) || a.mapel.localeCompare(b.mapel) || a.tingkat.localeCompare(b.tingkat) || a.guru.localeCompare(b.guru); });
+  // --- REKAP NILAI per siswa: HANYA untuk kunci REKAP_KEY (rapat pokja), tidak pernah di mode TV
+  var rekapOut = null;
+  if (rekap) {
+    var kktpMT = {}; Object.keys(byId).forEach(function (id) { kktpMT[byId[id].mapel + '|' + byId[id].tingkat] = byId[id].kktp; });
+    var nilaiS = {};   // rombel|kunciSiswa -> {mapel: {skor, w}}
+    T.hasil.forEach(function (h) {
+      var u = byId[h['ID Ujian']]; if (!u) return;
+      var rb = up(h['Nama Rombel'] || h['Kelas']), ks = String(h['NISN'] || '').replace(/\D/g, '') || up(h['Nama']);
+      var o = nilaiS[rb + '|' + ks] = nilaiS[rb + '|' + ks] || {}, w = String(h['Waktu'] || '');
+      if (!o[u.mapel] || w >= o[u.mapel].w) o[u.mapel] = { s: Number(String(h['Skor']).replace(',', '.')) || 0, w: w };
+    });
+    rekapOut = { kktp: kktpMT, rombel: {} };
+    T.siswa.forEach(function (s) {
+      var rb = up(s['Nama Rombel'] || s['Kelas']); if (!rb || !s['Nama']) return;
+      var ks = String(s['NISN'] || '').replace(/\D/g, '') || up(s['Nama']), v = nilaiS[rb + '|' + ks] || nilaiS[rb + '|' + up(s['Nama'])] || {};
+      var nl = {}, sum = 0, c = 0;
+      mapel.forEach(function (mp) { if (v[mp]) { nl[mp] = v[mp].s; sum += v[mp].s; c++; } });
+      (rekapOut.rombel[rb] = rekapOut.rombel[rb] || []).push({ nama: up(s['Nama']), no: s['Nomor Peserta'] || '', n: nl, rata: c ? Math.round(sum / c * 10) / 10 : null, c: c });
+    });
+    Object.keys(rekapOut.rombel).forEach(function (rb) {
+      var L = rekapOut.rombel[rb].sort(function (a, b) { return String(a.no).localeCompare(String(b.no)) || a.nama.localeCompare(b.nama); });
+      var ur = L.filter(function (x) { return x.rata != null; }).map(function (x) { return x.rata; }).sort(function (a, b) { return b - a; });
+      L.forEach(function (x) { x.rank = x.rata == null ? null : ur.indexOf(x.rata) + 1; });
+    });
+  }
   return {
-    v: 1, diperbarui: sekarang, hariIni: hariIni,
+    v: 2, mode: rekap ? 'rekap' : 'tv', rekap: rekapOut, diperbarui: sekarang, hariIni: hariIni,
     sekolah: { nama: T.sekolah['Nama Sekolah'] || '', tahun: T.sekolah['Tahun Pelajaran'] || '' },
     judul: cfg.judul, namaUjian: cfg.namaUjian,
     rombel: rombel.map(function (r) { return { r: r, t: tOf[r], n: jml[r] }; }),
