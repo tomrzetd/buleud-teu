@@ -305,13 +305,16 @@
                 if (median(sides) < expSide * 0.45 || median(sides) > expSide * 1.9) continue;
                 for (let rot = 0; rot < 4; rot++) {
                     const pairs = tpl.map((t, ti) => ({ u: t[0], v: t[1], x: q[(ti + rot) % 4].x, y: q[(ti + rot) % 4].y }));
+                    // patokan dengan ukuran kotak berbeda (atas 8,5 mm, tengah 6,2 mm): ukuran harus cocok posisinya
+                    let sizeErr = 0;
+                    if (M.corner.sizes) { let worst = 0; for (let ti = 0; ti < 4; ti++) { const e = Math.abs(Math.log(q[(ti + rot) % 4].side / (M.corner.sizes[ti] * pxPerMm))); sizeErr += e / 4; worst = Math.max(worst, e); } if (sizeErr > 0.25 || worst > 0.4) continue; }
                     const Hm = fitHomography(pairs);
                     if (!Hm) continue;
                     // verifikasi: marker tengah + penanda arah
                     let mids = 0; const midPts = [];
                     for (const mc of M.mid.centers) {
                         const p = Hm(mc[0], mc[1]);
-                        const hit = cands.find(c => Math.hypot(c.x - p.x, c.y - p.y) < 3 * pxPerMm && c.side < expSide * 1.1 && c.side > expSide * 0.4);
+                        const hit = cands.find(c => Math.hypot(c.x - p.x, c.y - p.y) < 3 * pxPerMm && (M.mid.strict ? c.side > M.mid.size * pxPerMm * 0.7 && c.side < M.mid.size * pxPerMm * 1.35 : c.side < expSide * 1.1 && c.side > expSide * 0.4));
                         if (hit) { mids++; midPts.push({ u: mc[0], v: mc[1], x: hit.x, y: hit.y }); }
                     }
                     const po = Hm(M.orient.center[0], M.orient.center[1]);
@@ -319,7 +322,7 @@
                     // posisi "cermin" penanda arah harus putih
                     const pm = Hm(spec.page.w - M.orient.center[0], M.orient.center[1]);
                     const odm = squareDark(g, W, H, pm.x, pm.y, M.orient.size / 2 * pxPerMm);
-                    const score = mids * 2 + (od > 0.4 && odm < 0.25 ? 3 : 0) + od - odm;
+                    const score = mids * 2 + (od > 0.4 && odm < 0.25 ? 3 : 0) + od - odm - 3 * sizeErr;
                     hyps.push({ score, pairs, midPts, pxPerMm, mids, od, odm, quad: q, rot });
                 }
             }
@@ -370,34 +373,51 @@
         ret.debug.squares = squares;
         log(`Gambar ${W}x${H}, kotak padat ${squares.length}`);
         if (squares.length < 4) return fail('Marker sudut tidak ditemukan. Pastikan keempat kotak hitam di sudut LJK masuk bingkai.');
-        const hyps = markerHypotheses(squares, spec, g, W, H);
+        let hyps = markerHypotheses(squares, spec, g, W, H);
+        // LJK percetakan: kotak bawah bisa terpotong -> patokan cadangan 2 sudut atas + 2 marker tengah
+        // (koordinat tetap mm halaman, jadi semua langkah berikutnya sama). Dipilih hanya bila skornya menang.
+        if (spec.markers.partial) {
+            const Mp = spec.markers.partial;
+            const sp = Object.assign({}, spec, { markers: { corner: { size: Mp.size, sizes: Mp.sizes, centers: Mp.centers }, mid: { size: spec.markers.corner.size, strict: true, centers: Mp.verify }, orient: spec.markers.orient } });
+            hyps = hyps.slice(0, 4).concat(markerHypotheses(squares, sp, g, W, H).slice(0, 4).map(h => Object.assign(h, { partial: true })));
+        }
         if (!hyps.length) return fail('Susunan 4 marker sudut tidak cocok dengan LJK F4. Foto seluruh halaman.');
 
         // --- lingkaran untuk verifikasi & penyetelan (skala dari hipotesis terbaik)
-        const pxPerMm0 = hyps[0].pxPerMm;
-        const rPx = P.r * pxPerMm0;
-        const binC = adaptiveThreshold(g, W, H, Math.max(5, Math.round(rPx * 3)), opt.contrast ?? 10, I);
-        ret.debug.bin = binC;
-        const cc = components(binC, W, H);
-        const circles = removeNested(circleCandidates(cc.lab, cc.comps, W, H, rPx * 0.6, rPx * 1.6));
-        ret.totalCircles = circles.length;
-        ret.debug.cands = circles;
-
+        // LJK dengan patokan cadangan (percetakan): tiap hipotesis dinilai dengan lingkaran pada skalanya
+        // sendiri (dikelompokkan per 15%), karena kotak bawah yang terpotong membuat skala hipotesis berbeda jauh.
+        const circCache = new Map();
+        const circlesAt = (px) => {
+            const key = spec.markers.partial ? Math.round(Math.log(px) / Math.log(1.15)) : 0;
+            if (!circCache.has(key)) {
+                const rPx = P.r * (spec.markers.partial ? Math.pow(1.15, key) : px);
+                const binC = adaptiveThreshold(g, W, H, Math.max(5, Math.round(rPx * 3)), opt.contrast ?? 10, I);
+                const cc = components(binC, W, H);
+                circCache.set(key, { bin: binC, list: removeNested(circleCandidates(cc.lab, cc.comps, W, H, rPx * 0.6, rPx * 1.6)) });
+            }
+            return circCache.get(key);
+        };
         // pilih hipotesis: skor marker + kecocokan bulatan
-        const bubbleMatch = (inv) => {
+        const bubbleMatch = (inv, circles) => {
             const mm = circles.map(c => inv(c.x, c.y));
             let hit = 0, tot = 0;
             for (let b = 0; b < P.blocks; b++) { const s = blockShift(mm, spec, b, Math.min(nOpt, 4), active, 3.5, 0.5, 0.9); hit += s.hits; tot += s.tot; }
             return tot ? hit / tot : 0;
         };
         let best = null;
-        for (const h of hyps.slice(0, 4)) {
+        for (const h of hyps.slice(0, spec.markers.partial ? 8 : 4)) {
             const fp = fitPair(h.pairs.concat(h.midPts));
             if (!fp) continue;
-            const bm = bubbleMatch(fp.inv);
+            const ca = circlesAt(spec.markers.partial ? h.pxPerMm : hyps[0].pxPerMm);
+            const bm = bubbleMatch(fp.inv, ca.list);
             const total = h.score + bm * 4;
-            if (!best || total > best.total) best = Object.assign({}, h, { fp, bm, total });
+            if (spec.markers.partial) log(`hipotesis ${h.partial ? 'atas+tengah' : '4 sudut'} skor ${h.score.toFixed(2)} bulatan ${(bm * 100).toFixed(0)}%`);
+            if (!best || total > best.total) best = Object.assign({}, h, { fp, bm, total, ca });
         }
+        const circles = best ? best.ca.list : [];
+        ret.totalCircles = circles.length;
+        ret.debug.cands = circles;
+        ret.debug.bin = best ? best.ca.bin : null;
         if (!best || best.bm < 0.25) return fail('Marker ditemukan tapi bulatan jawaban tidak cocok. Foto ulang lebih dekat/terang.');
         if (best.od < 0.4) ret.warnings.push('Penanda arah (kotak kecil kiri atas) tidak jelas; arah LJK ditebak dari pola bulatan.');
         const Hg = best.fp;
@@ -492,7 +512,8 @@
         qScore = Math.round(clamp(qScore, 0, 100));
         ret.quality = { score: qScore, grade: qScore >= 80 ? 'A' : qScore >= 60 ? 'B' : 'C', pxPerMm: +pxPerMm.toFixed(2), residMm: residMm == null ? null : +residMm.toFixed(2), light: +light.toFixed(2), sharp: +sharp.toFixed(2), tilt: +tilt.toFixed(1) };
         ret.geo = { kind: 'mm', spec, H: Hg, blocks: blockFits, scale, pxPerMm, nOpt, active };
-        ret.markerMatch = best.bm;
+        ret.markerMatch = best.bm; ret.specId = spec.id;
+        if (best.partial) ret.warnings.push('Kotak hitam bawah tidak terbaca; posisi dihitung dari kotak atas & tengah. Periksa jawaban sebelum simpan.');
         ret.debug.grid = grid;
         ret.success = true;
         log(`Ambang ${(dec.thr * 100).toFixed(0)}% (kosong ${(dec.empty * 100).toFixed(0)}%, terisi ${(dec.full * 100).toFixed(0)}%), residu ${residMm == null ? '-' : residMm.toFixed(2) + ' mm'}, kualitas ${qScore}`);
@@ -503,6 +524,23 @@
     // Auto-layout F4 bermarker 25 (5x5) / 50 (5x10), dengan marker identik.
     // Kapasitas kertas TIDAK mengubah panjang kunci ujian dalam database.
     function processMarkerAuto(img, opt = {}) {
+        // LJK percetakan SMPN 2 (marker bergeser): dicoba lebih dulu bila jenis terakhir yang berhasil
+        // adalah LJK ini (1 tumpuk ADF = 1 jenis), dan sebagai cadangan bila formulir resmi tidak cocok kuat.
+        const smpn2 = () => processMarker(img, Object.assign({}, opt, { spec: SpecMod.SPEC_SMPN2_25 }));
+        if (opt.prefer === SpecMod.SPEC_SMPN2_25.id && opt.options !== 5) {
+            const f = smpn2();
+            if (f.success && f.markerMatch >= 0.8) { f.logs.push('Auto-layout: F4-25-SMPN2 (jenis terakhir)'); return f; }
+        }
+        const sel = processMarkerAutoResmi(img, opt);
+        if (opt.options === 5 || (sel.success && sel.markerMatch >= 0.8)) return sel;
+        const p = smpn2();
+        if (p.success && p.markerMatch >= 0.6 && (!sel.success || p.markerMatch > sel.markerMatch + 0.12)) {
+            p.logs.push('Auto-layout: F4-25-SMPN2, cocok ' + Math.round(p.markerMatch * 100) + '% (resmi ' + Math.round((sel.markerMatch || 0) * 100) + '%)');
+            return p;
+        }
+        return sel;
+    }
+    function processMarkerAutoResmi(img, opt = {}) {
         const standard = processMarker(img, Object.assign({}, opt, { spec: SpecMod.SPEC }));
         if (opt.options === 5 || (opt.active || 50) > 25) return standard;
         let extra = 0;
@@ -533,7 +571,8 @@
         const bin = adaptiveThreshold(g, W, H, Math.max(9, Math.round(Math.max(W, H) / 12)), 22);
         const sq = solidSquares(components(bin, W, H).comps, W, H);
         if (sq.length < 4) return null;
-        const h = markerHypotheses(sq, spec, g, W, H)[0];
+        let h = null;
+        for (const sp of (opt.spec ? [spec] : [SpecMod.SPEC, SpecMod.SPEC_SMPN2_25])) { const c = markerHypotheses(sq, sp, g, W, H)[0]; if (c && (!h || c.score > h.score)) h = c; }
         if (!h || h.score < 3) return null;
         return { corners: h.pairs.map(p => ({ x: p.x / scale, y: p.y / scale })), score: h.score, pxPerMm: h.pxPerMm / scale };
     }
@@ -847,6 +886,22 @@
         return paper;
     }
 
+    // garis kotak isian hitam: posisi dicari ulang ±0,8 mm dari rancangan (garis menembus setinggi/selebar
+    // kotak, huruf tidak), lalu diputihkan ±0,35 mm
+    function eraseComb(s, f, k) {
+        const W = s.w, H = s.h, d = s.data, dk = (x, y) => d[(y * W + x) * 4] < 150 ? 1 : 0;
+        const srch = Math.round(0.8 * k), half = Math.max(1, Math.round(0.35 * k));
+        const y0 = Math.round(1.2 * k), y1 = Math.round((1.2 + f.h) * k);
+        const bestLine = (exp, n, prof) => { let b = exp, bv = -1; for (let t = exp - srch; t <= exp + srch; t++) if (t >= 0 && t < n) { const v = prof(t); if (v > bv) { bv = v; b = t; } } return b; };
+        const whiteX = (cx) => { for (let x = Math.max(0, cx - half); x <= Math.min(W - 1, cx + half); x++) for (let y = 0; y < H; y++) { const i = (y * W + x) * 4; d[i] = d[i + 1] = d[i + 2] = 255; } };
+        const whiteY = (cy) => { for (let y = Math.max(0, cy - half); y <= Math.min(H - 1, cy + half); y++) for (let x = 0; x < W; x++) { const i = (y * W + x) * 4; d[i] = d[i + 1] = d[i + 2] = 255; } };
+        const colProf = (x) => { let c = 0; for (let y = y0; y < y1; y++) c += dk(x, y); return c; };
+        const rowProf = (y) => { let c = 0; for (let x = 0; x < W; x++) c += dk(x, y); return c; };
+        const ty = bestLine(y0, H, rowProf), by = bestLine(y1, H, rowProf);
+        for (let i = 0; i <= f.n; i++) whiteX(bestLine(Math.round((1 + i * f.cw) * k), W, colProf));
+        whiteY(ty); whiteY(by);
+    }
+
     // potongan kolom identitas F4 untuk OCR: nama, nomor, kelas — kotak isian (merah muda) dihapus
     function identityStrips(img, geo, pxPerMm = 12) {
         const spec = geo.spec, out = {};
@@ -867,6 +922,8 @@
                 const v = pinkish ? 255 : clamp(Math.round((rel - 0.45) / 0.37 * 255), 0, 255);
                 s.data[i * 4] = s.data[i * 4 + 1] = s.data[i * 4 + 2] = v;
             }
+            // kotak isian dicetak HITAM (LJK percetakan): hapus garis kotak sebelum OCR
+            if (spec.ident.combInk === 'black') eraseComb(s, f, pxPerMm);
             // tinta sedikit = kosong
             let ink = 0; for (let i = 0; i < n; i++) if (s.data[i * 4] < 160) ink++;
             s.inkRatio = ink / n;

@@ -16,4 +16,7 @@ const pos = []; for (let q = 0; q < 50; q++) for (let o = 0; o < 5; o++) pos.pus
 fs.writeFileSync(path.join(R, 'spec/ljk-f4-v1.json'), JSON.stringify({ spec: SPEC, bubbles: pos }, null, 1));
 const pos25 = []; for (let q = 0; q < 25; q++) for (let o = 0; o < 4; o++) pos25.push([q, o, bubbleMM(q, o, SPEC25).x, bubbleMM(q, o, SPEC25).y]);
 fs.writeFileSync(path.join(R, 'spec/ljk-f4-25-v1.json'), JSON.stringify({ spec: SPEC25, bubbles: pos25 }, null, 1));
-console.log('build ok: web/dist/buleud-teu.html, apps-script/dist/BuleudTeu_lengkap.gs, spec/ljk-f4-v1.json, spec/ljk-f4-25-v1.json');
+const { SPEC_SMPN2_25 } = require('../web/js/ljk-spec.js');
+const posS = []; for (let q = 0; q < 25; q++) for (let o = 0; o < 4; o++) { const b = bubbleMM(q, o, SPEC_SMPN2_25); posS.push([q, o, b.x, b.y]); }
+fs.writeFileSync(path.join(R, 'spec/ljk-f4-25-smpn2.json'), JSON.stringify({ spec: SPEC_SMPN2_25, bubbles: posS }, null, 1));
+console.log('build ok: web/dist/buleud-teu.html, apps-script/dist/BuleudTeu_lengkap.gs, spec/ljk-f4-v1.json, spec/ljk-f4-25-v1.json, spec/ljk-f4-25-smpn2.json');

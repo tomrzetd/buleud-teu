@@ -34,6 +34,8 @@ jobs:
         run: node tools/test/run_engine.js
       - name: Regresi formulir bermarker 25 / 50, kunci 20 / 25
         run: node tools/test/test_marker25.js
+      - name: LJK percetakan SMPN 2 (marker bergeser, kotak bawah terpotong; 13 kondisi foto)
+        run: python3 tools/test/gen_percetakan.py sintetis /tmp/percetakan && node tools/test/test_percetakan.js /tmp/percetakan
       - name: Template F4 tanpa marker 20 & 25 soal (10 kondisi foto)
         run: python3 tools/test/test_lama_template.py 20 && python3 tools/test/test_lama_template.py 25
       - name: Paket onboarding sekolah (lisensi, pemisahan rahasia & kit guru)

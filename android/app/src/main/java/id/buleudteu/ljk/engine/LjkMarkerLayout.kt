@@ -20,7 +20,20 @@ data class MarkerLayout(
     val ROW_PITCH: Double = LjkSpec.ROW_PITCH,
     val R: Double = LjkSpec.R,
     val PG_FRAME: DoubleArray,
-    val REGION_VIEW: DoubleArray
+    val REGION_VIEW: DoubleArray,
+    // Geometri marker & kotak identitas. Bawaan = F4 resmi; LJK percetakan SMPN 2 punya posisi sendiri.
+    val CORNERS: Array<DoubleArray> = LjkSpec.CORNER_CENTERS,     // TL TR BR BL
+    val CORNER_SIZE: Double = LjkSpec.CORNER_SIZE,
+    val MIDS: Array<DoubleArray> = LjkSpec.MID_CENTERS,
+    val MID_SIZE: Double = LjkSpec.MID_SIZE,
+    val ORIENT: DoubleArray = LjkSpec.ORIENT_CENTER,
+    val ORIENT_SIZE: Double = LjkSpec.ORIENT_SIZE,
+    /** patokan cadangan bila kotak bawah terpotong: TL, TR, tengah-kanan, tengah-kiri (+ ukurannya) */
+    val PARTIAL: Array<DoubleArray>? = null,
+    val PARTIAL_SIZES: DoubleArray? = null,
+    val NAMA: LjkSpec.Comb = LjkSpec.NAMA,
+    val NOMOR: LjkSpec.Comb = LjkSpec.NOMOR,
+    val KELAS: LjkSpec.Comb = LjkSpec.KELAS
 ) {
     val LETTERS: String get() = LjkSpec.LETTERS
     val PAGE_W: Double get() = LjkSpec.PAGE_W
@@ -60,6 +73,29 @@ object MarkerLayouts {
      * Jangan gunakan sebagai default: engine memilih profil ini HANYA bila
      * kecocokan posisi 100 bulatan unggul dengan margin yang besar.
      */
+    /**
+     * LJK cetakan percetakan SMPN 2 Jalaksana (ASAS 2026/2027): kop + QR, 25 soal ABCD, kotak isian
+     * hitam, dan SEMUA marker bergeser dari F4 resmi (sudut atas y=16, bawah y=314, tengah y=168,6 mm).
+     * Diukur dari scan 200 dpi lembar kosong (27 Nov 2026). Sama dengan SPEC_SMPN2_25 di web/js/ljk-spec.js.
+     */
+    val SMPN2_25 = MarkerLayout(
+        id = "F4-25-SMPN2",
+        QUESTIONS = 25, BLOCKS = 5, ROWS = 5,
+        X0 = 24.0, BLOCK_W = 33.47, OPT_OFFSET = 11.44, OPT_PITCH = 5.25,
+        Y0 = 130.57, ROW_PITCH = 6.72, R = 2.0,
+        PG_FRAME = doubleArrayOf(23.4, 121.3, 192.1, 166.5),
+        REGION_VIEW = doubleArrayOf(12.0, 18.0, 203.0, 170.0),
+        CORNERS = arrayOf(doubleArrayOf(10.0, 16.0), doubleArrayOf(205.0, 16.0), doubleArrayOf(205.0, 314.0), doubleArrayOf(10.0, 314.0)),
+        CORNER_SIZE = 8.5,
+        MIDS = arrayOf(doubleArrayOf(9.25, 168.6), doubleArrayOf(205.75, 168.6)), MID_SIZE = 6.2,
+        ORIENT = doubleArrayOf(19.1, 13.9), ORIENT_SIZE = 4.3,
+        PARTIAL = arrayOf(doubleArrayOf(10.0, 16.0), doubleArrayOf(205.0, 16.0), doubleArrayOf(205.75, 168.6), doubleArrayOf(9.25, 168.6)),
+        PARTIAL_SIZES = doubleArrayOf(8.5, 8.5, 6.2, 6.2),
+        NAMA = LjkSpec.Comb(53.0, 70.4, 26, 5.33, 7.1),
+        NOMOR = LjkSpec.Comb(53.0, 82.0, 10, 5.34, 6.8),
+        KELAS = LjkSpec.Comb(149.0, 82.1, 6, 5.32, 6.9)
+    )
+
     val PRINTSHOP_F4_25 = MarkerLayout(
         id = "F4-25-ABCD-PRINTSHOP-v1",
         QUESTIONS = 25, BLOCKS = 5, ROWS = 5,

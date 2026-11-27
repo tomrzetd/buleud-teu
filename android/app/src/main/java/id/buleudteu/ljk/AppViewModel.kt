@@ -51,6 +51,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var draft by mutableStateOf(ExamDraft())
     var draftMsg by mutableStateOf("")
     var scanMode by mutableStateOf(ScanMode.EXAM)
+    /** jenis LJK bermarker terakhir yang berhasil (dicoba lebih dulu) */
+    private var lastLayout: String? = null
     var queueSize by mutableStateOf(store.queue().length())
     var blockedQueueSize by mutableStateOf(0)
     var otherAccountQueueSize by mutableStateOf(0)
@@ -318,7 +320,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 ScanMode.EXAM -> {
                     val u = exam!!
                     val m = if (u.opsi == "ABCD" && u.jumlah <= 25) {
-                        LjkEngine.processMarkerAuto(img, u.opsi.length, u.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble())
+                        LjkEngine.processMarkerAuto(img, u.opsi.length, u.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble(), prefer = lastLayout).also { if (it.success) lastLayout = it.geo?.layout?.id }
                     } else {
                         LjkEngine.processMarker(img, u.opsi.length, u.jumlah, store.sensitivity.toDouble(), store.contrast.toDouble())
                     }

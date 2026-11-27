@@ -49,6 +49,39 @@
         regions: { view: [12, 14, 203, 164], ident: SPEC.regions.ident }
     };
 
+    // LJK cetakan percetakan SMPN 2 Jalaksana (ASAS 2026/2027): kop sekolah + QR, 25 soal ABCD,
+    // kotak isian HITAM, dan SEMUA marker bergeser dari F4 (sudut atas y=16, bawah y=314, tengah y=168,6).
+    // Diukur dari scan 200 dpi (8 px/mm) lembar kosong. Kotak bawah kadang terpotong saat pemotongan
+    // kertas -> markers.partial: 2 sudut atas + 2 marker tengah sebagai patokan cadangan.
+    const SPEC_SMPN2_25 = {
+        id: 'F4-25-SMPN2',
+        page: { w: 215, h: 330 },
+        markers: {
+            corner: { size: 8.5, centers: [[10, 16], [205, 16], [205, 314], [10, 314]] },
+            mid: { size: 6.2, centers: [[9.25, 168.6], [205.75, 168.6]] },
+            orient: { size: 4.3, center: [19.1, 13.9] },
+            partial: { size: 7.8, sizes: [8.5, 8.5, 6.2, 6.2], centers: [[10, 16], [205, 16], [205.75, 168.6], [9.25, 168.6]], verify: [[205, 314], [10, 314]] }
+        },
+        pg: {
+            questions: 25, blocks: 5, rows: 5,
+            x0: 24, blockW: 33.47, numRight: 9.5, optOffset: 11.44, optPitch: 5.25,
+            y0: 130.57, rowPitch: 6.72, r: 2.0,
+            frame: [23.4, 121.3, 192.1, 166.5]
+        },
+        ident: {
+            combInk: 'black',
+            nama:  { label: 'Nama Peserta',  x: 53,  y: 70.4, n: 26, cw: 5.33, h: 7.1 },
+            nomor: { label: 'Nomor Peserta', x: 53,  y: 82,   n: 10, cw: 5.34, h: 6.8 },
+            kelas: { label: 'Kelas',         x: 149, y: 82.1, n: 6,  cw: 5.32, h: 6.9 },
+            lines: [
+                { label: 'Mata Pelajaran', x: 53, y: 97.3, x2: 126.5 },
+                { label: 'Tanggal', x: 149, y: 97.4, x2: 192 },
+                { label: 'Tanda Tangan', x: 53, y: 108.1, x2: 126.5 }
+            ]
+        },
+        regions: { view: [12, 18, 203, 170], ident: [14, 62, 201, 112] }
+    };
+
     const LETTERS = 'ABCDE';
     // posisi pusat bulatan soal q (0-based) opsi o (0=A) dalam mm
     function bubbleMM(q, o, spec = SPEC) {
@@ -61,7 +94,7 @@
         return { x: f.x, y: f.y, w: f.n * f.cw, h: f.h };
     }
 
-    const api = { SPEC, SPEC25, LETTERS, bubbleMM, combRect };
+    const api = { SPEC, SPEC25, SPEC_SMPN2_25, LETTERS, bubbleMM, combRect };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LJKSpec = api;
 })(typeof self !== 'undefined' ? self : this);

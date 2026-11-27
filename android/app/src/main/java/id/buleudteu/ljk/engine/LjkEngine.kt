@@ -1,5 +1,6 @@
 package id.buleudteu.ljk.engine
 
+import kotlin.math.ln
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -309,9 +310,11 @@ object LjkEngine {
 
     class Hyp(val score: Double, val pairs: List<Corr>, val midPts: List<Corr>, val pxPerMm: Double, val mids: Int, val od: Double, val odm: Double, val partial: Boolean = false)
 
-    fun markerHypotheses(cands: List<Square>, g: IntArray, W: Int, H: Int): List<Hyp> {
+    fun markerHypotheses(cands: List<Square>, g: IntArray, W: Int, H: Int, tpl: Array<DoubleArray> = LjkSpec.CORNER_CENTERS, cornerSize: Double = LjkSpec.CORNER_SIZE,
+                         sizes: DoubleArray? = null, midCenters: Array<DoubleArray> = LjkSpec.MID_CENTERS, midStrictSize: Double? = null,
+                         orient: DoubleArray = LjkSpec.ORIENT_CENTER, orientSize: Double = LjkSpec.ORIENT_SIZE, partial: Boolean = false): List<Hyp> {
         val pool = cands.sortedByDescending { it.n }.take(14)
-        val hyps = ArrayList<Hyp>(); val tpl = LjkSpec.CORNER_CENTERS
+        val hyps = ArrayList<Hyp>()
         for (i in pool.indices) for (j in i + 1 until pool.size) for (k in j + 1 until pool.size) for (l in k + 1 until pool.size) {
             var q = listOf(pool[i], pool[j], pool[k], pool[l])
             val sides = q.map { it.side }; val smax = sides.max(); val smin = sides.min()
@@ -327,24 +330,31 @@ object LjkEngine {
             area = abs(area) / 2
             if (!convex || area < W.toDouble() * H * 0.06) continue
             val pxPerMm = sqrt(area / ((tpl[1][0] - tpl[0][0]) * (tpl[3][1] - tpl[0][1])))
-            val expSide = LjkSpec.CORNER_SIZE * pxPerMm
+            val expSide = cornerSize * pxPerMm
             val medSide = median(sides)
             if (medSide < expSide * 0.45 || medSide > expSide * 1.9) continue
             for (rot in 0 until 4) {
                 val pairs = tpl.mapIndexed { ti, t -> Corr(t[0], t[1], q[(ti + rot) % 4].x, q[(ti + rot) % 4].y) }
+                // patokan berukuran berbeda (atas 8,5 mm, tengah 6,2 mm): ukuran kotak harus cocok posisinya
+                var sizeErr = 0.0
+                if (sizes != null) {
+                    var worst = 0.0
+                    for (ti in 0 until 4) { val e = abs(ln(q[(ti + rot) % 4].side / (sizes[ti] * pxPerMm))); sizeErr += e / 4; worst = max(worst, e) }
+                    if (sizeErr > 0.25 || worst > 0.4) continue
+                }
                 val Hm = fitHomography(pairs) ?: continue
                 var mids = 0; val midPts = ArrayList<Corr>()
-                for (mc in LjkSpec.MID_CENTERS) {
+                for (mc in midCenters) {
                     val p = Hm.map(mc[0], mc[1])
-                    val hit = cands.firstOrNull { hypot(it.x - p.x, it.y - p.y) < 3 * pxPerMm && it.side < expSide * 1.1 && it.side > expSide * 0.4 }
+                    val hit = cands.firstOrNull { hypot(it.x - p.x, it.y - p.y) < 3 * pxPerMm && (if (midStrictSize != null) it.side > midStrictSize * pxPerMm * 0.7 && it.side < midStrictSize * pxPerMm * 1.35 else it.side < expSide * 1.1 && it.side > expSide * 0.4) }
                     if (hit != null) { mids++; midPts.add(Corr(mc[0], mc[1], hit.x, hit.y)) }
                 }
-                val po = Hm.map(LjkSpec.ORIENT_CENTER[0], LjkSpec.ORIENT_CENTER[1])
-                val od = squareDark(g, W, H, po.x, po.y, LjkSpec.ORIENT_SIZE / 2 * pxPerMm)
-                val pm = Hm.map(LjkSpec.PAGE_W - LjkSpec.ORIENT_CENTER[0], LjkSpec.ORIENT_CENTER[1])
-                val odm = squareDark(g, W, H, pm.x, pm.y, LjkSpec.ORIENT_SIZE / 2 * pxPerMm)
-                val score = mids * 2 + (if (od > 0.4 && odm < 0.25) 3 else 0) + od - odm
-                hyps.add(Hyp(score, pairs, midPts, pxPerMm, mids, od, odm))
+                val po = Hm.map(orient[0], orient[1])
+                val od = squareDark(g, W, H, po.x, po.y, orientSize / 2 * pxPerMm)
+                val pm = Hm.map(LjkSpec.PAGE_W - orient[0], orient[1])
+                val odm = squareDark(g, W, H, pm.x, pm.y, orientSize / 2 * pxPerMm)
+                val score = mids * 2 + (if (od > 0.4 && odm < 0.25) 3 else 0) + od - odm - 3 * sizeErr
+                hyps.add(Hyp(score, pairs, midPts, pxPerMm, mids, od, odm, partial))
             }
         }
         return hyps.sortedByDescending { it.score }
@@ -454,12 +464,15 @@ object LjkEngine {
         val squares = solidSquares(components(binM, W, H).comps, W, H)
         ret.logs.add("Gambar ${W}x$H, kotak padat ${squares.size}")
         if (squares.size < 4) return fail("Marker sudut tidak ditemukan. Pastikan keempat kotak hitam di sudut LJK masuk bingkai.")
-        val canonicalHyps = markerHypotheses(squares, g, W, H)
+        val canonicalHyps = markerHypotheses(squares, g, W, H, layout.CORNERS, layout.CORNER_SIZE, null, layout.MIDS, null, layout.ORIENT, layout.ORIENT_SIZE)
+        // LJK percetakan SMPN 2: patokan cadangan 2 sudut atas + 2 marker tengah (kotak bawah bisa terpotong)
+        val smpn2Partial = if (layout.PARTIAL != null) markerHypotheses(squares, g, W, H, layout.PARTIAL, 7.8, layout.PARTIAL_SIZES,
+            arrayOf(layout.CORNERS[2], layout.CORNERS[3]), layout.CORNER_SIZE, layout.ORIENT, layout.ORIENT_SIZE, partial = true).take(4) else emptyList()
         // Bottom markers are optional ONLY for a 25 ABCD printshop layout.
         // Other layouts retain strict four-corner recognition.
         val recoveredHyps = if (layout.id == MarkerLayouts.PRINTSHOP_F4_25.id)
             partialMarkerHypotheses(squares, g, W, H) else emptyList()
-        val hyps = canonicalHyps.take(4) + recoveredHyps.take(6)
+        val hyps = canonicalHyps.take(4) + recoveredHyps.take(6) + smpn2Partial
         ret.logs.add("Geom candidates: normal=${canonicalHyps.size}, recovered=${recoveredHyps.size}, squares=${squares.size}")
         if (hyps.isEmpty()) return fail("Marker belum cocok. Pastikan dua sudut atas dan kedua marker tengah terlihat; pindai seluruh lembar.")
 
@@ -469,32 +482,41 @@ object LjkEngine {
         val safePx = if (recoveredHyps.isNotEmpty())
             recoveredHyps.maxOf { it.pxPerMm } else hyps[0].pxPerMm
         val rPx = layout.R * safePx
-        ret.logs.add("Bubble radius ${jsRound(rPx*100)/100.0}px; hyps normal=${canonicalHyps.size}, partial=${recoveredHyps.size}")
-        val binC = adaptiveThreshold(g, W, H, max(5, jsRound(rPx * 3).toInt()), contrast, I)
-        val cc = components(binC, W, H)
-        val circles = removeNested(circleCandidates(cc.lab, cc.comps, W, H, rPx * 0.6, rPx * 1.6))
+        ret.logs.add("Bubble radius ${jsRound(rPx*100)/100.0}px; hyps normal=${canonicalHyps.size}, partial=${recoveredHyps.size}, atas+tengah=${smpn2Partial.size}")
+        // lingkaran per skala (dikelompokkan per 15%): LJK percetakan SMPN 2 dengan kotak bawah terpotong
+        // memberi hipotesis berskala sangat berbeda, jadi tiap hipotesis dinilai pada skalanya sendiri
+        val circCache = HashMap<Long, List<Circle>>()
+        fun circlesAt(radius: Double): List<Circle> = circCache.getOrPut(if (layout.PARTIAL != null) Math.round(ln(radius) / ln(1.15)) else 0L) {
+            val r0 = if (layout.PARTIAL != null) Math.pow(1.15, Math.round(ln(radius) / ln(1.15)).toDouble()) else radius
+            val binC = adaptiveThreshold(g, W, H, max(5, jsRound(r0 * 3).toInt()), contrast, I)
+            val cc = components(binC, W, H)
+            removeNested(circleCandidates(cc.lab, cc.comps, W, H, r0 * 0.6, r0 * 1.6))
+        }
+        var circles = circlesAt(rPx)
         ret.totalCircles = circles.size; ret.circles = circles
         ret.logs.add("Circle candidates: ${circles.size}")
 
-        fun bubbleMatch(inv: Homography): Double {
+        fun bubbleMatch(inv: Homography, circles: List<Circle>): Double {
             val mm = circles.map { inv.map(it.x, it.y) }
             var hit = 0; var tot = 0
             for (b in 0 until layout.BLOCKS) { val s = blockShift(mm, b, min(nOpt, 4), active, layout = layout); hit += s.hits; tot += s.tot }
             return if (tot > 0) hit.toDouble() / tot else 0.0
         }
-        var best: Hyp? = null; var bestFp: HPair? = null; var bestBm = 0.0; var bestTotal = 0.0
+        var best: Hyp? = null; var bestFp: HPair? = null; var bestBm = 0.0; var bestTotal = 0.0; var bestCircles = circles
         for (h in hyps) {
             val fp = fitPair(h.pairs + h.midPts)
             if (fp == null) {
                 if (h.partial) ret.logs.add("Part-4 fitPair gagal")
                 continue
             }
-            val bm = bubbleMatch(fp.inv)
+            val hc = if (layout.PARTIAL != null) circlesAt(layout.R * h.pxPerMm) else circles
+            val bm = bubbleMatch(fp.inv, hc)
             if (h.partial) ret.logs.add("Part-4 candidate: kecocokan ${jsRound(bm*100)}%, skala ${jsRound(h.pxPerMm*100)/100.0}, origin ${jsRound(h.pairs[0].x)}x${jsRound(h.pairs[0].y)}")
             if (h.partial && bm < 0.82) continue // four good markers do not alone prove OMR layout
             val total = h.score + bm * 4
-            if (best == null || total > bestTotal) { best = h; bestFp = fp; bestBm = bm; bestTotal = total }
+            if (best == null || total > bestTotal) { best = h; bestFp = fp; bestBm = bm; bestTotal = total; bestCircles = hc }
         }
+        circles = bestCircles; ret.totalCircles = circles.size; ret.circles = circles
         if (best == null || bestBm < 0.25) return fail("Marker atau kisi bulatan tidak cocok. Coba ambil foto seluruh halaman dengan jelas.")
         if (best.partial) ret.warnings.add("Marker bawah terpotong: geometri dipulihkan memakai penanda atas/tengah. WAJIB periksa seluruh jawaban sebelum simpan.")
         if (best.od < 0.4) ret.warnings.add("Penanda arah (kotak kecil kiri atas) tidak jelas; arah LJK ditebak dari pola bulatan.")
@@ -605,6 +627,26 @@ object LjkEngine {
      */
     fun processMarkerAuto(
         img: ArgbImage, options: Int = 4, activeIn: Int = 50,
+        sensitivity: Double = 50.0, contrast: Double = 10.0, maxSide: Int = 1600, prefer: String? = null
+    ): LjkResult {
+        // LJK percetakan SMPN 2 (semua marker bergeser): langsung dicoba bila jenis terakhir yang berhasil
+        // adalah LJK ini (1 tumpuk ADF = 1 jenis), dan sebagai cadangan bila formulir resmi tidak cocok kuat.
+        if (prefer == MarkerLayouts.SMPN2_25.id && options == 4) {
+            val f = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.SMPN2_25)
+            if (f.success && f.markerMatch >= 0.8) { f.logs.add("Auto-layout: F4-25-SMPN2 (jenis terakhir)"); return f }
+        }
+        val sel = processMarkerAutoResmi(img, options, activeIn, sensitivity, contrast, maxSide)
+        if (options != 4 || (sel.success && sel.markerMatch >= 0.8)) return sel
+        val p = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.SMPN2_25)
+        if (p.success && p.markerMatch >= 0.6 && (!sel.success || p.markerMatch > sel.markerMatch + 0.12)) {
+            p.logs.add("Auto-layout: F4-25-SMPN2, cocok ${jsRound(p.markerMatch * 100)}% (resmi ${jsRound(sel.markerMatch * 100)}%)")
+            if (activeIn > 25) p.warnings.add("LJK ini hanya memuat 25 soal, sedangkan ujian diatur $activeIn soal. Soal 26–$activeIn dianggap kosong.")
+            return p
+        }
+        return sel
+    }
+    private fun processMarkerAutoResmi(
+        img: ArgbImage, options: Int = 4, activeIn: Int = 50,
         sensitivity: Double = 50.0, contrast: Double = 10.0, maxSide: Int = 1600
     ): LjkResult {
         val old = processMarker(img, options, activeIn, sensitivity, contrast, maxSide, MarkerLayouts.F4_50)
@@ -656,7 +698,10 @@ object LjkEngine {
         val bin = adaptiveThreshold(gr.g, gr.w, gr.h, max(9, jsRound(max(gr.w, gr.h) / 12.0).toInt()), 22.0)
         val sq = solidSquares(components(bin, gr.w, gr.h).comps, gr.w, gr.h)
         if (sq.size < 4) return null
-        val h = markerHypotheses(sq, gr.g, gr.w, gr.h).firstOrNull() ?: return null
+        val L = MarkerLayouts.SMPN2_25
+        val h = listOfNotNull(markerHypotheses(sq, gr.g, gr.w, gr.h).firstOrNull(),
+            markerHypotheses(sq, gr.g, gr.w, gr.h, L.CORNERS, L.CORNER_SIZE, null, L.MIDS, null, L.ORIENT, L.ORIENT_SIZE).firstOrNull())
+            .maxByOrNull { it.score } ?: return null
         if (h.score < 3) return null
         return FastMarkers(h.pairs.map { Pt(it.x / gr.scale, it.y / gr.scale) }, h.score, h.pxPerMm / gr.scale)
     }
@@ -922,7 +967,7 @@ object LjkEngine {
     /** potongan nama / nomor / kelas untuk OCR; kotak isian merah muda dihapus, tahan bayangan */
     fun identityStrips(img: ArgbImage, geo: Geo, pxPerMm: Double = 12.0): Map<String, Pair<Rect, Double>> {
         val out = LinkedHashMap<String, Pair<Rect, Double>>()
-        for ((key, f) in listOf("nama" to LjkSpec.NAMA, "nomor" to LjkSpec.NOMOR, "kelas" to LjkSpec.KELAS)) {
+        for ((key, f) in listOf("nama" to geo.layout.NAMA, "nomor" to geo.layout.NOMOR, "kelas" to geo.layout.KELAS)) {
             val x1 = f.x - 1; val y1 = f.y - 1.2; val x2 = f.x + f.n * f.cw + 1; val y2 = f.y + f.h + 1.2
             val s = sampleRect(img, { u, v -> geo.map(u, v) }, geo.scale, x1, y1, x2, y2, jsRound((x2 - x1) * pxPerMm).toInt())
             val n = s.w * s.h; val lum = IntArray(n) { lumOf(s.argb[it]) }

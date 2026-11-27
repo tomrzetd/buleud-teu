@@ -151,8 +151,11 @@ Ujian tersimpan di sheet **Ujian** dengan ID otomatis. Skor di HasilScan dihitun
 | F4 bermarker ABCDE | sampai 50 | A–E | SMA/SMK | `LJK_F4_ABCDE.pdf` |
 | F4 tanpa marker 20 soal | 20 | A–D | Tata letak LJK PSAS lama, 4 kolom × 5 baris | `LJK_F4_TANPA_MARKER_20_ABCD.pdf` |
 | F4 tanpa marker 25 soal | 25 | A–D | Tata letak LJK PSAS lama, 5 kolom × 5 baris | `LJK_F4_TANPA_MARKER_25_ABCD.pdf` |
+| LJK percetakan SMPN 2 Jalaksana | 25 | A–D | Cetakan percetakan ASAS 2026/2027 (kop + QR, kotak isian hitam, bagian esai) | dari percetakan |
 
 Template bermarker paling tahan foto miring, bayangan, dan kertas melengkung, karena empat kotak hitam di sudut menjadi patokan. LJK tanpa marker dikenali otomatis untuk ujian **≤ 25 soal ABCD**. Ujian 21–25 soal hanya membaca LJK 25.
+
+**LJK percetakan SMPN 2** dikenali otomatis (posisi enam kotak hitamnya berbeda dari F4 resmi). Atur ujiannya **≤ 25 soal ABCD**. Bila kotak hitam bawah terpotong saat pemotongan kertas, posisi dihitung dari dua kotak atas dan dua kotak tengah, dan aplikasi meminta guru memeriksa jawaban sebelum menyimpan. Bila percetakan mengubah desain lagi, kirim satu scan LJK kosong supaya tata letaknya ditambahkan. Rincian: `docs/LJK-PERCETAKAN-SMPN2.md`.
 
 Cara tercepat mencetak: kartu ujian → **Cetak LJK**. Kop sekolah, logo, nama ujian, dan tahun pelajaran terisi otomatis, dan varian yang cocok terpilih sendiri.
 

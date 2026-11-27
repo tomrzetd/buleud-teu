@@ -50,12 +50,14 @@ class Processor(private val store: Store, private val api: Api?) {
         else -> LjkEngine.LEGACY_LAYOUTS
     }
 
+    /** jenis LJK terakhir yang berhasil (1 tumpuk ADF biasanya satu jenis): dicoba lebih dulu */
+    @Volatile var lastLayout: String? = null
     fun read(img: ArgbImage, u: Ujian?): LjkResult {
         val sens = store.sensitivity; val con = store.contrast
         if (u == null) return LjkEngine.processMarkerlessAuto(img, sens, con, legacyLayouts(null)).let { l ->
             if (l.success) l else LjkEngine.processMarker(img, 4, 50, sens, con).takeIf { it.success } ?: l }
         val m = if (u.opsi == "ABCD" && u.jumlah <= 25) {
-            LjkEngine.processMarkerAuto(img, u.opsi.length, u.jumlah, sens, con)
+            LjkEngine.processMarkerAuto(img, u.opsi.length, u.jumlah, sens, con, prefer = lastLayout).also { if (it.success) lastLayout = it.geo?.layout?.id }
         } else LjkEngine.processMarker(img, u.opsi.length, u.jumlah, sens, con)
         if (System.getenv("BT_OMR_DEBUG") == "1") {
             System.err.println("Marker attempt: layout=${m.geo?.layout?.id ?: "-"} success=${m.success} " +
