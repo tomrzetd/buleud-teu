@@ -28,10 +28,25 @@ import java.util.UUID
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-enum class Screen { SETUP, LOGIN, HOME, SETTINGS, EXAM, SCAN, RESULT, ANALYSIS }
+enum class Screen { SETUP, LOGIN, HOME, SETTINGS, EXAM, SCAN, RESULT, ANALYSIS, ESSAY }
 enum class ScanMode { EXAM, KEY, LEGACY }
 
-class ExamDraft(var id: String = "", var nama: String = "", var mapel: String = "", var kelas: MutableList<String> = mutableListOf(), var opsi: String = "ABCD", var kunci: String = "", var kktp: Double = 75.0)
+class ExamDraft(var id: String = "", var nama: String = "", var mapel: String = "", var kelas: MutableList<String> = mutableListOf(), var opsi: String = "ABCD", var kunci: String = "", var kktp: Double = 75.0,
+    var poinPG: String = "", var uraian: String = "")
+
+/** Komposisi nilai PG + uraian (total harus 100). */
+data class Komposisi(val poin: Double, val maks: List<Double>, val n: Int) {
+    val aktif get() = poin > 0 || maks.isNotEmpty()
+    val total get() = Math.round((n * poin + maks.sum()) * 100) / 100.0
+    val ok get() = !aktif || (poin > 0 && Math.abs(total - 100) < 0.01)
+    companion object {
+        fun dari(poin: String, uraian: String, n: Int) = Komposisi(poin.replace(',', '.').toDoubleOrNull() ?: 0.0,
+            uraian.split(Regex("[;,\\s]+")).mapNotNull { it.trim().replace(',', '.').toDoubleOrNull() }.filter { it > 0 }, n)
+        fun fmt(x: Double) = if (x % 1.0 == 0.0) x.toLong().toString() else x.toString()
+    }
+}
+/** satu baris layar Nilai Uraian */
+class EssayRow(val nama: String, val kelas: String, val nisn: String, val adaPG: Boolean, val skorPG: Double?, val uraian: List<String>, var nilaiAkhir: Double?)
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     val store = Store(app)
@@ -280,7 +295,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun editExam(u: Ujian?) {
         draft = if (u == null) ExamDraft(mapel = data?.guru?.mapel?.firstOrNull() ?: "", opsi = data?.opsiDefault ?: "ABCD")
-        else ExamDraft(u.id, u.nama, u.mapel, u.kelas.toMutableList(), u.opsi, u.kunci, u.kktp)
+        else ExamDraft(u.id, u.nama, u.mapel, u.kelas.toMutableList(), u.opsi, u.kunci, u.kktp,
+            if (u.poinPG > 0) Komposisi.fmt(u.poinPG) else "", u.uraianMaks.joinToString(";") { Komposisi.fmt(it) })
         draftMsg = ""; screen = Screen.EXAM
     }
     fun saveExam() = viewModelScope.launch {
@@ -292,14 +308,50 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             k.isEmpty() -> "Kunci jawaban kosong."
             k.contains('-') -> "Ada nomor kunci yang kosong (-)."
             d.opsi == "ABCD" && k.contains('E') -> "Kunci berisi E padahal opsi ABCD."
+            komposisi(d).aktif && komposisi(d).poin <= 0 -> "Isi poin per PG benar bila memakai soal uraian."
+            !komposisi(d).ok -> "Total nilai harus 100 (sekarang ${Komposisi.fmt(komposisi(d).total)})."
             else -> ""
         }
         if (draftMsg.isNotEmpty()) return@launch
         busy = "Menyimpan ujian…"
+        val kp = komposisi(d)
         val ex = JSONObject().put("id", d.id).put("nama", d.nama).put("mapel", d.mapel.uppercase()).put("kelas", JSONArray(d.kelas)).put("opsi", d.opsi).put("kunci", k).put("kktp", d.kktp)
+            .put("poinPG", if (kp.aktif) kp.poin else 0.0).put("uraian", JSONArray(if (kp.aktif) kp.maks else emptyList<Double>()))
         call { api.post(JSONObject().put("action", "saveExam").put("exam", ex)) }?.let { say("Ujian tersimpan (${k.length} soal)"); screen = Screen.HOME; loadExams() }
         busy = null
     }
+
+    fun komposisi(d: ExamDraft) = Komposisi.dari(d.poinPG, d.uraian, d.kunci.trimEnd('-').length)
+
+    // ---------------- nilai uraian (per rombel, online)
+    val essayRows = mutableStateListOf<EssayRow>()
+    var essayMsg by mutableStateOf("")
+    fun openEssay(u: Ujian) { exam = u; essayRows.clear(); essayMsg = "Memuat…"; screen = Screen.ESSAY; loadEssay() }
+    fun loadEssay() = viewModelScope.launch {
+        val u = exam ?: return@launch
+        val r = call { api.post(JSONObject().put("action", "essayList").put("examId", u.id)) }
+        if (r == null) { essayMsg = "Gagal memuat (butuh koneksi internet)."; return@launch }
+        val a = r.getJSONArray("siswa"); essayRows.clear()
+        for (i in 0 until a.length()) { val o = a.getJSONObject(i); val ur = o.optJSONArray("uraian") ?: JSONArray()
+            essayRows.add(EssayRow(o.getString("nama"), o.getString("kelas"), o.optString("nisn"), o.optBoolean("adaPG"),
+                if (o.isNull("skorPG")) null else o.optDouble("skorPG"), (0 until ur.length()).map { j -> ur.opt(j)?.toString()?.takeIf { it != "null" } ?: "" },
+                if (o.isNull("nilaiAkhir")) null else o.optDouble("nilaiAkhir"))) }
+        essayMsg = ""
+    }
+    /** simpan skor uraian satu siswa; mengembalikan nilai akhir baru (null = belum lengkap) atau melempar pesan */
+    suspend fun saveEssay(row: EssayRow, nilai: List<String>): Result<Double?> {
+        val u = exam ?: return Result.failure(Exception("Ujian tidak dipilih"))
+        nilai.forEachIndexed { k, v -> val x = v.replace(',', '.').toDoubleOrNull()
+            if (v.isNotBlank() && (x == null || x < 0 || x > u.uraianMaks[k])) return Result.failure(Exception("U${k + 1} harus 0–${Komposisi.fmt(u.uraianMaks[k])}")) }
+        val arr = JSONArray(nilai.map { v -> v.replace(',', '.').toDoubleOrNull() ?: "" })
+        val r = call { api.post(JSONObject().put("action", "essay").put("examId", u.id)
+            .put("siswa", JSONObject().put("nama", row.nama).put("kelas", row.kelas).put("nisn", row.nisn)).put("nilai", arr)) }
+            ?: return Result.failure(Exception("Gagal menyimpan"))
+        row.nilaiAkhir = if (r.isNull("nilaiAkhir")) null else r.optDouble("nilaiAkhir")
+        return Result.success(row.nilaiAkhir)
+    }
+    /** skor uraian opsional yang diisi di layar hasil scan */
+    val uraianInput = mutableStateListOf<String>()
 
     // ---------------- scan
     fun startScan(u: Ujian?, mode: ScanMode) { exam = u; scanMode = mode; screen = Screen.SCAN }
@@ -342,6 +394,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         scanId = UUID.randomUUID().toString(); match = null; ocrMsg = ""; selSiswa = ""; nomorOcr = ""
         val kelasList = studentsOf(exam).map { it.kelas }.distinct().sorted()
         selKelas = ""; selKelasFilter = if (kelasList.size == 1) kelasList[0] else ""
+        uraianInput.clear(); exam?.uraianMaks?.forEach { _ -> uraianInput.add("") }
         screen = Screen.RESULT
         if (scanMode == ScanMode.EXAM) readIdentity(scanId)
     }
@@ -349,7 +402,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun keyFromScan(r: LjkResult) {
         val last = r.answers.indexOfLast { it != null }
         draft.kunci = r.answers.take(last + 1).joinToString("") { (it ?: '-').toString() }
-        draft = draft.let { ExamDraft(it.id, it.nama, it.mapel, it.kelas, it.opsi, it.kunci, it.kktp) }
+        draft = draft.let { ExamDraft(it.id, it.nama, it.mapel, it.kelas, it.opsi, it.kunci, it.kktp, it.poinPG, it.uraian) }
         draftMsg = "Kunci dari scan: ${draft.kunci.length} soal" + if (draft.kunci.contains('-')) " (ada nomor kosong)" else ""
         screen = Screen.EXAM
     }
@@ -477,6 +530,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             .put("mode", "marker-android")
             .put("quality", (q?.grade ?: "") + (q?.score ?: ""))
             .put("scanId", scanId).put("capturedAt", System.currentTimeMillis())
+        if (u.uraianMaks.isNotEmpty() && uraianInput.any { it.isNotBlank() }) {
+            val salah = u.uraianMaks.indices.firstOrNull { k -> val v = uraianInput.getOrElse(k) { "" }; val x = v.replace(',', '.').toDoubleOrNull(); v.isNotBlank() && (x == null || x < 0 || x > u.uraianMaks[k]) }
+            if (salah != null) { say("Skor uraian nomor ${salah + 1} harus 0–${Komposisi.fmt(u.uraianMaks[salah])}"); return@launch }
+            body.put("uraian", JSONArray(u.uraianMaks.indices.map { k -> uraianInput.getOrElse(k) { "" }.replace(',', '.').toDoubleOrNull() ?: "" }))
+        }
         busy = "Menyimpan hasil ke perangkat…"
         val persisted = withContext(Dispatchers.IO) {
             outbox.enqueue(store.api, store.guruNama, body)

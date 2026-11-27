@@ -20,7 +20,9 @@ data class Sekolah(val nama: String, val jenjang: String, val tahun: String, val
 data class Guru(val nama: String, val mapel: List<String>, val kelas: List<String>)
 data class Ujian(
     val id: String, val nama: String, val mapel: String, val tingkat: String, val kelas: List<String>, val opsi: String,
-    val kunci: String, val jumlah: Int, val kktp: Double, val terscan: MutableSet<String>
+    val kunci: String, val jumlah: Int, val kktp: Double, val terscan: MutableSet<String>,
+    /** nilai uraian manual: Nilai Akhir = benar × poinPG + Σ uraian (maks 100); kosong = skor PG murni */
+    val poinPG: Double = 0.0, val uraianMaks: List<Double> = emptyList()
 )
 data class ExamsData(val guru: Guru, val ujian: List<Ujian>, val siswa: List<Siswa>, val kelasSemua: List<String>, val opsiDefault: String, val licensed: Boolean = false)
 
@@ -61,7 +63,9 @@ class Api(private val store: Store) {
                 guru(j.getJSONObject("guru")),
                 (0 until u.length()).map { i -> val o = u.getJSONObject(i)
                     Ujian(o.getString("id"), o.getString("nama"), o.getString("mapel"), o.optString("tingkat"), strings(o.optJSONArray("kelas")), o.optString("opsi", "ABCD"),
-                        o.getString("kunci"), o.getInt("jumlah"), o.optDouble("kktp", 75.0), strings(o.optJSONArray("terscan")).toMutableSet()) },
+                        o.getString("kunci"), o.getInt("jumlah"), o.optDouble("kktp", 75.0), strings(o.optJSONArray("terscan")).toMutableSet(),
+                        o.optDouble("poinPG", 0.0).let { if (it.isNaN()) 0.0 else it },
+                        o.optJSONArray("uraianMaks")?.let { a -> (0 until a.length()).map { a.optDouble(it, 0.0) }.filter { it > 0 } } ?: emptyList()) },
                 (0 until s.length()).map { i -> val o = s.getJSONObject(i); Siswa(o.getString("nama"), o.getString("kelas"), o.optString("nomor"), o.optString("nisn"), o.optString("tingkat")) },
                 strings(j.optJSONArray("kelasSemua")), j.optString("opsiDefault", "ABCD"), j.optBoolean("licensed", false))
         }

@@ -82,7 +82,7 @@ fun AppRoot(vm: AppViewModel) {
                     night = !night
                     settings.edit().putBoolean("dark_theme", night).apply()
                 }
-                Screen.EXAM -> ExamScreen(vm); Screen.SCAN -> ScanScreen(vm); Screen.RESULT -> ResultScreen(vm); Screen.ANALYSIS -> AnalysisScreen(vm)
+                Screen.EXAM -> ExamScreen(vm); Screen.SCAN -> ScanScreen(vm); Screen.RESULT -> ResultScreen(vm); Screen.ANALYSIS -> AnalysisScreen(vm); Screen.ESSAY -> EssayScreen(vm)
             }
             vm.busy?.let { Box(Modifier.fillMaxSize().background(Color(0xBB000000)), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { CircularProgressIndicator(); Text(it, color = Color.White, modifier = Modifier.padding(top = 12.dp)) } } }
             vm.toast?.let { msg ->
@@ -375,7 +375,7 @@ fun AppRoot(vm: AppViewModel) {
         Row {
             Column(Modifier.weight(1f)) {
                 Text(u.nama, color = TXT, fontWeight = FontWeight.Bold)
-                Text("${u.mapel} · ${u.kelas.joinToString()} · ${u.jumlah} soal · ${u.opsi} · KKTP ${u.kktp.toInt()}", color = TX2, fontSize = 12.sp)
+                Text("${u.mapel} · ${u.kelas.joinToString()} · ${u.jumlah} soal · ${u.opsi} · KKTP ${u.kktp.toInt()}" + (if (u.uraianMaks.isNotEmpty()) " · +${u.uraianMaks.size} uraian" else ""), color = TX2, fontSize = 12.sp)
             }
             Text("$uploaded/$tot", color = PRI, fontSize = 12.sp)
         }
@@ -387,6 +387,7 @@ fun AppRoot(vm: AppViewModel) {
             OutlinedButton({ vm.editExam(u) }, enabled = !vm.isDemo) { Text("Edit") }
             OutlinedButton({ vm.openAnalysis(u) }, enabled = !vm.isDemo) { Text("Analisis") }
         }
+        if (u.uraianMaks.isNotEmpty()) OutlinedButton({ vm.openEssay(u) }, Modifier.fillMaxWidth().padding(top = 6.dp), enabled = !vm.isDemo) { Text("✍️ Nilai uraian") }
     }
 }
 fun shareTemplate(ctx: Context, v: String) {
@@ -401,7 +402,8 @@ fun shareTemplate(ctx: Context, v: String) {
     var nama by remember(d) { mutableStateOf(d.nama) }; var mapel by remember(d) { mutableStateOf(d.mapel) }
     var kktp by remember(d) { mutableStateOf(d.kktp.toInt().toString()) }; var opsi by remember(d) { mutableStateOf(d.opsi) }
     var kunci by remember(d) { mutableStateOf(d.kunci) }; val kelas = remember(d) { mutableStateListOf(*d.kelas.toTypedArray()) }
-    fun sync() { d.nama = nama; d.mapel = mapel; d.kktp = kktp.toDoubleOrNull() ?: 75.0; d.opsi = opsi; d.kunci = kunci; d.kelas = kelas.toMutableList() }
+    var poin by remember(d) { mutableStateOf(d.poinPG) }; var uraian by remember(d) { mutableStateOf(d.uraian) }
+    fun sync() { d.nama = nama; d.mapel = mapel; d.kktp = kktp.toDoubleOrNull() ?: 75.0; d.opsi = opsi; d.kunci = kunci; d.kelas = kelas.toMutableList(); d.poinPG = poin; d.uraian = uraian }
     Column(Modifier.fillMaxSize()) {
         Top(if (d.id.isEmpty()) "Ujian baru" else "Edit ujian", onBack = { vm.screen = Screen.HOME })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(14.dp)) {
@@ -421,6 +423,17 @@ fun shareTemplate(ctx: Context, v: String) {
                 OutlinedButton({ sync(); vm.startScan(null, ScanMode.KEY) }, Modifier.padding(top = 8.dp)) { Text("📷 Scan LJK kunci") }
                 LjkDigital(50, opsi, kunci.map { if (it in "ABCDE") it else null }, null, null, null, 10) { q, l ->
                     val a = kunci.padEnd(maxOf(kunci.length, q + 1), '-').toCharArray(); a[q] = if (a[q] == l) '-' else l; kunci = String(a).trimEnd('-') }
+            }
+            Card {
+                Text("Soal uraian (opsional)", color = TXT, fontWeight = FontWeight.Bold)
+                Text("Nilai akhir = PG benar × poin + skor uraian (diisi manual), total 100. Analisis butir tetap hanya PG; skor uraian masuk ke laporan guru.", color = TX2, fontSize = 12.sp)
+                Row { OutlinedTextField(poin, { poin = it.filter { c -> c.isDigit() || c == '.' || c == ',' } }, Modifier.width(120.dp), label = { Text("Poin/PG") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedTextField(uraian, { uraian = it }, Modifier.weight(1f), label = { Text("Maks. tiap uraian") }, placeholder = { Text("10; 10; 5") }, singleLine = true) }
+                val kp = id.buleudteu.ljk.Komposisi.dari(poin, uraian, kunci.trimEnd('-').length)
+                if (kp.aktif) Text("${kp.n} PG × ${id.buleudteu.ljk.Komposisi.fmt(kp.poin)}" + (if (kp.maks.isNotEmpty()) " + " + kp.maks.joinToString(" + ") { id.buleudteu.ljk.Komposisi.fmt(it) } else "") +
+                    " = ${id.buleudteu.ljk.Komposisi.fmt(kp.total)}" + if (kp.ok) " ✓" else " (harus 100)", color = if (kp.ok) OK else BAD, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
+                else Text("Tanpa uraian: skor = persentase PG benar (0–100).", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
             }
             if (vm.draftMsg.isNotEmpty()) Note(vm.draftMsg, if (vm.draftMsg.startsWith("Kunci dari scan")) OK else BAD)
         }
@@ -521,6 +534,14 @@ fun LjkDigital(n: Int, opsi: String, answers: List<Char?>, key: String?, status:
                     if (hasil.isEmpty()) Text("Tidak ada nama yang cocok.", color = TX2, fontSize = 13.sp, modifier = Modifier.padding(6.dp))
                 }
                 val fl = vm.flagged(); if (fl.isNotEmpty()) Note("Perlu dicek: nomor ${fl.joinToString()} (kuning).")
+                val um = u?.uraianMaks ?: emptyList()
+                if (um.isNotEmpty() && !vm.isDemo) {
+                    Text("Skor uraian (boleh diisi nanti di ✍️ Nilai uraian)", color = TX2, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        um.forEachIndexed { k, m -> OutlinedTextField(vm.uraianInput.getOrElse(k) { "" }, { v -> if (k < vm.uraianInput.size) vm.uraianInput[k] = v.filter { c -> c.isDigit() || c == '.' || c == ',' } },
+                            Modifier.width(84.dp), label = { Text("U${k + 1}/${id.buleudteu.ljk.Komposisi.fmt(m)}") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)) }
+                    }
+                }
                 if (vm.isDemo) {
                     Text("MODE DEMO — hanya latihan. Data dan hasil scan tidak disimpan.",
                         color = WARN, fontWeight = FontWeight.Bold)
@@ -649,6 +670,49 @@ fun logoBitmap(dataUrl: String?): Bitmap? = try {
 } catch (e: Exception) { null }
 
 /** kaki dashboard: logo + nama sekolah + watermark pembuat */
+// ---------------------------------------------------------------- nilai uraian
+@Composable fun EssayScreen(vm: AppViewModel) {
+    val u = vm.exam ?: return
+    val kelasList = vm.essayRows.map { it.kelas }.distinct().sorted()
+    var kelas by remember(kelasList) { mutableStateOf(kelasList.firstOrNull() ?: "") }
+    val rows = vm.essayRows.filter { it.kelas == kelas }
+    val F = id.buleudteu.ljk.Komposisi
+    Column(Modifier.fillMaxSize()) {
+        Top("Nilai uraian", "${u.nama} · ${u.mapel}", onBack = { vm.screen = Screen.HOME }, actions = {
+            Text("↻", color = Color.White, fontSize = 22.sp, modifier = Modifier.clickable { vm.loadEssay() }.padding(8.dp)) })
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+            Text("${u.jumlah} PG × ${F.fmt(u.poinPG)} + uraian ${u.uraianMaks.joinToString(" + ") { F.fmt(it) }} = 100 · KKTP ${u.kktp.toInt()}", color = TX2, fontSize = 12.sp)
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(top = 6.dp)) { kelasList.forEach { k -> FilterChip(k == kelas, { kelas = k }, { Text(k) }, Modifier.padding(end = 6.dp)) } }
+            if (vm.essayMsg.isNotEmpty()) Note(vm.essayMsg, TX2)
+            else Text("${rows.count { it.adaPG }}/${rows.size} PG terpindai · ${rows.count { it.nilaiAkhir != null }} nilai akhir lengkap. Isi skor lalu tekan ✓.", color = TX2, fontSize = 12.sp)
+        }
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 14.dp)) {
+            items(rows, key = { it.kelas + "|" + it.nama }) { r -> EssayRowView(vm, u, r) }
+        }
+    }
+}
+@Composable fun EssayRowView(vm: AppViewModel, u: Ujian, r: id.buleudteu.ljk.EssayRow) {
+    val F = id.buleudteu.ljk.Komposisi
+    val nilai = remember(r) { mutableStateListOf(*u.uraianMaks.indices.map { r.uraian.getOrElse(it) { "" } }.toTypedArray()) }
+    var na by remember(r) { mutableStateOf(r.nilaiAkhir) }; var st by remember(r) { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(r.nama, color = TXT, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Text(if (r.adaPG) "PG ${F.fmt(r.skorPG ?: 0.0)}" else "belum scan", color = TX2, fontSize = 12.sp)
+            Spacer(Modifier.width(10.dp))
+            Text(na?.let { F.fmt(it) } ?: if (r.adaPG) "…" else "-", fontWeight = FontWeight.Bold,
+                color = when { na == null -> TX2; na!! >= u.kktp -> OK; else -> BAD })
+        }
+        if (r.adaPG) Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            u.uraianMaks.forEachIndexed { k, m -> OutlinedTextField(nilai[k], { v -> nilai[k] = v.filter { c -> c.isDigit() || c == '.' || c == ',' }; st = "" },
+                Modifier.width(80.dp), label = { Text("U${k + 1}/${F.fmt(m)}") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)) }
+            FilledTonalButton({ scope.launch { st = "⏳"; vm.saveEssay(r, nilai.toList()).fold({ na = it; st = "✓" }, { st = "⚠"; vm.say(it.message ?: "Gagal") }) } }) { Text(if (st.isEmpty()) "✓" else st) }
+        }
+        HorizontalDivider(color = LINE, modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
 @Composable fun SchoolFooter(vm: AppViewModel) {
     val sk = vm.sekolah
     val logo = remember(sk?.logo) { logoBitmap(sk?.logo) }
