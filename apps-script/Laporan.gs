@@ -47,7 +47,7 @@ function responsLaporan_(u, lingkup, kelas) {
     if (h['ID Ujian'] !== u.id) return;
     if (lingkup === 'kelas' && h['Kelas'].toUpperCase() !== String(kelas).toUpperCase()) return;
     latest[kunciSiswa_(h)] = { nama: h['Nama'], kelas: h['Kelas'], jawaban: String(h['Jawaban']).replace(/^'/, ''),
-      nomor: String(h['Nomor Peserta'] || '').replace(/^'/, ''), nisn: String(h['NISN'] || '').replace(/^'/, ''), waktu: h['Waktu'] };
+      nomor: String(h['Nomor Peserta'] || '').replace(/^'/, ''), nisn: String(h['NISN'] || '').replace(/^'/, ''), waktu: h['Waktu'], uraian: h['Uraian'] };
   });
   return Object.keys(latest).map(function (k) { return latest[k]; }).sort(function (a, b) { return (a.kelas + '|' + a.nama).localeCompare(b.kelas + '|' + b.nama); });
 }
@@ -69,7 +69,25 @@ function dataLaporan_(examId, o) {
     { jenis: 'judul', teks: (u.nama || '').toUpperCase() + (sk.tahun ? ' · TAHUN PELAJARAN ' + sk.tahun : ''), besar: 10 }];
 
   // siswa: gabung respons + hasil analisis (urutan sama), lalu urutkan sesuai pilihan
-  var siswa = resp.map(function (r, i) { var s = A.siswa[i]; return { nama: r.nama, kelas: r.kelas, nomor: r.nomor, nisn: r.nisn, jawaban: r.jawaban, benar: s.benar, skor: s.skor, tuntas: s.tuntas, vektor: s.vektor }; });
+  var siswa = resp.map(function (r, i) { var s = A.siswa[i]; return { nama: r.nama, kelas: r.kelas, nomor: r.nomor, nisn: r.nisn, jawaban: r.jawaban, benar: s.benar, skor: s.skor, tuntas: s.tuntas, vektor: s.vektor, uraian: r.uraian }; });
+  // Nilai uraian (essay) hanya masuk laporan per guru; analisis butir di atas tetap murni PG.
+  var NA = adaNilaiAkhir_(u), nU = u.uraianMaks.length;
+  if (NA) {
+    siswa.forEach(function (s) {
+      s.skorPG = Math.round(s.benar * u.poinPG * 100) / 100;
+      s.ur = uraianSkor_(s.uraian, u);
+      s.nilai = hitungNilaiAkhir_(u, s.benar, s.ur);           // null = menunggu uraian
+      s.tuntas = s.nilai != null && s.nilai >= u.kktp;
+      s.skor = s.nilai == null ? -1 : s.nilai;                  // untuk urutan & peringkat
+    });
+    var lengkap = siswa.filter(function (s) { return s.nilai != null; }), nl = lengkap.map(function (s) { return s.nilai; });
+    var rata = nl.length ? nl.reduce(function (a, b) { return a + b; }, 0) / nl.length : 0;
+    var srt = nl.slice().sort(function (a, b) { return a - b; }), md = !srt.length ? 0 : srt.length % 2 ? srt[(srt.length - 1) / 2] : (srt[srt.length / 2 - 1] + srt[srt.length / 2]) / 2;
+    var sd = nl.length > 1 ? Math.sqrt(nl.reduce(function (a, b) { return a + (b - rata) * (b - rata); }, 0) / (nl.length - 1)) : 0;
+    var nt = lengkap.filter(function (s) { return s.tuntas; }).length, r2 = function (x) { return Math.round(x * 100) / 100; };
+    R = Object.assign({}, R, { rataRata: r2(rata), max: nl.length ? Math.max.apply(null, nl) : '-', min: nl.length ? Math.min.apply(null, nl) : '-', median: r2(md), sd: r2(sd),
+      tuntas: nt, persenTuntas: nl.length ? Math.round(nt / nl.length * 1000) / 10 : 0, menunggu: siswa.length - lengkap.length });
+  }
   siswa.sort(function (a, b) {
     if (o.urut === 'skor') return b.skor - a.skor || a.nama.localeCompare(b.nama);
     if (o.urut === 'nama') return a.nama.localeCompare(b.nama);
@@ -79,25 +97,31 @@ function dataLaporan_(examId, o) {
   if (o.anonim) siswa.forEach(function (s, i) { s.nama = 'Peserta ' + ('0' + (i + 1)).slice(-Math.max(2, String(siswa.length).length)); s.nomor = ''; s.nisn = ''; });
   // peringkat (skor sama = peringkat sama)
   var byScore = siswa.map(function (s) { return s.skor; }).sort(function (a, b) { return b - a; });
-  siswa.forEach(function (s) { s.peringkat = byScore.indexOf(s.skor) + 1; });
+  siswa.forEach(function (s) { s.peringkat = NA && s.nilai == null ? '-' : byScore.indexOf(s.skor) + 1; });
 
   var sheets = [], utama = { nama: has('nilai') || has('jawaban') ? 'Nilai' : 'Ringkasan', blok: kop.slice() };
   if (has('identitas')) utama.blok.push({ jenis: 'kv', baris: [
-    ['Mata pelajaran', u.mapel], ['Kelas / lingkup', lingkupTeks], ['Jumlah soal', u.jumlah + ' (opsi ' + u.opsi + ')'], ['KKTP', u.kktp],
-    ['Guru', daftarGuru_(u.guru).join(', ') || '-'], ['Tanggal ujian', u.tanggal || '-'], ['Jumlah siswa', siswa.length + (o.anonim ? ' (anonim)' : '')]] });
-  if (has('rekap')) utama.blok.push({ jenis: 'kv', judul: 'Rekap nilai', baris: [
+    ['Mata pelajaran', u.mapel], ['Kelas / lingkup', lingkupTeks], ['Jumlah soal', u.jumlah + ' (opsi ' + u.opsi + ')'], ['KKTP', u.kktp]].concat(NA ? [['Komposisi nilai', u.jumlah + ' PG × ' + u.poinPG + (nU ? ' + ' + nU + ' uraian (' + u.uraianMaks.join('+') + ')' : '') + ' = ' + nilaiMaks_(u)]] : []).concat([
+    ['Guru', daftarGuru_(u.guru).join(', ') || '-'], ['Tanggal ujian', u.tanggal || '-'], ['Jumlah siswa', siswa.length + (o.anonim ? ' (anonim)' : '')]]) });
+  if (has('rekap')) utama.blok.push({ jenis: 'kv', judul: NA ? 'Rekap nilai akhir (PG + uraian)' : 'Rekap nilai', baris: [
     ['Rata-rata', R.rataRata], ['Tertinggi / terendah', R.max + ' / ' + R.min], ['Median', R.median], ['Simpangan baku', R.sd],
-    ['Tuntas (≥ ' + u.kktp + ')', R.tuntas + ' siswa (' + R.persenTuntas + '%)'], ['Belum tuntas', (siswa.length - R.tuntas) + ' siswa']] });
+    ['Tuntas (≥ ' + u.kktp + ')', R.tuntas + ' siswa (' + R.persenTuntas + '%)'], ['Belum tuntas', (siswa.length - R.tuntas - (R.menunggu || 0)) + ' siswa']]
+    .concat(R.menunggu ? [['Menunggu nilai uraian', R.menunggu + ' siswa (belum dihitung)']] : []) });
   if (has('nilai') || has('jawaban')) {
     var head = ['No', 'Nama', 'Kelas', 'No. Peserta'], jw = has('jawaban');
     if (jw) for (var q = 1; q <= u.jumlah; q++) head.push(String(q));
-    if (has('nilai')) head = head.concat(['Benar', 'Skor', 'Tuntas', 'Peringkat']);
+    var kolN = NA ? ['Benar', 'Skor PG'].concat(u.uraianMaks.map(function (m, k) { return 'U' + (k + 1) + ' (' + m + ')'; })).concat(['Nilai Akhir', 'Tuntas', 'Peringkat']) : ['Benar', 'Skor', 'Tuntas', 'Peringkat'];
+    if (has('nilai')) head = head.concat(kolN);
     var rows = [], warna = [];
-    if (jw) { var kr = ['', 'KUNCI', '', '']; for (var j = 0; j < u.jumlah; j++) kr.push(u.kunci.charAt(j)); if (has('nilai')) kr = kr.concat(['', '', '', '']); rows.push(kr); warna.push(kr.map(function () { return LAP_WARNA.kepala; })); }
+    if (jw) { var kr = ['', 'KUNCI', '', '']; for (var j = 0; j < u.jumlah; j++) kr.push(u.kunci.charAt(j)); if (has('nilai')) kr = kr.concat(kolN.map(function () { return ''; })); rows.push(kr); warna.push(kr.map(function () { return LAP_WARNA.kepala; })); }
     siswa.forEach(function (s, i) {
       var r = [i + 1, s.nama, s.kelas, s.nomor || ''], w = [null, null, null, null];
       if (jw) for (var j = 0; j < u.jumlah; j++) { var a = s.jawaban.charAt(j) || '-'; if (u.opsi.indexOf(a) < 0) a = '-'; r.push(a); w.push(a === '-' ? LAP_WARNA.kosong : (a === u.kunci.charAt(j) ? LAP_WARNA.benar : LAP_WARNA.salah)); }
-      if (has('nilai')) { r = r.concat([s.benar, s.skor, s.tuntas ? 'Ya' : 'Tidak', s.peringkat]); w = w.concat([null, null, s.tuntas ? LAP_WARNA.benar : LAP_WARNA.salah, null]); }
+      if (has('nilai') && NA) {
+        var tunggu = s.nilai == null;
+        r = r.concat([s.benar, s.skorPG]).concat(s.ur.map(function (x) { return x === '' ? '-' : x; })).concat([tunggu ? '-' : s.nilai, tunggu ? 'Menunggu uraian' : (s.tuntas ? 'Ya' : 'Tidak'), s.peringkat]);
+        w = w.concat([null, null]).concat(s.ur.map(function (x) { return x === '' ? LAP_WARNA.kosong : null; })).concat([null, tunggu ? LAP_WARNA.kosong : (s.tuntas ? LAP_WARNA.benar : LAP_WARNA.salah), null]);
+      } else if (has('nilai')) { r = r.concat([s.benar, s.skor, s.tuntas ? 'Ya' : 'Tidak', s.peringkat]); w = w.concat([null, null, s.tuntas ? LAP_WARNA.benar : LAP_WARNA.salah, null]); }
       rows.push(r); warna.push(w);
     });
     utama.blok.push({ jenis: 'tabel', judul: has('nilai') ? (jw ? 'Daftar nilai & pilihan jawaban' : 'Daftar nilai') : 'Pilihan jawaban siswa', kepala: head, baris: rows, warna: warna, sempit: jw ? 4 : 99 });

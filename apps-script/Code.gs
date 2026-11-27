@@ -11,8 +11,8 @@ var SH = { SEKOLAH: 'Sekolah', GURU: 'Guru', SISWA: 'Siswa', UJIAN: 'Ujian', HAS
 var HEAD = {
   Guru: ['Nama', 'Email', 'PIN', 'Mapel (pisah koma)', 'Tingkat/Rombel Diampu (pisah koma)', 'Aktif'],
   Siswa: ['NISN', 'NIS', 'Nomor Peserta', 'Nama', 'Tingkat Pendidikan', 'Nama Rombel', 'L/P'],
-  Ujian: ['ID', 'Nama Ujian', 'Mapel', 'Tingkat Pendidikan', 'Nama Rombel', 'Guru', 'Tanggal', 'Opsi', 'Kunci', 'Jumlah Soal', 'KKTP', 'Status', 'Dibuat'],
-  HasilScan: ['Waktu', 'ID Ujian', 'Mapel', 'Tingkat Pendidikan', 'Nama Rombel', 'Nama', 'NISN', 'Nomor Peserta', 'Jawaban', 'Benar', 'Jumlah Soal', 'Skor', 'Ditandai', 'Mode', 'Kualitas', 'Guru', 'ScanID'],
+  Ujian: ['ID', 'Nama Ujian', 'Mapel', 'Tingkat Pendidikan', 'Nama Rombel', 'Guru', 'Tanggal', 'Opsi', 'Kunci', 'Jumlah Soal', 'KKTP', 'Status', 'Dibuat', 'Poin PG', 'Uraian Maks'],
+  HasilScan: ['Waktu', 'ID Ujian', 'Mapel', 'Tingkat Pendidikan', 'Nama Rombel', 'Nama', 'NISN', 'Nomor Peserta', 'Jawaban', 'Benar', 'Jumlah Soal', 'Skor', 'Ditandai', 'Mode', 'Kualitas', 'Guru', 'ScanID', 'Uraian', 'Nilai Akhir'],
   BankSoal: ['Kode Soal', 'Mapel', 'Tingkat Pendidikan', 'Lingkup', 'ID Ujian', 'Nama Ujian', 'No', 'Kunci', 'N', 'P', 'TK', 'D', 'DP', 'r pbis', 'r tabel', 'Valid', 'KR20 jika dihapus', 'Pengecoh Berfungsi', 'Pengecoh Mati', 'Rekomendasi', 'Alasan', 'Tanggal Analisis', 'Status Guru', 'Catatan']
 };
 var SEKOLAH_KEYS = ['Nama Sekolah', 'NPSN', 'Jenjang (SD/SMP/SMA/SMK)', 'Alamat', 'Kota/Kabupaten', 'Kepala Sekolah', 'NIP Kepala Sekolah', 'Tahun Pelajaran', 'Logo (ID file Google Drive)', 'License'];
@@ -171,7 +171,45 @@ function ujianRow_(r) {
   var kunci = cleanKey_(r['Kunci']);
   return { id: r['ID'], nama: r['Nama Ujian'], mapel: r['Mapel'].toUpperCase(), tingkat: r['Tingkat'], kelas: splitList_(r['Kelas']),
     guru: r['Guru'], tanggal: r['Tanggal'], opsi: r['Opsi'] === 'ABCDE' ? 'ABCDE' : 'ABCD', kunci: kunci, jumlah: kunci.length,
-    kktp: (r['KKTP'] === '' || !isFinite(Number(r['KKTP']))) ? 75 : Number(r['KKTP']), status: r['Status'] || 'Aktif', _row: r._row };
+    kktp: (r['KKTP'] === '' || !isFinite(Number(r['KKTP']))) ? 75 : Number(r['KKTP']), status: r['Status'] || 'Aktif', _row: r._row,
+    poinPG: poinPG_(r['Poin PG']), uraianMaks: uraianMaks_(r['Uraian Maks']) };
+}
+// ---------------------------------------------------------------- nilai uraian (esai)
+// Nilai akhir = (jumlah benar PG × Poin PG) + jumlah skor tiap soal uraian; total maksimum wajib 100.
+// Analisis butir, KR-20, bank soal TETAP hanya memakai jawaban PG.
+function poinPG_(v) { var n = Number(String(v == null ? '' : v).replace(',', '.')); return isFinite(n) && n > 0 ? n : 0; }
+function uraianMaks_(v) { return String(v == null ? '' : v).split(/[;,\s]+/).filter(String).map(function (x) { return Number(x.replace(',', '.')); }).filter(function (x) { return isFinite(x) && x > 0; }); }
+function adaNilaiAkhir_(u) { return u.poinPG > 0 || u.uraianMaks.length > 0; }
+function nilaiMaks_(u) { return Math.round((u.jumlah * u.poinPG + u.uraianMaks.reduce(function (a, b) { return a + b; }, 0)) * 100) / 100; }
+/** skor tiap soal uraian dari sel ("5,4,,3") -> array panjang = jumlah soal uraian, '' = belum dinilai */
+function uraianSkor_(v, u) {
+  var a = String(v == null ? '' : v).replace(/^'/, '').split(','), out = [];
+  for (var i = 0; i < u.uraianMaks.length; i++) { var x = String(a[i] == null ? '' : a[i]).trim(); out.push(x === '' || !isFinite(Number(x)) ? '' : Number(x)); }
+  return out;
+}
+/** null bila ujian tanpa uraian/poin (pakai Skor PG) atau uraian belum lengkap ("menunggu uraian") */
+function hitungNilaiAkhir_(u, benar, uraian) {
+  if (!adaNilaiAkhir_(u)) return null;
+  var sum = 0;
+  for (var i = 0; i < u.uraianMaks.length; i++) { if (uraian[i] === '' || uraian[i] == null) return null; sum += Number(uraian[i]); }
+  return Math.round((benar * u.poinPG + sum) * 100) / 100;
+}
+/** pastikan kolom tambahan ada di baris judul (urutan HEAD); kembalikan nomor kolom (1-based) */
+function kolom_(nama, judul) {
+  var sh = sheet_(nama), lc = Math.max(1, sh.getLastColumn()), h = sh.getRange(1, 1, 1, lc).getDisplayValues()[0];
+  var i = h.indexOf(judul); if (i >= 0) return i + 1;
+  var want = HEAD[nama] || [], pos = want.indexOf(judul);
+  // tambahkan semua kolom HEAD yang belum ada, berurutan, di ujung kanan
+  want.slice(0, pos + 1).forEach(function (x) { if (h.indexOf(x) < 0) { h.push(x); sh.getRange(1, h.length).setValue(x).setFontWeight('bold').setBackground('#e0e7ff'); } });
+  ROWS_CACHE_ = {};
+  return h.indexOf(judul) + 1;
+}
+function validasiNilai_(jumlah, poin, maks) {
+  if (!poin && !maks.length) return;
+  if (!(poin > 0)) throw new Error('Isi Poin PG (poin per jawaban benar) bila ujian memakai soal uraian.');
+  if (maks.length > 20) throw new Error('Soal uraian maksimal 20.');
+  var total = jumlah * poin + maks.reduce(function (a, b) { return a + b; }, 0);
+  if (Math.abs(total - 100) > 0.01) throw new Error('Total nilai harus 100: ' + jumlah + ' PG × ' + poin + ' + uraian ' + maks.join('+') + ' = ' + (Math.round(total * 100) / 100) + '.');
 }
 function getUjian_(id) {
   var r = rows_(SH.UJIAN).filter(function (x) { return x['ID'] === id; })[0];
@@ -293,6 +331,8 @@ function doPost(e) {
       case 'ocr': auth_(data.token); wajibTerdaftar_(); return json_({ result: 'success', text: ocrImage_(data.image) });
       case 'analyze': return json_(apiAnalyze_(data));
       case 'bank': return json_(withLock_(function () { return apiBank_(data); }));
+      case 'essay': return json_(withLock_(function () { return apiEssay_(data); }));
+      case 'essayList': return json_(apiEssayList_(data));
       case 'report': return json_(apiReport_(data));
       default: return json_({ error: 'Aksi tidak dikenal: ' + data.action });
     }
@@ -324,7 +364,7 @@ function apiExams_(d) {
   if (registered) rows_(SH.HASIL).forEach(function (h) {
     var key = h['ID Ujian']; cnt[key] = cnt[key] || {}; cnt[key][h['Kelas'] + '|' + h['Nama']] = 1;
   });
-  ujian.forEach(function (u) { u.terscan = registered ? Object.keys(cnt[u.id] || {}) : []; delete u._row; });
+  ujian.forEach(function (u) { u.terscan = registered ? Object.keys(cnt[u.id] || {}) : []; u.nilaiMaks = nilaiMaks_(u); delete u._row; });
   var kelasSemua = Array.from(new Set(siswa.map(function (s) { return s.kelas; }).concat(g.kelas))).sort();
   return { result: 'success', licensed: registered, license: registered ? 'Terdaftar' : 'Demo',
     guru: g, ujian: ujian, siswa: siswa, kelasSemua: kelasSemua, opsiDefault: opsiDefault_(sekolah_().jenjang) };
@@ -339,20 +379,63 @@ function apiSaveExam_(d) {
   var kelas = (x.kelas || []).map(function (k) { return String(k).toUpperCase(); });
   var tingkat = x.tingkat || (kelas.length ? tingkatDariKelas(kelas[0]) : '') || '';
   var row = [x.id || '', safe_(x.nama), safe_(String(x.mapel).toUpperCase()), tingkat, safe_(kelas.join(', ') || 'SEMUA'), g.nama, x.tanggal || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'), opsi, kunci, kunci.length, kktp, 'Aktif', now_()];
+  // nilai uraian: aplikasi lama tidak mengirim field ini -> pengaturan yang sudah ada dipertahankan
+  var kirimNilai = x.poinPG !== undefined || x.uraian !== undefined, ex = null;
   if (x.id) {
-    var ex = rows_(SH.UJIAN).filter(function (r) { return r['ID'] === x.id; })[0];
+    ex = rows_(SH.UJIAN).filter(function (r) { return r['ID'] === x.id; })[0];
     if (!ex) throw new Error('Ujian tidak ditemukan.');
     if (!guruBoleh_({ guru: ex['Guru'] }, g.nama)) throw new Error('Ujian ini milik guru lain.');
+  }
+  var poin = kirimNilai ? poinPG_(x.poinPG) : poinPG_(ex && ex['Poin PG']);
+  var maks = kirimNilai ? (Array.isArray(x.uraian) ? x.uraian.map(Number).filter(function (v) { return isFinite(v) && v > 0; }) : uraianMaks_(x.uraian)) : uraianMaks_(ex && ex['Uraian Maks']);
+  validasiNilai_(kunci.length, poin, maks);
+  var rIdx;
+  if (ex) {
     row[5] = ex['Guru'];   // ujian bersama: daftar guru tidak berubah saat salah satu guru mengedit kunci
     row[12] = ex['Dibuat'] || now_();
     sh.getRange(ex._row, 1, 1, row.length).setValues([row]);
+    rIdx = ex._row;
   } else {
     row[0] = 'U' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyMMdd') + '-' + Math.random().toString(36).slice(2, 6).toUpperCase();
     sh.appendRow(row);
-    sh.getRange(sh.getLastRow(), 9).setNumberFormat('@').setValue(kunci);
+    rIdx = sh.getLastRow();
+    sh.getRange(rIdx, 9).setNumberFormat('@').setValue(kunci);
+  }
+  if (kirimNilai) {
+    sh.getRange(rIdx, kolom_(SH.UJIAN, 'Poin PG')).setValue(poin || '');
+    sh.getRange(rIdx, kolom_(SH.UJIAN, 'Uraian Maks')).setNumberFormat('@').setValue(maks.join(','));
   }
   ROWS_CACHE_ = {};
-  return { result: 'success', id: row[0], jumlah: kunci.length };
+  // kunci / komposisi nilai diubah setelah ada scan -> Benar, Skor, Nilai Akhir disesuaikan
+  if (ex) hitungUlangHasil_(row[0]);
+  return { result: 'success', id: row[0], jumlah: kunci.length, poinPG: poin, uraianMaks: maks };
+}
+/** aksi 'essay': simpan skor uraian per soal untuk siswa yang lembar PG-nya sudah dipindai */
+function apiEssay_(d) {
+  var g = auth_(d.token); wajibTerdaftar_();
+  var u = getUjian_(d.examId); assertPemilik_(g, u);
+  if (!u.uraianMaks.length) throw new Error('Ujian ini tidak memiliki soal uraian. Atur di Edit ujian.');
+  var ps = pesertaUjian_(g, u, d.siswa || {}), nilai = cekUraian_(u, d.nilai || []);
+  var milik = rows_(SH.HASIL).filter(function (h) { return h['ID Ujian'] === u.id && samaPesertaHasil_(h, ps); });
+  var h = milik[milik.length - 1];
+  if (!h) throw new Error('Lembar PG ' + ps.nama + ' belum dipindai. Pindai PG dulu, lalu isi nilai uraian.');
+  var r = tulisNilaiAkhir_(u, h._row, Number(h['Benar']) || 0, nilai, null);
+  return { result: 'success', siswa: ps.nama, kelas: ps.kelas, uraian: r.uraian, nilaiAkhir: r.nilaiAkhir };
+}
+/** aksi 'essayList': daftar siswa rombel guru untuk satu ujian + skor PG, uraian, nilai akhir */
+function apiEssayList_(d) {
+  var g = auth_(d.token); wajibTerdaftar_();
+  var u = getUjian_(d.examId); assertPemilik_(g, u);
+  var kls = String(d.kelas || '').toUpperCase();
+  var siswa = siswaUntuk_(u.kelas, u.tingkat).filter(function (x) { return cocokKelas_(g.kelas, x) && (!kls || x.kelas === kls); });
+  var hasil = rows_(SH.HASIL).filter(function (h) { return h['ID Ujian'] === u.id; });
+  var list = siswa.map(function (x) {
+    var m = hasil.filter(function (h) { return samaPesertaHasil_(h, x); }), h = m[m.length - 1];
+    var benar = h ? Number(h['Benar']) || 0 : null, ur = h ? uraianSkor_(h['Uraian'], u) : u.uraianMaks.map(function () { return ''; });
+    return { nama: x.nama, kelas: x.kelas, nisn: x.nisn, nomor: x.nomor, adaPG: !!h, benar: benar,
+      skorPG: h ? Math.round(benar * u.poinPG * 100) / 100 : null, uraian: ur, nilaiAkhir: h ? hitungNilaiAkhir_(u, benar, ur) : null };
+  }).sort(function (a, b) { return (a.kelas + a.nama).localeCompare(b.kelas + b.nama); });
+  return { result: 'success', ujian: { id: u.id, poinPG: u.poinPG, uraianMaks: u.uraianMaks, nilaiMaks: nilaiMaks_(u), jumlah: u.jumlah, kktp: u.kktp }, siswa: list };
 }
 function apiArchiveExam_(d) {
   var g = auth_(d.token); wajibTerdaftar_();
@@ -378,6 +461,68 @@ function apiSave_(d) {
   if (peserta.length > 1) peserta = peserta.filter(function (x) { return !s.nisn || String(x.nisn) === String(s.nisn); });
   if (peserta.length !== 1) throw new Error('Ada lebih dari satu siswa bernama ' + nm + ' di kelas ' + kls + '. Isi NISN di sheet Siswa agar bisa dibedakan.');
   var ps = peserta[0];
+  return simpanScan_(g, u, ps, d, s);
+}
+/** cari siswa peserta ujian di rombel guru (dipakai simpan scan & nilai uraian) */
+function pesertaUjian_(g, u, s) {
+  var nm = normNama_(s.nama), kls = String(s.kelas || '').toUpperCase().trim();
+  var peserta = siswaUntuk_(u.kelas, u.tingkat).filter(function (x) { return cocokKelas_(g.kelas, x) && normNama_(x.nama) === nm && (!kls || x.kelas === kls); });
+  if (peserta.length > 1) peserta = peserta.filter(function (x) { return !s.nisn || String(x.nisn) === String(s.nisn); });
+  if (peserta.length !== 1) throw new Error(peserta.length ? 'Ada lebih dari satu siswa bernama ' + nm + '. Isi NISN di sheet Siswa.' : 'Siswa ' + nm + ' bukan peserta ujian ini di rombel Anda.');
+  return peserta[0];
+}
+/** tulis kolom Uraian (opsional) + Nilai Akhir untuk satu baris HasilScan */
+function tulisNilaiAkhir_(u, rowNo, benar, uraianBaru, uraianLama) {
+  if (!adaNilaiAkhir_(u)) return { uraian: [], nilaiAkhir: null };
+  var sh = sheet_(SH.HASIL);
+  var ur = uraianBaru ? uraianBaru : uraianSkor_(uraianLama, u);
+  if (uraianBaru) sh.getRange(rowNo, kolom_(SH.HASIL, 'Uraian')).setNumberFormat('@').setValue(ur.join(','));
+  var na = hitungNilaiAkhir_(u, benar, ur);
+  sh.getRange(rowNo, kolom_(SH.HASIL, 'Nilai Akhir')).setValue(na == null ? '' : na);
+  return { uraian: ur, nilaiAkhir: na };
+}
+/** hitung ulang Benar/Skor (+ Nilai Akhir bila ada uraian) dari jawaban tersimpan; examId null = semua ujian. Pemanggil memegang lock. */
+function hitungUlangHasil_(examId) {
+  ROWS_CACHE_ = {};
+  var byId = {}; rows_(SH.UJIAN).map(ujianRow_).forEach(function (u) { if (u.jumlah && !/\?/.test(u.kunci) && (!examId || u.id === examId)) byId[u.id] = u; });
+  var sh = sheet_(SH.HASIL), head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
+  var cB = head.indexOf('Benar') + 1, cS = head.indexOf('Skor') + 1, n = 0;
+  if (cB < 1 || cS < 1) return 0;
+  var cNA = head.indexOf('Nilai Akhir') + 1;
+  rows_(SH.HASIL).forEach(function (h) {
+    var u = byId[h['ID Ujian']]; if (!u) return;
+    var jw = String(h['Jawaban'] || '').replace(/^'/, '').toUpperCase(), b = 0;
+    for (var q = 0; q < u.jumlah; q++) if (jw.charAt(q) === u.kunci.charAt(q)) b++;
+    var x = { benar: b, skor: u.jumlah ? Math.round(b / u.jumlah * 1e4) / 100 : 0 };
+    if (Number(h['Benar']) !== x.benar || Math.abs(Number(h['Skor']) - x.skor) > 0.005) {
+      sh.getRange(h._row, cB, 1, 1).setValue(x.benar); sh.getRange(h._row, cS, 1, 1).setValue(x.skor); n++;
+    }
+    var na = hitungNilaiAkhir_(u, x.benar, uraianSkor_(h['Uraian'], u)), lama = String(h['Nilai Akhir'] == null ? '' : h['Nilai Akhir']);
+    var baru = na == null ? '' : String(na);
+    if ((cNA || adaNilaiAkhir_(u)) && lama !== baru && !(lama !== '' && baru !== '' && Math.abs(Number(lama) - na) < 0.005)) {
+      if (!cNA) { cNA = kolom_(SH.HASIL, 'Nilai Akhir'); }
+      sh.getRange(h._row, cNA, 1, 1).setValue(baru === '' ? '' : na); n++;
+    }
+  });
+  ROWS_CACHE_ = {};
+  if (n) Logger.log('Skor dihitung ulang: ' + n + ' sel HasilScan (kunci/komposisi nilai berubah).');
+  return n;
+}
+function cekUraian_(u, arr) {
+  if (arr == null) return null;
+  if (!u.uraianMaks.length) throw new Error('Ujian ini tidak memiliki soal uraian.');
+  var out = [];
+  for (var i = 0; i < u.uraianMaks.length; i++) {
+    var v = arr[i];
+    if (v === '' || v == null) { out.push(''); continue; }
+    var n = Number(String(v).replace(',', '.'));
+    if (!isFinite(n) || n < 0 || n > u.uraianMaks[i]) throw new Error('Skor uraian nomor ' + (i + 1) + ' harus 0–' + u.uraianMaks[i] + '.');
+    out.push(Math.round(n * 100) / 100);
+  }
+  return out;
+}
+function simpanScan_(g, u, ps, d, s) {
+  var uraianBaru = cekUraian_(u, d.uraian);
   var jw = (d.answers || []).slice(0, u.jumlah).map(function (a) { a = String(a || '-').toUpperCase(); return u.opsi.indexOf(a) >= 0 ? a : '-'; });
   while (jw.length < u.jumlah) jw.push('-');
   var benar = 0; for (var i = 0; i < u.jumlah; i++) if (jw[i] === u.kunci.charAt(i)) benar++;
@@ -415,11 +560,13 @@ function apiSave_(d) {
         duplikat: !!byId, usang: true };
     }
     sh.getRange(target._row, 1, 1, row.length).setValues([row]);
-    return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor,
+    var na1 = tulisNilaiAkhir_(u, target._row, benar, uraianBaru, target['Uraian']);   // uraian lama dipertahankan saat scan ulang PG
+    return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor, uraian: na1.uraian, nilaiAkhir: na1.nilaiAkhir,
       siswa: ps.nama, kelas: ps.kelas, duplikat: !!byId, diperbarui: !byId };
   }
   sh.appendRow(row);
-  return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor,
+  var na2 = tulisNilaiAkhir_(u, sh.getLastRow(), benar, uraianBaru, '');
+  return { result: 'success', benar: benar, jumlah: u.jumlah, skor: skor, uraian: na2.uraian, nilaiAkhir: na2.nilaiAkhir,
     siswa: ps.nama, kelas: ps.kelas, duplikat: false, diperbarui: false };
 }
 /** Aman terhadap NISN berawalan nol. Bila NISN salah satu kosong,

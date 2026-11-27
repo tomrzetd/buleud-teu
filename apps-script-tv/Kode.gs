@@ -61,6 +61,12 @@ function tvData(k) {
 }
 
 /** Perhitungan murni (diuji di Node): tabel -> agregat untuk layar TV. */
+/** nilai satu baris HasilScan untuk dashboard: Skor PG, atau Nilai Akhir bila ujian memakai uraian (null = menunggu uraian) */
+function nilaiTv_(h, u) {
+  var raw = String(u.essay ? (h['Nilai Akhir'] == null ? '' : h['Nilai Akhir']) : h['Skor']).replace(',', '.').trim();
+  if (u.essay && raw === '') return null;
+  return Number(raw) || 0;
+}
 function hitungTv_(T, hariIni, sekarang, cfg, rekap) {
   var up = function (s) { return String(s || '').trim().toUpperCase(); };
   var tingkatDari = function (r) { var m = /^(\d{1,2})/.exec(r); return m ? m[1] : ''; };
@@ -86,7 +92,9 @@ function hitungTv_(T, hariIni, sekarang, cfg, rekap) {
     var kunci = up(u['Kunci']).replace(/\s+/g, '');
     var kunciKosong = !kunci || /[^A-E]/.test(kunci) || cfg.kunciContoh.indexOf(kunci) >= 0;
     var tgl = /^\d{4}-\d{2}-\d{2}/.test(u['Tanggal']) ? u['Tanggal'].slice(0, 10) : '';
-    byId[u['ID']] = { id: u['ID'], mapel: mp, tingkat: t, guru: u['Guru'], kktp: Number(u['KKTP']) || 75, rombel: rbs, kunciKosong: kunciKosong, tanggal: tgl, n: 0 };
+    // ujian ber-uraian: nilai dashboard = Nilai Akhir (PG + uraian); kosong = menunggu uraian (tidak dirata-rata)
+    var essay = (Number(String(u['Poin PG'] || '').replace(',', '.')) || 0) > 0 || /\d/.test(String(u['Uraian Maks'] || ''));
+    byId[u['ID']] = { id: u['ID'], mapel: mp, tingkat: t, guru: u['Guru'], kktp: Number(u['KKTP']) || 75, rombel: rbs, kunciKosong: kunciKosong, tanggal: tgl, n: 0, essay: essay };
     var mi = mapelInfo[mp] = mapelInfo[mp] || { mapel: mp, tanggal: {}, kunciKosong: 0, ujian: 0 };
     if (tgl) mi.tanggal[tgl] = 1; mi.ujian++; if (kunciKosong) mi.kunciKosong++;
     rbs.forEach(function (rb) {
@@ -103,7 +111,7 @@ function hitungTv_(T, hariIni, sekarang, cfg, rekap) {
     var w = String(h['Waktu'] || '');
     if (c) {
       var prev = c.siswa[key];
-      if (!prev || w >= prev.w) c.siswa[key] = { w: w, skor: Number(String(h['Skor']).replace(',', '.')) || 0, kktp: u.kktp };
+      if (!prev || w >= prev.w) c.siswa[key] = { w: w, skor: nilaiTv_(h, u), kktp: u.kktp };
     }
     u.n++;
     recent.push({ w: w, mapel: u.mapel, rombel: rb });
@@ -115,24 +123,24 @@ function hitungTv_(T, hariIni, sekarang, cfg, rekap) {
     return ta < tb ? -1 : ta > tb ? 1 : a.localeCompare(b);
   });
   // --- sel matriks
-  var sel = {}, tot = { target: 0, masuk: 0, sum: 0, tuntas: 0, selesai: 0, sel: 0 };
+  var sel = {}, tot = { target: 0, masuk: 0, sum: 0, tuntas: 0, selesai: 0, sel: 0, dinilai: 0, menunggu: 0 };
   var perMapel = {}, perTingkat = {};
-  mapel.forEach(function (mp) { perMapel[mp] = { target: 0, masuk: 0, sum: 0, tuntas: 0, perT: {} }; });
+  mapel.forEach(function (mp) { perMapel[mp] = { target: 0, masuk: 0, sum: 0, tuntas: 0, dinilai: 0, perT: {} }; });
   Object.keys(cover).forEach(function (k) {
     var c = cover[k], mp = k.split('|')[0], rb = k.split('|')[1], t = tOf[rb];
     var vals = Object.keys(c.siswa).map(function (s) { return c.siswa[s]; });
-    var n = Math.min(vals.length, c.target || vals.length), sum = 0, tun = 0;
-    vals.forEach(function (v) { sum += v.skor; if (v.skor >= v.kktp) tun++; });
-    sel[k] = { t: c.target, n: n, rata: vals.length ? Math.round(sum / vals.length * 10) / 10 : null, tuntas: vals.length ? Math.round(tun / vals.length * 100) : null, kk: c.kunciKosong };
-    tot.target += c.target; tot.masuk += n; tot.sum += sum; tot.tuntas += tun; tot.sel++; if (c.target && n >= c.target) tot.selesai++;
-    var pm = perMapel[mp]; pm.target += c.target; pm.masuk += n; pm.sum += sum; pm.tuntas += tun;
-    var pt = pm.perT[t] = pm.perT[t] || { masuk: 0, sum: 0, tuntas: 0, target: 0 }; pt.masuk += vals.length; pt.sum += sum; pt.tuntas += tun; pt.target += c.target;
+    var n = Math.min(vals.length, c.target || vals.length), sum = 0, tun = 0, dn = 0;
+    vals.forEach(function (v) { if (v.skor == null) return; dn++; sum += v.skor; if (v.skor >= v.kktp) tun++; });
+    sel[k] = { t: c.target, n: n, rata: dn ? Math.round(sum / dn * 10) / 10 : null, tuntas: dn ? Math.round(tun / dn * 100) : null, kk: c.kunciKosong, mu: vals.length - dn };
+    tot.target += c.target; tot.masuk += n; tot.sum += sum; tot.tuntas += tun; tot.dinilai += dn; tot.menunggu += vals.length - dn; tot.sel++; if (c.target && n >= c.target) tot.selesai++;
+    var pm = perMapel[mp]; pm.target += c.target; pm.masuk += n; pm.sum += sum; pm.tuntas += tun; pm.dinilai += dn;
+    var pt = pm.perT[t] = pm.perT[t] || { masuk: 0, sum: 0, tuntas: 0, target: 0 }; pt.masuk += dn; pt.sum += sum; pt.tuntas += tun; pt.target += c.target;
     var tt = perTingkat[t] = perTingkat[t] || { target: 0, masuk: 0 }; tt.target += c.target; tt.masuk += n;
   });
   var nilai = mapel.map(function (mp) {
     var pm = perMapel[mp];
     return { mapel: mp, masuk: pm.masuk, target: pm.target,
-      rata: pm.masuk ? Math.round(pm.sum / pm.masuk * 10) / 10 : null, tuntas: pm.masuk ? Math.round(pm.tuntas / pm.masuk * 100) : null,
+      rata: pm.dinilai ? Math.round(pm.sum / pm.dinilai * 10) / 10 : null, tuntas: pm.dinilai ? Math.round(pm.tuntas / pm.dinilai * 100) : null,
       perT: Object.keys(pm.perT).sort().map(function (t) { var x = pm.perT[t]; return { t: t, n: x.masuk, rata: x.masuk ? Math.round(x.sum / x.masuk * 10) / 10 : null, tuntas: x.masuk ? Math.round(x.tuntas / x.masuk * 100) : null }; }) };
   });
   // --- jadwal (tanggal -> mapel)
@@ -180,14 +188,14 @@ function hitungTv_(T, hariIni, sekarang, cfg, rekap) {
       var u = byId[h['ID Ujian']]; if (!u) return;
       var rb = up(h['Nama Rombel'] || h['Kelas']), ks = String(h['NISN'] || '').replace(/\D/g, '') || up(h['Nama']);
       var o = nilaiS[rb + '|' + ks] = nilaiS[rb + '|' + ks] || {}, w = String(h['Waktu'] || '');
-      if (!o[u.mapel] || w >= o[u.mapel].w) o[u.mapel] = { s: Number(String(h['Skor']).replace(',', '.')) || 0, w: w };
+      if (!o[u.mapel] || w >= o[u.mapel].w) o[u.mapel] = { s: nilaiTv_(h, u), w: w };
     });
     rekapOut = { kktp: kktpMT, rombel: {} };
     T.siswa.forEach(function (s) {
       var rb = up(s['Nama Rombel'] || s['Kelas']); if (!rb || !s['Nama']) return;
       var ks = String(s['NISN'] || '').replace(/\D/g, '') || up(s['Nama']), v = nilaiS[rb + '|' + ks] || nilaiS[rb + '|' + up(s['Nama'])] || {};
       var nl = {}, sum = 0, c = 0;
-      mapel.forEach(function (mp) { if (v[mp]) { nl[mp] = v[mp].s; sum += v[mp].s; c++; } });
+      mapel.forEach(function (mp) { if (v[mp]) { nl[mp] = v[mp].s; if (v[mp].s != null) { sum += v[mp].s; c++; } } });
       (rekapOut.rombel[rb] = rekapOut.rombel[rb] || []).push({ nama: up(s['Nama']), no: s['Nomor Peserta'] || '', n: nl, rata: c ? Math.round(sum / c * 10) / 10 : null, c: c });
     });
     Object.keys(rekapOut.rombel).forEach(function (rb) {
@@ -204,7 +212,7 @@ function hitungTv_(T, hariIni, sekarang, cfg, rekap) {
     mapel: mapel.map(function (mp) { return { mapel: mp, kunciKosong: mapelInfo[mp].kunciKosong, ujian: mapelInfo[mp].ujian, tanggal: Object.keys(mapelInfo[mp].tanggal).sort() }; }),
     sel: sel,
     kpi: { target: tot.target, masuk: tot.masuk, persen: tot.target ? Math.round(tot.masuk / tot.target * 1000) / 10 : 0,
-      rata: tot.masuk ? Math.round(tot.sum / tot.masuk * 10) / 10 : null, tuntas: tot.masuk ? Math.round(tot.tuntas / tot.masuk * 100) : null,
+      rata: tot.dinilai ? Math.round(tot.sum / tot.dinilai * 10) / 10 : null, tuntas: tot.dinilai ? Math.round(tot.tuntas / tot.dinilai * 100) : null, menunggu: tot.menunggu,
       selSelesai: tot.selesai, sel: tot.sel, siswa: rombel.reduce(function (s, r) { return s + jml[r]; }, 0),
       ujian: Object.keys(byId).length, kunciKosong: Object.keys(byId).filter(function (id) { return byId[id].kunciKosong; }).length },
     perTingkat: Object.keys(perTingkat).sort().map(function (t) { return { t: t, masuk: perTingkat[t].masuk, target: perTingkat[t].target }; }),

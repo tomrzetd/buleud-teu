@@ -245,23 +245,7 @@ function skorDariJawaban_(jawaban, u) {
 function sinkronSkor_() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return 0;
-  try {
-    ROWS_CACHE_ = {};
-    var byId = {}; rows_(SH.UJIAN).map(ujianRow_).forEach(function (u) { if (u.jumlah && !/\?/.test(u.kunci)) byId[u.id] = u; });
-    var sh = sheet_(SH.HASIL), head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
-    var cB = head.indexOf('Benar') + 1, cS = head.indexOf('Skor') + 1, n = 0;
-    if (cB < 1 || cS < 1) return 0;
-    rows_(SH.HASIL).forEach(function (h) {
-      var u = byId[h['ID Ujian']]; if (!u) return;
-      var x = skorDariJawaban_(h['Jawaban'], u);
-      if (Number(h['Benar']) !== x.benar || Math.abs(Number(h['Skor']) - x.skor) > 0.005) {
-        sh.getRange(h._row, cB, 1, 1).setValue(x.benar); sh.getRange(h._row, cS, 1, 1).setValue(x.skor); n++;
-      }
-    });
-    ROWS_CACHE_ = {};
-    if (n) Logger.log('Skor dihitung ulang: ' + n + ' baris HasilScan (kunci berubah).');
-    return n;
-  } finally { lock.releaseLock(); }
+  try { return hitungUlangHasil_(null); } finally { lock.releaseLock(); }
 }
 /** Jalankan manual bila guru baru saja mengisi/mengubah kunci. */
 function hitungUlangSkorASAS() { var n = sinkronSkor_(); Logger.log(n + ' baris diperbarui.'); return n; }

@@ -202,7 +202,7 @@
     $('kpi').innerHTML =
       '<div class="card"><small>Lembar jawaban masuk</small><div class="big">' + k.masuk.toLocaleString('id-ID') + ' <em>/ ' + k.target.toLocaleString('id-ID') + ' · ' + String(k.persen).replace('.', ',') + '%</em></div><div class="bar"><div style="width:' + Math.min(100, k.persen) + '%"></div></div></div>' +
       '<div class="card"><small>Rombel × mapel lengkap</small><div class="big">' + k.selSelesai + ' <em>/ ' + k.sel + '</em></div></div>' +
-      '<div class="card"><small>Rata-rata skor</small><div class="big">' + (k.rata == null ? '–' : String(k.rata).replace('.', ',')) + '</div></div>' +
+      '<div class="card"><small>Rata-rata nilai</small><div class="big">' + (k.rata == null ? '–' : String(k.rata).replace('.', ',')) + (k.menunggu ? ' <em>· ' + k.menunggu + ' menunggu uraian</em>' : '') + '</div></div>' +
       '<div class="card ' + (k.tuntas == null ? '' : k.tuntas >= 75 ? 'good' : k.tuntas < 50 ? 'badv' : '') + '"><small>Tuntas KKTP</small><div class="big">' + (k.tuntas == null ? '–' : k.tuntas + '%') + '</div></div>' +
       '<div class="card ' + (k.kunciKosong ? 'warn' : 'good') + '"><small>Kunci belum diisi</small><div class="big">' + k.kunciKosong + ' <em>/ ' + k.ujian + ' ujian</em></div></div>';
 
@@ -275,6 +275,7 @@
       L.forEach(function (x, j) {
         h += '<tr class="' + (x.rank && x.rank <= 3 ? 'top' : '') + '"><td class="rn">' + (j + 1) + '</td><td class="rn">' + esc(x.no) + '</td><td class="nm">' + esc(x.nama) + '</td>' + mp.map(function (m) {
           var v = x.n[m.mapel], kk = d.rekap.kktp[m.mapel + '|' + t] || 75;
+          if (v === null && m.mapel in x.n) return '<td class="no" title="menunggu nilai uraian">⋯</td>';
           return v == null ? '<td class="no">·</td>' : '<td class="' + (v >= kk ? 'ok' : 'lo') + '">' + String(v).replace('.', ',') + '</td>'; }).join('') +
           '<td class="rt">' + (x.rata == null ? '' : String(x.rata).replace('.', ',')) + '</td><td class="rn">' + (x.rank || '') + '</td></tr>';
       });
