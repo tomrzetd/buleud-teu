@@ -7,7 +7,7 @@ assert.strictEqual(d.rombel.length, 19); assert.strictEqual(d.kpi.siswa, 548); a
 assert.ok(!d.sel['PPKN|7A'], 'PPKn kelas 7 tidak diujikan'); assert.strictEqual(d.sel['PJOK|9A'].t, 32);
 assert.strictEqual(d.mapel[0].mapel, 'INFORMATIKA'); assert.ok(d.jadwal.find(j => j.tanggal === '2026-12-02').mapel.some(m => m.mapel === 'IPA'));
 assert.strictEqual(d.kpi.kunciKosong, 51, 'kunci contoh terdeteksi');
-const json = JSON.stringify(d); assert.ok(!/S7A1|8A-0|NISN|"siswa":[/i.test(json), 'tidak ada nama/NISN siswa');
+const json = JSON.stringify(d); assert.ok(!/S7A1|8A-0|NISN/i.test(json) && !('siswa' in d), 'tidak ada nama/NISN siswa');
 // scan ulang siswa yang sama: dihitung sekali, nilai terakhir dipakai
 const h2 = [{ Waktu: '2026-12-01 08:00:00', 'ID Ujian': 'MTK07-ASAS2026A', 'Nama Rombel': '7A', NISN: '111', Nama: 'X', Skor: '40' },
   { Waktu: '2026-12-01 09:00:00', 'ID Ujian': 'MTK07-ASAS2026A', 'Nama Rombel': '7A', NISN: '111', Nama: 'X', Skor: '80' }];
